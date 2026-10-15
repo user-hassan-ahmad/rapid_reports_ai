@@ -180,3 +180,133 @@ def _cosmetic(kind: str, ident: dict) -> Optional[tuple]:
         else:
             key.append(v or "")
     return (kind, *key)
+
+def _mint(kind: str, ident: dict, taken: set, salt: str = "") -> str:
+    """A new uid: kind prefix + 6 base32 characters of sha256(salt | kind | identity | n), deterministic given the
+    registry's salt (spec gap 3)."""
+    n = 0
+    while True:
+        digest = hashlib.sha256(f"{salt}|{kind}|{json.dumps(ident, sort_keys=True)}|{n}".encode()).digest()
+        uid = PREFIX[kind] + base64.b32encode(digest).decode().lower()[:6]
+        if uid not in taken:
+            return uid
+        n += 1
+
+
+def _parents_match(u: Unit, assigned: Dict[str, str], prev_identity: dict) -> bool:
+    """A carried line keeps its uid only in the same section and paragraph it had: never moved to an identical line
+    elsewhere (spec gap 13)."""
+    ident = _identity(u, assigned)
+    return all(ident.get(p, "") == prev_identity.get(p, "") for p in _PARENTS[u.kind])
+
+
+def _pair(new: List[Tuple[Unit, dict]], pool: Dict[str, dict], keyfn) -> Tuple[Dict[str, str], List[str], set]:
+    """One tier: {unit ref: uid} for 1:1 pairs, the refs of new units with competing candidates (ambiguous), and the
+    uids those competed for (they pair with nothing after this tier). keyfn(kind, identity, text)."""
+    by_key: Dict[tuple, List[str]] = {}
+    for uid, e in pool.items():
+        k = keyfn(e["kind"], e["identity"], e.get("text", ""))
+        if k is not None:
+            by_key.setdefault(k, []).append(uid)
+    cands = {}
+    for u, ident in new:
+        k = keyfn(u.kind, ident, u.text)
+        if k is not None and by_key.get(k):
+            cands[u.ref] = by_key[k]
+    claims: Dict[str, int] = {}
+    for c in cands.values():
+        for uid in c:
+            claims[uid] = claims.get(uid, 0) + 1
+    paired, ambiguous, burnt = {}, [], set()
+    for ref, c in cands.items():
+        if len(c) == 1 and claims[c[0]] == 1:
+            paired[ref] = c[0]
+        else:
+            ambiguous.append(ref)
+            burnt.update(c)
+    return paired, ambiguous, burnt
+
+
+def rebind(registry, st, carried: Optional[Dict[str, str]] = None, *,
+           now: Optional[str] = None) -> Tuple[dict, dict]:
+    """(new registry, report) for the parse `st` against the previous registry (module doc). `carried`: {uid: the raw
+    line apply_ledger rewrote that unit to}. report = {exact, cosmetic, carried, revived, new, gone, ambiguous}, each a
+    list of uids. Never mutates its inputs."""
+    reg, report, _ = _bind(registry, st, carried, now)
+    return reg, report
+
+
+def _bind(registry, st, carried, now):
+    reg = load(registry)
+    reg.setdefault("salt", secrets.token_hex(4))   # minted once per registry; uids differ across templates
+    prev = reg["units"]
+    now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    report = {k: [] for k in ("exact", "cosmetic", "carried", "revived", "new", "gone", "ambiguous")}
+    assigned: Dict[str, str] = {}   # unit ref -> uid
+    used: set = set()
+    all_units = units(st)
+    renamed: set = set()   # paragraph uids kept by the COVERS rename rule (spec decision 5)
+
+    def exact_key(k: str, ident: dict, text: str) -> tuple:
+        """Across a paragraph rename a normal also needs its own text (decision 5, option c)."""
+        base = _exact(k, ident)
+        return (*base, norm_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
+
+    def cosmetic_key(k: str, ident: dict, text: str) -> Optional[tuple]:
+        if k == "normal" and ident.get("paragraph") in renamed:
+            return (*_exact(k, ident), tlm.cosmetic_key(text))
+        return _cosmetic(k, ident)
+
+    for kind in KINDS:
+        todo = [u for u in all_units if u.kind == kind]
+        live = {uid: e for uid, e in prev.items() if e["kind"] == kind and e.get("status") == "live"}
+        gone = {uid: e for uid, e in prev.items() if e["kind"] == kind and e.get("status") != "live"}
+
+        def take(u: Unit, uid: str, ident: dict, how: str) -> None:
+            assigned[u.ref] = uid
+            used.add(uid)
+            prev[uid] = {**prev[uid], "kind": kind, "identity": ident, "text": u.text, "text_hash": text_hash(u.text),
+                         "status": "live"}
+            report[how].append(uid)
+
+        if kind in LINE_KINDS:
+            for uid, raw in sorted((carried or {}).items()):
+                if uid not in live or uid in used or not uid.startswith(PREFIX[kind]):
+                    continue
+                hits = [u for u in todo if u.ref not in assigned and u.raw == raw
+                        and _parents_match(u, assigned, prev[uid]["identity"])]
+                if len(hits) == 1:
+                    take(hits[0], uid, _identity(hits[0], assigned), "carried")
+        excluded: set = set()
+        tiers = (("exact", live, exact_key), ("cosmetic", live, cosmetic_key), ("revived", gone, exact_key))
+        for how, pool, keyfn in tiers:
+            rest = [(u, _identity(u, assigned)) for u in todo if u.ref not in assigned and u.ref not in excluded]
+            avail = {uid: e for uid, e in pool.items() if uid not in used}
+            paired, ambiguous, burnt = _pair(rest, avail, keyfn)
+            for u, ident in rest:
+                if u.ref in paired:
+                    take(u, paired[u.ref], ident, how)
+            excluded.update(ambiguous)
+            used.update(burnt)   # a uid two new units competed for pairs with nothing
+        for u in todo:
+            if u.ref in assigned:
+                continue
+            ident = _identity(u, assigned)
+            uid = _mint(kind, ident, set(prev) | used, reg["salt"])
+            prev[uid] = {"kind": kind, "identity": ident, "text": u.text, "text_hash": text_hash(u.text),
+                         "status": "live", "minted": now}
+            assigned[u.ref] = uid
+            used.add(uid)
+            report["ambiguous" if u.ref in excluded else "new"].append(uid)
+        for uid in live:
+            if uid not in assigned.values():
+                prev[uid] = {**prev[uid], "status": "gone"}
+                report["gone"].append(uid)
+        if kind == "paragraph":
+            renamed = {u for u in report["cosmetic"] if u.startswith(PREFIX["paragraph"])}
+    return reg, report, assigned
+
+
+def summary(report: dict) -> str:
+    """The rebind report as one log fragment: "exact=9 cosmetic=1 …"."""
+    return " ".join(f"{k}={len(v)}" for k, v in report.items())

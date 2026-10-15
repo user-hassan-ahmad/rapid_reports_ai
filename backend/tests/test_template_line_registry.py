@@ -121,3 +121,231 @@ def test_load_drops_malformed_units_and_never_raises():
                              "g_bbbbbb": {"kind": "nope", "identity": {}}, "f_cccccc": "x"}, "salt": "0a1b2c3d"}
     assert list(tlr.load(raw)["units"]) == ["n_aaaaaa"] and tlr.load(raw)["salt"] == "0a1b2c3d"
     assert "salt" not in tlr.load({**raw, "salt": "not hex!"})
+
+# ── rebind ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+HEAD = """## Report Structure
+SECTION TECHNIQUE | header: "Technique:" | role: technique
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION IMPRESSION | header: "Impression:" | role: impression
+"""
+TAIL = "\n## Paragraph: Impression (IMPRESSION)\nOpening: \"Normal study.\"\n"
+
+
+def _sheet(*paragraphs: str) -> str:
+    return HEAD + "".join(f"\n{p.strip()}\n" for p in paragraphs) + TAIL
+
+
+def _bind(sheet, registry=None, carried=None):
+    return tlr.rebind(registry, _st(sheet), carried, now="T")
+
+
+def _live(registry, text):
+    (uid,) = [u for u, e in registry["units"].items() if e["status"] == "live" and e["text"] == text]
+    return uid
+
+
+def _counts(report):
+    return {k: len(v) for k, v in report.items() if v}
+
+
+def test_first_save_mints_one_uid_per_line_bound_unit_and_a_second_is_all_exact():
+    reg, rep = _bind(LEDGER_SHEET)
+    st = _st(LEDGER_SHEET)
+    n = len(st.sections) + len(st.paragraphs) + len(st.normals) + len(st.negatives) + len(st.fixed_blocks) + len(st.rules)
+    assert _counts(rep) == {"new": n} and len(reg["units"]) == n
+    assert {u[:2] for u in reg["units"]} == {"s_", "p_", "n_", "g_", "f_"}
+    assert all(e["status"] == "live" and e["minted"] == "T" for e in reg["units"].values())
+    again, rep2 = _bind(LEDGER_SHEET, reg)
+    assert _counts(rep2) == {"exact": n} and again == reg
+
+
+def test_rebind_is_deterministic_and_never_mutates_its_input():
+    reg, _ = _bind(LEDGER_SHEET)
+    snapshot = repr(reg)
+    edited = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    assert _bind(edited, reg) == _bind(edited, reg)
+    assert repr(reg) == snapshot
+
+
+def test_normal_text_lives_in_text_hash_not_identity():
+    reg, _ = _bind(LEDGER_SHEET)
+    uid = _live(reg, "The liver is normal in size.")
+    edited = LEDGER_SHEET.replace('"The liver is normal in size."\nNEGATIVE', '"The liver is unremarkable."\nNEGATIVE')
+    reg2, rep = _bind(edited, reg)
+    assert uid in rep["exact"] and reg2["units"][uid]["text"] == "The liver is unremarkable."
+    assert reg2["units"][uid]["text_hash"] != reg["units"][uid]["text_hash"]
+
+
+def test_reordering_sections_and_paragraphs_keeps_every_uid():
+    a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver"]\nNORMAL [liver] "The liver is normal."',
+               '## Paragraph: Spleen (FINDINGS)\nCOVERS ["spleen"]\nNORMAL [spleen] "The spleen is normal."')
+    b = _sheet('## Paragraph: Spleen (FINDINGS)\nCOVERS ["spleen"]\nNORMAL [spleen] "The spleen is normal."',
+               '## Paragraph: Liver (FINDINGS)\nCOVERS ["liver"]\nNORMAL [liver] "The liver is normal."')
+    b = b.replace('SECTION TECHNIQUE | header: "Technique:" | role: technique\n', "") \
+         .replace('SECTION IMPRESSION | header: "Impression:" | role: impression\n',
+                  'SECTION IMPRESSION | header: "Impression:" | role: impression\n'
+                  'SECTION TECHNIQUE | header: "Technique:" | role: technique\n')
+    reg, _ = _bind(a)
+    reg2, rep = _bind(b, reg)
+    assert set(_counts(rep)) == {"exact"} and reg2 == reg
+
+
+def test_inserting_a_normal_mints_one_uid_and_changes_no_other():
+    reg, _ = _bind(LEDGER_SHEET)
+    edited = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."',
+                                  'NORMAL [gallbladder] "The gallbladder is normal."\nNEGATIVE "No focal liver lesion."')
+    reg2, rep = _bind(edited, reg)
+    assert len(rep["new"]) == 1 and rep["new"][0].startswith("n_") and not rep["gone"]
+    assert {u: e for u, e in reg2["units"].items() if u not in rep["new"]} == reg["units"]
+
+
+def test_a_cosmetic_rewording_keeps_the_uid_and_a_token_change_does_not():
+    reg, _ = _bind(LEDGER_SHEET)
+    uid = _live(reg, "No focal liver lesion.")
+    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    reg2, rep = _bind(cosmetic, reg)
+    assert rep["cosmetic"] == [uid] and reg2["units"][uid]["text"] == "There is no focal liver lesion"
+    changed = LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal hepatic lesion."')
+    reg3, rep3 = _bind(changed, reg)
+    assert rep3["gone"] == [uid] and len(rep3["new"]) == 1 and reg3["units"][uid]["status"] == "gone"
+
+
+@pytest.mark.parametrize("a,b", ADVERSARIAL)
+def test_adversarial_negatives_never_keep_a_uid(a, b):
+    para = '## Paragraph: Body (FINDINGS)\nCOVERS ["body"]\nNEGATIVE "{}"'
+    reg, _ = _bind(_sheet(para.format(a)))
+    uid = _live(reg, a)
+    _, rep = _bind(_sheet(para.format(b)), reg)
+    assert rep["gone"] == [uid] and uid not in rep["exact"] + rep["cosmetic"]
+
+
+def test_the_same_normal_text_under_another_structure_is_another_unit():
+    a = _sheet('## Paragraph: Body (FINDINGS)\nCOVERS ["alpha" | "beta"]\nNORMAL [alpha] "Normal appearance."')
+    b = a.replace("NORMAL [alpha]", "NORMAL [beta]")
+    reg, _ = _bind(a)
+    _, rep = _bind(b, reg)
+    assert len(rep["gone"]) == 1 and len(rep["new"]) == 1
+
+
+def test_a_conditional_and_an_unconditional_negative_with_the_same_text_differ():
+    a = _sheet('## Paragraph: Body (FINDINGS)\nCOVERS ["body"]\nNEGATIVE "No free fluid."')
+    b = a.replace('NEGATIVE "No free fluid."', 'NEGATIVE "No free fluid." WHEN [findings: a body mass is reported]')
+    reg, _ = _bind(a)
+    _, rep = _bind(b, reg)
+    assert len(rep["gone"]) == 1 and len(rep["new"]) == 1
+
+
+def test_two_suppress_rules_with_one_condition_and_different_targets_differ():
+    cond = "RULE WHEN [context: the dictation states contrast was given] SUPPRESS"
+    a = _sheet('## Paragraph: Body (FINDINGS)\nCOVERS ["body"]\nFIXED "Line one."\nFIXED "Line two."\n'
+               f'{cond} "Line one."')
+    b = a.replace(f'{cond} "Line one."', f'{cond} "Line two."')
+    reg, _ = _bind(a)
+    _, rep = _bind(b, reg)
+    assert [u[:2] for u in rep["gone"]] == ["r_"] and [u[:2] for u in rep["new"]] == ["r_"]
+
+
+def test_identical_fixed_lines_in_two_paragraphs_are_two_units():
+    a = _sheet('## Paragraph: Upper (FINDINGS)\nCOVERS ["upper"]\nFIXED "Same line."',
+               '## Paragraph: Lower (FINDINGS)\nCOVERS ["lower"]\nNORMAL [lower] "Lower is normal."')
+    b = _sheet('## Paragraph: Upper (FINDINGS)\nCOVERS ["upper"]\nNORMAL [upper] "Upper is normal."',
+               '## Paragraph: Lower (FINDINGS)\nCOVERS ["lower"]\nNORMAL [lower] "Lower is normal."\nFIXED "Same line."')
+    reg, _ = _bind(a)
+    fixed = _live(reg, "Same line.")
+    reg2, rep = _bind(b, reg)
+    assert fixed in rep["gone"] and _live(reg2, "Same line.") != fixed
+
+
+def test_identical_fixed_lines_in_two_paragraphs_each_keep_their_own_uid():
+    sheet = _sheet('## Paragraph: Upper (FINDINGS)\nCOVERS ["upper"]\nFIXED "Same line."',
+                   '## Paragraph: Lower (FINDINGS)\nCOVERS ["lower"]\nFIXED "Same line."')
+    reg, rep = _bind(sheet)
+    uids = [u for u, e in reg["units"].items() if e["text"] == "Same line."]
+    assert len(set(uids)) == 2 and not rep["ambiguous"]
+    reg2, rep2 = _bind(sheet, reg)
+    assert set(uids) <= set(rep2["exact"]) and reg2 == reg
+
+
+def test_each_registry_has_its_own_salt_and_keeps_it():
+    a, _ = _bind(LEDGER_SHEET)
+    b, _ = _bind(LEDGER_SHEET)
+    assert a["salt"] != b["salt"] and set(a["units"]).isdisjoint(b["units"])
+    assert _bind(LEDGER_SHEET, a)[0]["salt"] == a["salt"]
+
+
+def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers_and_passing_gates():
+    a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\nNORMAL [liver] "The liver is normal."')
+    reg, _ = _bind(a)
+    para, normal = _live(reg, "Liver"), _live(reg, "The liver is normal.")
+    renamed = a.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    _, rep = _bind(renamed, reg)
+    assert para in rep["cosmetic"] and normal in rep["exact"]
+    other_covers = renamed.replace('COVERS ["liver" | "gallbladder"]', 'COVERS ["liver"]')
+    _, rep3 = _bind(other_covers, reg)
+    assert para in rep3["gone"]
+    sided = a.replace("Paragraph: Liver", "Paragraph: Left liver")
+    reg4, _ = _bind(sided)
+    _, rep4 = _bind(sided.replace("Paragraph: Left liver", "Paragraph: Right liver"), reg4)
+    assert _live(reg4, "Left liver") in rep4["gone"]
+
+
+def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_text():
+    a = _sheet('## Paragraph: Arterial phase (FINDINGS)\nCOVERS ["liver" | "spleen"]\n'
+               'NORMAL [liver] "The liver enhances normally."\nNORMAL [spleen] "The spleen is normal."')
+    reg, _ = _bind(a)
+    changed, same = _live(reg, "The liver enhances normally."), _live(reg, "The spleen is normal.")
+    renamed = a.replace("Arterial phase", "Portal venous phase")
+    _, rep = _bind(renamed.replace("The liver enhances normally.", "The liver enhances homogeneously."), reg)
+    assert _live(reg, "Arterial phase") in rep["cosmetic"]                 # the paragraph kept its uid (COVERS)
+    assert changed in rep["gone"] and same in rep["exact"]                 # a reworded normal is a new unit
+    _, rep2 = _bind(renamed.replace('"The liver enhances normally."', '"There is normal liver enhancement"'), reg)
+    assert changed in rep2["gone"]
+    _, rep3 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    assert changed in rep3["exact"]                                        # exact text: kept
+
+
+def test_one_old_uid_claimed_by_two_new_lines_is_ambiguous():
+    reg, _ = _bind(LEDGER_SHEET)
+    uid = _live(reg, "No focal liver lesion.")
+    twice = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."',
+                                 'NEGATIVE "No focal liver lesion."\nNEGATIVE "No focal liver lesion."')
+    _, rep = _bind(twice, reg)
+    assert len(rep["ambiguous"]) == 2 and uid in rep["gone"] and uid not in rep["ambiguous"]
+
+
+def test_two_old_uids_matching_one_new_line_are_ambiguous():
+    twice = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."',
+                                 'NEGATIVE "No focal liver lesion."\nNEGATIVE "No focal liver lesion."')
+    reg, _ = _bind(twice)
+    olds = sorted(u for u in reg["units"] if u.startswith("g_"))
+    _, rep = _bind(LEDGER_SHEET, reg)
+    assert len(rep["ambiguous"]) == 1 and sorted(rep["gone"]) == olds
+
+
+def test_carried_units_keep_their_uid_whatever_the_new_text():
+    reg, _ = _bind(LEDGER_SHEET)
+    uid = _live(reg, "No focal liver lesion.")
+    new_line = 'NEGATIVE "No focal hepatic lesion."'
+    edited = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', new_line)
+    reg2, rep = _bind(edited, reg, carried={uid: new_line})
+    assert rep["carried"] == [uid] and reg2["units"][uid]["text"] == "No focal hepatic lesion." and not rep["gone"]
+
+
+def test_a_carried_uid_the_registry_does_not_know_is_ignored():
+    reg, _ = _bind(LEDGER_SHEET)
+    _, rep = _bind(LEDGER_SHEET, reg, carried={"g_zzzzzz": 'NEGATIVE "No focal liver lesion."'})
+    assert not rep["carried"] and set(_counts(rep)) == {"exact"}
+
+
+def test_gone_units_revive_on_exact_identity_only():
+    reg, _ = _bind(LEDGER_SHEET)
+    uid = _live(reg, "No focal liver lesion.")
+    away = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', "")
+    reg2, _ = _bind(away, reg)
+    assert reg2["units"][uid]["status"] == "gone"
+    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    _, rep = _bind(cosmetic, reg2)
+    assert not rep["revived"] and len(rep["new"]) == 1
+    reg4, rep4 = _bind(LEDGER_SHEET, reg2)
+    assert rep4["revived"] == [uid] and reg4["units"][uid]["status"] == "live"
