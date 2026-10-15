@@ -375,3 +375,55 @@ describe('the Check rows', () => {
 	});
 });
 
+describe('clarity round 2', () => {
+	it('the values toggle puts "Answered by you" first, never under "Also used (not decisive)"', async () => {
+		const p = reached({
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
+				draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false }),
+				draft({ input: 'g', label: 'Growth', state: 'answered', value: 'Yes' })
+			]
+		});
+		show(p);
+		const lines = [...page.getByRole('button', { name: /^Answered by you/ }).element().querySelectorAll('.cp-based-line')].map((e) => e.textContent!.trim());
+		expect(lines).toEqual(['Answered by you: Growth Yes', 'Read from your dictation: Size 7 mm', 'Also used (not decisive): Smoker No']);
+	});
+
+	it('the toggle\'s chevron stays inline at the end of its last line', async () => {
+		show(reached({ draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' })] }));
+		const caret = page.getByRole('button', { name: /^Read from your dictation/ }).element().querySelector('.cp-caret')!;
+		expect(caret.parentElement!.classList.contains('cp-based-line')).toBe(true);
+	});
+
+	it('a pack card with no preview still shows its Reference', async () => {
+		const ref = { summary: [{ id: 's1', text: 'A summary line', citation: {} as never }], definitions: [], tables: [], pitfalls: [] };
+		render(PackBody, { result: result(bts, null, { reference: ref as never }), guideline: 'BTS 2015' });
+		await expect.element(page.getByRole('button', { name: 'Reference' })).toBeInTheDocument();
+	});
+
+	it('a tall question leaves no permanent gap: the held height resets when the answers clear', async () => {
+		const ask = (input: string, label: string) => ({ input, label, options: ['Yes', 'No'], definition: { text: 'A long definition. '.repeat(12), citation: {} as never } });
+		const open = preview({ proposal: null, asks: [ask('g', 'Growth')], draft: [draft({ input: 'g', label: 'Growth', state: 'asked' })] });
+		const r = render(PackBody, { result: result(bts, open), guideline: 'BTS 2015', onEdit: vi.fn() });
+		await expect.element(page.getByTestId('cp-question')).toBeInTheDocument();
+		const tall = (document.querySelector('.cp-qslot') as HTMLElement).offsetHeight;
+		const cleared = reached({ asks: [], draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' })] });
+		await r.rerender({ result: result(bts, cleared), edits: {} });
+		await new Promise((res) => setTimeout(res, 50));
+		const answered = preview({ proposal: null, draft_outcome: rec(), trace: { outcome: 'ct3' }, asks: [], draft: [draft({ input: 'g', label: 'Growth', state: 'answered', value: 'Yes' })] });
+		await r.rerender({ result: result(bts, answered), edits: { g: 'Yes' } });
+		await expect.element(page.getByTestId('cp-answers')).toBeInTheDocument();
+		expect((document.querySelector('.cp-qslot') as HTMLElement).offsetHeight).toBeLessThan(tall);
+	});
+
+	it('no empty footer row when there is nothing to put in it', async () => {
+		show(reached({ draft_outcome: outcome({ ...rec(), citations: [], caveats: [] }) }));
+		expect(document.querySelector('.cp-aux')).toBeNull();
+	});
+
+	it('a read-only column still shows "Confirmed" for a ticked value', async () => {
+		render(PackBody, { result: result(bts, reached()), guideline: 'BTS 2015', applyOn: true, ticks: { kind: 'solid' } });
+		await expect.element(page.getByTestId('cp-confirmed')).toHaveTextContent('Confirmed');
+	});
+});
+

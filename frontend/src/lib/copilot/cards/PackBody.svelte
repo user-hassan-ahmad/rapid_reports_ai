@@ -149,8 +149,10 @@
 		const part = (head: string, rs: typeof list) => (rs.length ? `${head}: ${rs.map((d) => `${d.label} ${displayValue(d.value, d.basis ?? '')}`).join(' · ')}` : '');
 		const guess = (d: (typeof list)[number]) => (d.state === 'prefilled' || d.state === 'assumed') && d.by !== 'exam';
 		const line1 = [part('Read from your dictation', list.filter((d) => d.state === 'read' && d.by !== 'exam')), part('Set by the exam', list.filter((d) => d.by === 'exam'))].filter(Boolean).join('; ');
-		const line2 = [part('Also used (not decisive)', list.filter(guess)), part('Answered by you', list.filter((d) => d.state === 'answered' || d.state === 'edited'))].filter(Boolean).join('; ');
-		return [line1, line2].filter(Boolean);
+		const line2 = part('Also used (not decisive)', list.filter(guess));
+		// the radiologist's own answers are the strongest provenance: their own line, first
+		const mine = part('Answered by you', list.filter((d) => d.state === 'answered' || d.state === 'edited'));
+		return [mine, line1, line2].filter(Boolean);
 	});
 	let editingChip = $state<string | null>(null);
 	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
@@ -184,6 +186,7 @@
 	let heldH = $state(0); // the slot keeps the height of the question it showed, so the recommendation never jumps
 	$effect(() => {
 		if (next && slotH) heldH = slotH;
+		else if (!next && askChips.length === 0) heldH = 0; // nothing asked or answered: no gap left behind
 	});
 	const questionLabel = $derived(`QUESTION ${askChips.length + 1} OF ${p?.bounded === false ? 'UP TO ' : ''}${askChips.length + remaining(p, edits)}`);
 </script>
@@ -230,7 +233,7 @@
 				>
 			{:else}
 				<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-based" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-					>{#each basedLines as l (l)}<span class="cp-based-line">{l}</span>{/each}{#if !basedLines.length}Values used{/if} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>{#each basedLines as l, i (l)}<span class="cp-based-line">{l}{#if i === basedLines.length - 1} <span class="cp-caret"><Icon name="chev" size={11} /></span>{/if}</span>{/each}{#if !basedLines.length}<span class="cp-based-line">Values used <span class="cp-caret"><Icon name="chev" size={11} /></span></span>{/if}</button
 				>
 			{/if}
 			<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
@@ -263,6 +266,7 @@
 {/snippet}
 
 {#snippet footer()}
+	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed)}
 	<div class="cp-aux">
 		{#if decided && v && !compact}
 			{#if v.caveats.length}
@@ -297,6 +301,7 @@
 			<Reference reference={result.reference} />
 		{/if}
 	</div>
+	{/if}
 	{#if p?.degraded}
 		<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
 	{/if}
@@ -305,6 +310,7 @@
 <div class="cp-pack-body" class:cp-compact={compact}>
 	{#if !p}
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
+		{#if !compact && result.reference}<Reference reference={result.reference} />{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
 		{#if collapsed && reason}

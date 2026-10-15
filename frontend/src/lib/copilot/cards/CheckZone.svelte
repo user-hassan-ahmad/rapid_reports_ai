@@ -39,7 +39,9 @@
 {#snippet row(c: CheckItem)}
 	<li class="cp-check-item" class:cp-check-doubt={c.kind === 'doubt'} data-testid={c.kind === 'doubt' ? 'cp-scope-doubt' : 'cp-check-item'}>
 		<span class="cp-check-q">{c.label}</span>
-		{#if onEdit && editing !== c.input}
+		{#if !onEdit && c.kind !== 'doubt' && c.affirmed}
+			<span class="cp-check-actions"><span class="cp-confirmed" data-testid="cp-confirmed">✓ Confirmed</span></span>
+		{:else if onEdit && editing !== c.input}
 			<span class="cp-check-actions">
 				{#if c.kind === 'doubt'}
 					{#if c.value}<button type="button" class="rv-btn" aria-label={`Confirm ${c.label} ${shownValue(c.value)}`} onclick={() => onEdit?.(c.input, c.value)}>Confirm</button>{/if}

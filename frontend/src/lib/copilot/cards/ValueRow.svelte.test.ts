@@ -67,12 +67,18 @@ describe('ValueRow', () => {
 		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Not verified: not read with certainty');
 	});
 
-	it('an exam-set row that also has a real reason shows both chips and the reason', async () => {
+	it('an exam-set row that also has a real reason says "set by the exam" only; the reason stays in the bubble', async () => {
 		show(row({ state: 'prefilled', byExam: true, value: 'unenhanced CT', why: ['set by the exam', 'the check did not run'] }));
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
-		await expect.element(page.getByText('probably from your dictation', { exact: true })).toBeInTheDocument();
+		expect(document.body.textContent).not.toContain('probably from your dictation');
 		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Not verified: the check did not run');
 		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).not.toContain('set by the exam');
+	});
+
+	it('a date-derived pre-filled value shows its basis and never the dictation chip; a plain one keeps the chip', async () => {
+		show(row({ state: 'prefilled', value: '120 days', basis: 'from the CT of 12 Mar 2025', why: ['derived'] }));
+		await expect.element(page.getByText('from the CT of 12 Mar 2025')).toBeInTheDocument();
+		expect(document.body.textContent).not.toContain('probably from your dictation');
 	});
 
 	it('a state this UI does not know shows as a neutral row', async () => {

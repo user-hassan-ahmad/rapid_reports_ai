@@ -82,7 +82,7 @@
 		{#if row.byExam && !editing}
 			<span class="cp-chip cp-val-chip">set by the exam</span>
 		{/if}
-		{#if prefilled && !editing}
+		{#if prefilled && !row.byExam && !row.basis && !editing}
 			<!-- no native title: the row's own bubble shows the reasons (a title showed them twice, Hassan 2026-10-13) -->
 			<span class="cp-chip cp-val-chip cp-chip-why">probably from your dictation</span>
 		{/if}
