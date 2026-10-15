@@ -250,17 +250,26 @@ def _clause_log(g: GateClause) -> dict:
             "tier": g.tier, "runs": [list(r) for r in g.runs], "reworded": g.reworded}
 
 
-def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list):
+def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
+          rec_dictated_spans=()):
     """Live (spec §4.4): (provenance items, negatives items, brief items, log). Inputs are not mutated.
     - dictated clause: AI-layer items (assumed_normal / ai_generated, cls info) that touch no added clause are dropped;
       cards (check, removed, ...) stay;
     - quiet clause with no AI-layer item on it: a quiet `assumed_normal` item (form normal);
     - synth clause: one `ai_generated` item on the added-word runs (first run the anchor, the rest `also_anchors`;
       no run → the whole clause), minus the template's own words (`provenance.untemplated`; none left → no item);
-    - rec clause: one `recommendation` item per sentence, placed and given its removal by provenance's code."""
+    - rec clause: one `recommendation` item per sentence, placed and given its removal by provenance's code, unless
+      the radiologist dictated it in other words. The gate cannot say so: `tier_of` makes every added recommendation
+      clause "rec", and a writer's rewording of a dictated recommendation (integration spec D22: "suggest non-urgent
+      ultrasound" → "Non-urgent thyroid ultrasound is recommended.") scores below GATE_MIN. So today's two rules
+      decide: `provenance._rec_dictated` (a confident pair, or a dictated recommendation line sharing a content
+      word) and `rec_dictated_spans`, the anchors `provenance.confirm`'s Jev question called dictated. A
+      recommendation neither rule finds dictated keeps its item."""
     from .items import text_hash
-    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target, template_spans,
-                             untemplated)
+    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_dictated, _rec_target,
+                             template_spans, untemplated)
+    jev_dictated = {tuple(sp) for sp in rec_dictated_spans or ()}
+    rec_dictated = 0
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
     h = text_hash(report)
@@ -312,6 +321,9 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
             rec_seen.add(c.sentence_start)
             sentence = report[c.sentence_start:c.sentence_end]
             s, e, edit = _rec_target(report, c, sentence, names)
+            if _rec_dictated(al, c) or (s, e) in jev_dictated:
+                rec_dictated += 1
+                continue
             ok = edit is not None
             prov.append(_new_item(inp, run_id, "additions", KIND_REC, "minor", DETECTOR_REC, c.section, s, e,
                                   "Recommendation not dictated", "Added by the report writer; remove it if not wanted.",
@@ -320,7 +332,8 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
                                    "contra": None, "unconfirmed": True}))
     log = {"mode": "live", "clauses": [_clause_log(g) for g in gate], "dropped": dropped,
            "quiet": sum(1 for it in prov if it.kind == "assumed_normal"), "synthesis": synth,
-           "recommendation": len(rec_seen), "capped": capped, "unplaced": unplaced,
+           "recommendation": len(rec_seen) - rec_dictated, "rec_dictated": rec_dictated, "capped": capped,
+           "unplaced": unplaced,
            "template_owned": template_owned}
     return prov, neg, brief, log
 

@@ -366,3 +366,60 @@ def test_an_added_clause_with_no_new_content_words_is_not_violet():
     assert [r[a:b] for a, b in g[1].runs] == ["crescentic"]
     assert dg.tier_of(0.6, "abnormal", False, False, has_new_words=False) == "dictated"
     assert dg.tier_of(0.6, "not_a_finding", True, False, has_new_words=False) == "rec"   # recs keep their item
+
+
+# A recommendation the radiologist dictated, reworded by the writer into the impression's last line (integration spec
+# D22). The gate scores the rewording below GATE_MIN, so the clause is tier "rec"; the live items must still not call
+# it undictated. Synthetic stand-ins for three P3 observations (stack plain(): the confirmed conclusion is one line).
+REWORDED_RECS = [
+    ("FINDINGS:\nThere is a 4 cm mass in the pancreatic head encasing the SMV.\n\n"
+     "IMPRESSION:\nPancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion is recommended.\n",
+     "4 cm pancreatic head mass encasing the SMV.\n"
+     "Pancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion.", 0.66),
+    ("FINDINGS:\nThere is a 2 cm nodule in the right thyroid lobe.\n\n"
+     "IMPRESSION:\nRight thyroid nodule. Non-urgent thyroid ultrasound is recommended.\n",
+     "2 cm nodule right thyroid lobe.\nIncidental right thyroid nodule. Thyroid nodule, suggest non-urgent ultrasound.",
+     0.65),
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. Follow-up CT in 12 months per guidelines.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, follow-up CT in 12 months per guidelines.", 0.55),
+]
+
+
+def _live_rec(report, dictation, rec_p, **kw):
+    """Live apply where the gate calls every clause dictated except the recommendation (P(all_stated) `rec_p`)."""
+    from rapid_reports_ai.review_engine.provenance import is_recommendation
+    i, al, texts = _unit_texts(report, dictation)
+    recs = [is_recommendation(t, None, "IMPRESSION") for t in texts]
+    jp = _jp(texts, [rec_p if r else 0.9 for r in recs], ["not_a_finding" if r else "abnormal" for r in recs])
+    g = dg.classify(i, report, al, jp)
+    assert [x.tier for x in g if x.tier == "rec"] == ["rec"]
+    prov, _, _, log = dg.apply(i, RUN, al, g, [], [], **kw)
+    return [it.anchor.text for it in prov if it.kind == "recommendation"], log
+
+
+@pytest.mark.parametrize("report,dictation,p", REWORDED_RECS)
+def test_live_gives_no_item_for_a_reworded_dictated_recommendation(report, dictation, p):
+    recs, log = _live_rec(report, dictation, p)
+    assert recs == [] and log["recommendation"] == 0 and log["rec_dictated"] == 1
+
+
+def test_live_still_flags_a_recommendation_the_radiologist_did_not_dictate():
+    r = ("FINDINGS:\nThere is a 4 cm mass in the pancreatic head encasing the SMV.\n\n"
+         "IMPRESSION:\nPancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion is recommended.\n")
+    for d in ("4 cm pancreatic head mass encasing the SMV.\nPancreatic head mass encasing the SMV, likely adenocarcinoma.",
+              "4 cm pancreatic head mass encasing the SMV.\nLikely adenocarcinoma. Suggest follow-up CT in 3 months."):
+        recs, log = _live_rec(r, d, 0.1)
+        assert recs == ["MDT discussion is recommended."] and log["rec_dictated"] == 0
+
+
+def test_live_drops_a_recommendation_the_confirm_question_called_dictated():
+    # no confident pair and no shared recommendation line: only provenance.confirm's Jev question knows it is dictated
+    r = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team.\n"
+    d = "- Pancreatic mass\n- Result discussed by phone with Dr Jones, surgical registrar, read-back confirmed"
+    talk = "Discussed with the referring team."
+    s = r.index(talk)
+    recs, _ = _live_rec(r, d, 0.2)
+    assert recs == [talk]                                         # undictated by code alone: flagged
+    recs, log = _live_rec(r, d, 0.2, rec_dictated_spans=[[s, s + len(talk)]])
+    assert recs == [] and log["rec_dictated"] == 1

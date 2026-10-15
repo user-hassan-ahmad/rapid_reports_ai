@@ -728,8 +728,9 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             today = dictated_gate.shadow_log(gate_clauses, neg_items + brief_items + prov)   # what today tints
             gate_log = today
             if gm == "live":             # the gate's items are shown; today's stay in the log for comparison
-                g_prov, g_neg, g_brief, live_log = dictated_gate.apply(inp, run_id, al, gate_clauses, neg_items,
-                                                                       brief_items)
+                g_prov, g_neg, g_brief, live_log = dictated_gate.apply(
+                    inp, run_id, al, gate_clauses, neg_items, brief_items,
+                    rec_dictated_spans=(prov_log or {}).get("rec_dictated_spans") or [])
                 g_neg, g_brief, live_log["amber_hygiene"] = negatives.amber_hygiene(g_neg, g_brief)
                 for it in g_prov:
                     it.engine_version = ENGINE_VERSION

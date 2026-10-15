@@ -376,8 +376,8 @@ async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[Jev
     choice, `q_synthesis`) that decides two things:
     - recommendations: a `recommendation` item whose sentence no dictated line pairs with or restates as a
       recommendation (`_rec_dictated`) is asked about its anchored recommendation text; dictated (P(stated) +
-      P(synonym_or_equivalent) >= SYNTH_DICTATED) drops the item. A failed or unreadable answer keeps it: a removable
-      item is the safe direction.
+      P(synonym_or_equivalent) >= SYNTH_DICTATED) drops the item, and its anchor goes in `log["rec_dictated_spans"]`
+      for the live dictated gate. A failed or unreadable answer keeps it: a removable item is the safe direction.
     - synthesis: violet marks for synthesis inside a dictation-paired clause whose accuracy `unsupported` item
       (Jev W1n, `jev.supported`) the adjudicator suppressed. A suppression is NOT proof the content is undictated
       (the adjudicator also suppresses "present in other words"), so code only proposes: each anchor (and
@@ -393,7 +393,7 @@ async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[Jev
     props: List[Tuple[int, int, str, str, str]] = []           # (start, end, clause text, section, item key)
     recs = [it for it in prov if it.kind == KIND_REC and it.anchor is not None]
     log = {"suppressed_unsupported": 0, "proposed": 0, "synthesis": 0, "rec_asked": len(recs), "rec_dictated_jev": 0,
-           "synthesis_template_owned": 0, "error": None}
+           "rec_dictated_spans": [], "synthesis_template_owned": 0, "error": None}
     for it in lane_items:
         if (it.kind != "unsupported" or it.cls != "suppress" or "jev.supported" not in (it.detectors or [])
                 or it.anchor is None):
@@ -435,6 +435,8 @@ async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[Jev
         if p is not None and p >= SYNTH_DICTATED:
             drop.add(id(it))
     log["rec_dictated_jev"] = len(drop)
+    # the live dictated gate's recommendation items obey the same drop (dictated_gate.apply)
+    log["rec_dictated_spans"] = [[it.anchor.start, it.anchor.end] for it in recs if id(it) in drop]
     out = [it for it in prov if id(it) not in drop]
     for k, (a, b, _, section, key) in enumerate(props):
         p = p_dictated(ans.get(f"syn{k}"))

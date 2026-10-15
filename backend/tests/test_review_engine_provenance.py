@@ -556,3 +556,16 @@ async def test_dictated_excluded_between_added_runs_is_never_painted(monkeypatch
     items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)])
     marked = _texts(items, "ai_generated")
     assert marked and not any("excluded" in m for m in marked)
+
+
+async def test_confirm_logs_the_spans_of_the_recommendations_it_called_dictated(monkeypatch):
+    # the live dictated gate reads these spans: its own recommendation items obey the same drop
+    report = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team."
+    talk = "Discussed with the referring team."
+    dictation = "- Pancreatic mass\n- Result discussed by phone with Dr Jones, surgical registrar, read-back confirmed"
+    jp = JevPass(clauses=["Pancreatic mass.", talk], types={"Pancreatic mass.": "abnormal", talk: "not_a_finding"})
+    s = report.index(talk)
+    _, (_, log) = await _confirmed(monkeypatch, report, dictation, jp, {"rec*": STATED_Q3})
+    assert log["rec_dictated_spans"] == [[s, s + len(talk)]]
+    _, (_, log) = await _confirmed(monkeypatch, report, dictation, jp, {"rec*": NOT_STATED_Q3})
+    assert log["rec_dictated_spans"] == []
