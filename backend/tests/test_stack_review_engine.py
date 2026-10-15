@@ -54,3 +54,13 @@ def test_template_parts_reads_confirmed_normals_from_the_candidate(db_session, t
     cand = {"stack": True, "assumed_confirmed": ["LMS: Normal.", "RCA: Normal."]}
     parts = E.template_parts(db_session, row, cand)
     assert parts["assumed_normals"] == ["LMS: Normal.", "RCA: Normal."] and parts["generation_sheet_hash"] == "h"
+
+
+def test_a_missing_dictated_number_is_an_unanchored_action_item():
+    inp = _inp(review=[{"kind": "dictated_number_missing", "text": "140 mcg/kg/min", "severity": "high",
+                        "sentence": "Adenosine 140 mcg/kg/min for 4 minutes.", "values": [140.0],
+                        "message": "Dictated number not in the report: 140 mcg/kg/min"}])
+    [item] = live.check_flag_items(inp, "run1")
+    assert item.kind == "dictated_number_missing" and item.cls == "action" and item.status == "open"
+    assert item.edit is None and item.anchor is None
+    assert item.label == "Dictated number not in the report: 140 mcg/kg/min"

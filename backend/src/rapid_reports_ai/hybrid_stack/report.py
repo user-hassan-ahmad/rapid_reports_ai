@@ -18,7 +18,8 @@ from ..quick_report_generator import _describe, generate_quick_report
 from ..review_engine.engine import schedule_review
 from ..template_lean import generate_template_report_lean
 from ..template_number_check import undictated_numbers
-from .findings import findings_block
+from .. import dictated_number_check as dnc
+from .findings import _value_statements, findings_block
 from .gate_model import findings_hash
 from .removed_guard import guard, reconcile
 from .resolution import TokenError, verify as verify_token
@@ -95,6 +96,10 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     review += guard_items
     if req.kind == "quick":
         review += undictated_numbers(report, [*st.all_texts(), req.history, st.conclusion], "")
+    if dnc.enabled():   # both paths: a dictated number the report does not hold (spec 2026-10-15), flags only
+        gone = set(removed)
+        review += dnc.missing_dictated_numbers(
+            report, [*(p for p in st.said_parts if p not in gone), *(v + "." for v in _value_statements(req.gate))])
     if removals:
         quality.setdefault("pre_edit_report", generated)
         quality["applied_edits"] = [*(quality.get("applied_edits") or []), *removals]
