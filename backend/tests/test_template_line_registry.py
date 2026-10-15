@@ -8,7 +8,7 @@ from rapid_reports_ai import template_line_match as tlm
 from tests.template_sheet_fixtures import LEDGER_SHEET
 
 
-# ── tokeniser and gates ────────────────────────────────────────────────────────────────────────────────────────
+# ── text identity: exact after representation-only normalising (decision 7) ─────────────────────────────────────
 
 ADVERSARIAL = [
     ("No pleural effusion.", "No pericardial effusion."),
@@ -41,15 +41,23 @@ ADVERSARIAL = [
 
 @pytest.mark.parametrize("a,b", ADVERSARIAL)
 def test_adversarial_texts_are_never_the_same_line(a, b):
-    assert tlm.same_text(a, b) is None and tlm.same_text(b, a) is None
+    """Near misses: once guarded by the cosmetic layer's gates, now non-matching by construction. They stay as a
+    tripwire against fuzzy matching being re-added."""
+    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
 
 
-def test_cosmetic_rewordings_are_the_same_line():
-    assert tlm.same_text("There is no pleural effusion.", "No pleural effusion") == "cosmetic"
-    assert tlm.same_text("Oedema is seen.", "Edema") == "cosmetic"
-    assert tlm.same_text("No focal liver lesion.", "no focal liver lesion") == "exact"
-    assert tlm.same_text("No mass. There is fluid.", "No mass. Fluid.") == "cosmetic"   # the scope ends at "."
-    assert tlm.same_text("Possible mass; there is fluid.", "Possible mass; fluid.") == "cosmetic"   # and at ";"
+@pytest.mark.parametrize("a,b", [
+    ("There is no pleural effusion.", "No pleural effusion"),         # filler words
+    ("Oedema is seen.", "Edema"),                                      # spelling
+    ("Oedema.", "Edema."),
+    ("No focal liver lesion.", "no focal liver lesion."),              # case
+    ("No focal liver lesion.", "No focal liver lesion"),               # a final full stop
+    ("No mass. There is fluid.", "No mass. Fluid."),
+    ("Possible mass; there is fluid.", "Possible mass; fluid."),
+    ("Well-defined margin.", "Well defined margin."),                  # a hyphen is punctuation
+])
+def test_rewordings_case_punctuation_and_spelling_are_other_lines(a, b):
+    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
 
 
 @pytest.mark.parametrize("a,b", [
@@ -60,39 +68,27 @@ def test_cosmetic_rewordings_are_the_same_line():
     ("Measures 5 \u00d7 3 mm.", "Measures 5 x 3 mm."),
     ("No\u00a0effusion.", "No effusion."),
     ("No\u202feffusion.", "No effusion."),
+    ("  No   effusion. ", "No effusion."),
 ])
-def test_cosmetic_typography_always_matches(a, b):
-    assert tlm.same_text(a, b) in ("exact", "cosmetic")
+def test_typography_only_differences_are_the_same_line(a, b):
+    assert tlm.same_text(a, b) and tlm.rep_key(a) == tlm.rep_key(b)
 
 
-def test_meaningful_tokens_are_their_own_tokens():
-    assert tlm.tokens("1.5mm<2") == ("1.5", "mm", "<", "2")
-    assert tlm.tokens(".5 x3, (well-defined)?") == (".5", "x", "3", ",", "(", "well-defined", ")", "?")
-    assert tlm.gates("Mild left 1.5 mm effusion, no mass.") == ("mild", "left", "1.5", "mm", "no")
-    assert tlm.gates("Possibly 5 x 3 mm; cannot be excluded.") == ("possibly", "5", "x", "3", "mm", "cannot be excluded")
-    assert tlm.gates("Unremarkable, non-enhancing.") == ("unremarkable", "non-enhancing")
-    assert tlm.tokens("5' and \"x\" 6\"") == ("5", "\u2032", "and", '"', "x", '"', "6", "\u2033")
+@pytest.mark.parametrize("a,b", [
+    ("Measures 5 X 3 mm.", "Measures 5 x 3 mm."),     # only the multiplication sign merges into "x", never case
+    ("Length 5\u2032.", "Length 5'."),                # prime is not a lookalike
+    ("Grade \u2264 2.", "Grade < 2."),                # comparators never merge
+    ("Grade \u2265 2.", "Grade > 2."),
+    ("Change of -1 mm.", "Change of 1 mm."),
+    ("No\u200beffusion.", "No effusion."),            # a zero-width space is not a space
+])
+def test_lookalikes_never_collide_with_a_different_character(a, b):
+    assert not tlm.same_text(a, b)
 
 
-def test_spelling_table_lookalikes_and_filler_list_do_not_collide():
-    keys, values = set(tlm.SPELLING), set(tlm.SPELLING.values())
-    assert len(values) == len(tlm.SPELLING)          # no two UK words map to one US word
-    assert not keys & values                         # no word is both a source and a target
-    gate_words = tlm.NEGATION | tlm.HEDGE_WORDS | tlm.LATERALITY | tlm.SEVERITY | tlm.UNITS
-    assert not (keys | values) & gate_words          # spelling never touches a gate token
-    assert len(set(tlm.FILLERS)) == len(tlm.FILLERS)
-    assert set(tlm.LOOKALIKES.values()) <= {"-", '"', "'", "x", " "}    # lookalikes merge into these forms only
-
-
-def test_no_filler_contains_or_can_delete_a_negation_or_hedge_word():
-    protected = tlm.NEGATION | tlm.HEDGE_WORDS | {w for p in tlm.HEDGE_PHRASES for w in p}
-    assert not {w for f in tlm.FILLERS for w in f} & protected
-    for f in tlm.FILLERS:                            # a protected word inside a filler phrase stops the removal
-        words = list(f)
-        for k in range(1, len(words)):
-            for w in sorted(tlm.NEGATION | tlm.HEDGE_WORDS):
-                broken = " ".join(words[:k] + [w] + words[k:])
-                assert tlm.same_text(f"Effusion {broken}.", f"Effusion {' '.join(words)}.") is None
+def test_lookalike_map_merges_only_into_ascii_forms():
+    assert set(tlm.LOOKALIKES.values()) <= {"-", '"', "'", "x", " "}
+    assert all(ord(k) > 127 for k in tlm.LOOKALIKES) and not set(tlm.LOOKALIKES) & set(tlm.LOOKALIKES.values())
 
 # ── the registry module ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -200,12 +196,18 @@ def test_inserting_a_normal_mints_one_uid_and_changes_no_other():
     assert {u: e for u, e in reg2["units"].items() if u not in rep["new"]} == reg["units"]
 
 
-def test_a_cosmetic_rewording_keeps_the_uid_and_a_token_change_does_not():
+def test_a_rewording_is_a_new_unit_and_a_typography_change_keeps_the_uid():
     reg, _ = _bind(LEDGER_SHEET)
     uid = _live(reg, "No focal liver lesion.")
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    reg2, rep = _bind(cosmetic, reg)
-    assert rep["cosmetic"] == [uid] and reg2["units"][uid]["text"] == "There is no focal liver lesion"
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    reg2, rep = _bind(reworded, reg)
+    assert rep["gone"] == [uid] and len(rep["new"]) == 1 and reg2["units"][uid]["status"] == "gone"
+    for variant in ('"No focal liver lesion"', '"no focal liver lesion."'):        # a full stop, case: other lines
+        _, repv = _bind(LEDGER_SHEET.replace('"No focal liver lesion."', variant), reg)
+        assert repv["gone"] == [uid]
+    typo = LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal\u00a0liver  lesion."')
+    reg4, rep4 = _bind(typo, reg)
+    assert uid in rep4["exact"] and not rep4["gone"] and reg4["units"][uid]["text"] == "No focal\u00a0liver  lesion."
     changed = LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal hepatic lesion."')
     reg3, rep3 = _bind(changed, reg)
     assert rep3["gone"] == [uid] and len(rep3["new"]) == 1 and reg3["units"][uid]["status"] == "gone"
@@ -217,7 +219,7 @@ def test_adversarial_negatives_never_keep_a_uid(a, b):
     reg, _ = _bind(_sheet(para.format(a)))
     uid = _live(reg, a)
     _, rep = _bind(_sheet(para.format(b)), reg)
-    assert rep["gone"] == [uid] and uid not in rep["exact"] + rep["cosmetic"]
+    assert rep["gone"] == [uid] and uid not in rep["exact"]
 
 
 def test_the_same_normal_text_under_another_structure_is_another_unit():
@@ -274,20 +276,26 @@ def test_each_registry_has_its_own_salt_and_keeps_it():
     assert _bind(LEDGER_SHEET, a)[0]["salt"] == a["salt"]
 
 
-def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers_and_passing_gates():
+def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers():
     a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\nNORMAL [liver] "The liver is normal."')
     reg, _ = _bind(a)
     para, normal = _live(reg, "Liver"), _live(reg, "The liver is normal.")
     renamed = a.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
     _, rep = _bind(renamed, reg)
-    assert para in rep["cosmetic"] and normal in rep["exact"]
+    assert para in rep["exact"] and normal in rep["exact"]   # a COVERS rename reports as exact
     other_covers = renamed.replace('COVERS ["liver" | "gallbladder"]', 'COVERS ["liver"]')
     _, rep3 = _bind(other_covers, reg)
     assert para in rep3["gone"]
-    sided = a.replace("Paragraph: Liver", "Paragraph: Left liver")
+    no_covers = _sheet('## Paragraph: Protocol (TECHNIQUE)\nFIXED "Axial CT."')
+    reg5, _ = _bind(no_covers)
+    _, rep5 = _bind(no_covers.replace("Paragraph: Protocol", "Paragraph: Method"), reg5)
+    assert _live(reg5, "Protocol") in rep5["gone"]                         # no COVERS: a rename is a new paragraph
+    sided = _sheet('## Paragraph: Left kidney (FINDINGS)\nCOVERS ["left kidney"]\nNORMAL [left kidney] "Normal."')
     reg4, _ = _bind(sided)
-    _, rep4 = _bind(sided.replace("Paragraph: Left liver", "Paragraph: Right liver"), reg4)
-    assert _live(reg4, "Left liver") in rep4["gone"]
+    _, rep4 = _bind(sided.replace("Left kidney", "Right kidney").replace("left kidney", "right kidney"), reg4)
+    assert _live(reg4, "Left kidney") in rep4["gone"]                     # the side lives in COVERS
+    _, rep6 = _bind(a.replace("Paragraph: Liver", "Paragraph: liver"), reg)
+    assert para in rep6["exact"]                                          # case only: the COVERS rule keeps it
 
 
 def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_text():
@@ -297,12 +305,16 @@ def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_tex
     changed, same = _live(reg, "The liver enhances normally."), _live(reg, "The spleen is normal.")
     renamed = a.replace("Arterial phase", "Portal venous phase")
     _, rep = _bind(renamed.replace("The liver enhances normally.", "The liver enhances homogeneously."), reg)
-    assert _live(reg, "Arterial phase") in rep["cosmetic"]                 # the paragraph kept its uid (COVERS)
+    assert _live(reg, "Arterial phase") in rep["exact"]                    # the paragraph kept its uid (COVERS)
     assert changed in rep["gone"] and same in rep["exact"]                 # a reworded normal is a new unit
     _, rep2 = _bind(renamed.replace('"The liver enhances normally."', '"There is normal liver enhancement"'), reg)
     assert changed in rep2["gone"]
-    _, rep3 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    _, rep3 = _bind(renamed, reg)
     assert changed in rep3["exact"]                                        # exact text: kept
+    _, rep4 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    assert changed in rep4["gone"]                                         # a full stop is significant
+    _, rep5 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances\u00a0normally."'), reg)
+    assert changed in rep5["exact"]                                        # typography only: kept
 
 
 def test_one_old_uid_claimed_by_two_new_lines_is_ambiguous():
@@ -344,8 +356,8 @@ def test_gone_units_revive_on_exact_identity_only():
     away = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', "")
     reg2, _ = _bind(away, reg)
     assert reg2["units"][uid]["status"] == "gone"
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    _, rep = _bind(cosmetic, reg2)
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    _, rep = _bind(reworded, reg2)
     assert not rep["revived"] and len(rep["new"]) == 1
     reg4, rep4 = _bind(LEDGER_SHEET, reg2)
     assert rep4["revived"] == [uid] and reg4["units"][uid]["status"] == "live"
@@ -358,17 +370,17 @@ def test_uids_for_reads_exact_identity_against_live_units_only():
     got = tlr.uids_for(_st(LEDGER_SHEET), reg)
     assert set(got) == {"S:TECHNIQUE", "S:FINDINGS", "S:IMPRESSION", "p0", "p1", "p2", "m0", "n0", "f0", "f1"}
     assert got["n0"] == _live(reg, "No focal liver lesion.")
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert "n0" not in tlr.uids_for(_st(cosmetic), reg)    # reading never pairs cosmetically
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert "n0" not in tlr.uids_for(_st(reworded), reg)    # a rewording is another line
 
 
-def test_match_pairs_cosmetic_rewordings_and_renames_without_minting():
+def test_match_pairs_renames_but_never_rewordings_without_minting():
     reg, _ = _bind(LEDGER_SHEET)
     snapshot = repr(reg)
     exact = tlr.uids_for(_st(LEDGER_SHEET), reg)
     renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)") \
                           .replace('"No focal liver lesion."', '"There is no focal liver lesion"')
     got = tlr.match(_st(renamed), reg)
-    assert (got["p1"], got["m0"], got["n0"]) == (exact["p1"], exact["m0"], exact["n0"])
+    assert (got["p1"], got["m0"]) == (exact["p1"], exact["m0"]) and "n0" not in got
     assert "p1" not in tlr.uids_for(_st(renamed), reg) and repr(reg) == snapshot
     assert tlr.match(_st(LEDGER_SHEET), None) == {}

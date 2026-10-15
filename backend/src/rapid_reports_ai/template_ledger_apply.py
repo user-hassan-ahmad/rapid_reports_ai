@@ -612,8 +612,8 @@ def is_removal(entry: dict) -> bool:
 # ── stable line IDs (spec 2026-10-15-stable-line-ids-design) ─────────────────────────────────────────────────────
 
 def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str, str]) -> Dict[str, str]:
-    """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact or
-    cosmetic identity; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
+    """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact
+    identity, a paragraph rename included; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
     the same section and paragraph only (spec gap 13)."""
     out = tlr.match(st, registry)
     if carried:
@@ -690,7 +690,7 @@ def _by_uid(entry: dict, st: tss.SheetStructure, uid_map: Dict[str, str], res: L
 
 def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
     """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
-    is none or more than one (never guessed). The backfill uses it as-is (never cosmetic)."""
+    is none or more than one (never guessed). The backfill uses it as-is."""
     kind = entry.get("kind")
     try:
         if kind == "normal":

@@ -4,20 +4,20 @@ persist_sheet). Pure code, no model call. The sheet text is never changed.
 
 A uid names a slot, not a string. Identity per kind (all must match):
     section    normalised name
-    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set, the two
-               names passing the clinical gates
+    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set
     normal     section uid + paragraph uid + structure (its text is tracked by text_hash, not identity); across a
-               paragraph rename (the COVERS rule) its text must also be exact or cosmetic (decision 5)
+               paragraph rename (the COVERS rule) its text must also be exactly equal (decision 5)
     negative   section uid + paragraph uid + condition + condition_source + kind + origin + text
     fixed      section uid + paragraph uid + text
     rule       section uid + paragraph uid + effect + condition + condition_source + target + anchor + position +
                then_text + else_text + items + question
-Text fields match exactly (norm_key) or cosmetically (template_line_match); nothing else. TERM, COVERS and IF_PRESENT
-lines get no uid.
+Every text and name compares EXACTLY after representation-only normalising (template_line_match.rep_key: lookalike
+characters unified, whitespace collapsed); case, punctuation, spelling and filler words stay significant (decision 7).
+TERM, COVERS and IF_PRESENT lines get no uid.
 
 rebind(registry, structure, carried) pairs the new parse's units with the previous registry's, kind by kind,
-parents first: carried units (lines apply_ledger rewrote) keep their uid; then exact identity, then cosmetic identity
-against live units; then exact identity against gone units (revival). Pairs are 1:1: a unit with two candidates, or a
+parents first: carried units (lines apply_ledger rewrote) keep their uid; then exact identity against live units (a
+paragraph also by the COVERS rename rule, reported as exact); then exact identity against gone units (revival). Pairs are 1:1: a unit with two candidates, or a
 candidate claimed twice, pairs with nothing (`ambiguous`, new uids). Deterministic, uid minting included.
 
 uids_for(structure, registry) maps a parse's units to their uids by exact identity against live units (read time);
@@ -36,7 +36,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from . import template_line_match as tlm
-from .hybrid_stack.template import norm_key
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +44,12 @@ KINDS = ("section", "paragraph", "normal", "negative", "fixed", "rule")
 LINE_KINDS = ("normal", "negative", "fixed", "rule")
 PREFIX = {"section": "s_", "paragraph": "p_", "normal": "n_", "negative": "g_", "fixed": "f_", "rule": "r_"}
 
-# Identity fields after the parents, and how each is compared: "plain" (as is), "name" (case and spacing), "text"
-# (norm_key exactly, or cosmetically), "items" (a list of texts, each as "text", in order).
+# Identity fields after the parents, and how each is compared: "plain" (as is), "text" (tlm.rep_key, exactly), "items"
+# (a list of texts, each as "text", in order).
 _FIELDS: Dict[str, Tuple[Tuple[str, str], ...]] = {
-    "section": (("name", "name"),),
-    "paragraph": (("name", "name"),),
-    "normal": (("structure", "name"),),
+    "section": (("name", "text"),),
+    "paragraph": (("name", "text"),),
+    "normal": (("structure", "text"),),
     "negative": (("condition", "text"), ("condition_source", "plain"), ("kind", "plain"), ("origin", "plain"),
                  ("text", "text")),
     "fixed": (("text", "text"),),
@@ -151,35 +150,22 @@ def _exact(kind: str, ident: dict) -> tuple:
     for name, how in _FIELDS[kind]:
         v = ident.get(name)
         if how == "items":
-            key.append(tuple(norm_key(x) for x in v or []))
+            key.append(tuple(tlm.rep_key(x) for x in v or []))
         elif how == "text":
-            key.append(norm_key(v or ""))
-        elif how == "name":
-            key.append(" ".join((v or "").lower().split()))
+            key.append(tlm.rep_key(v or ""))
         else:
             key.append(v or "")
     return (kind, *key)
 
 
-def _cosmetic(kind: str, ident: dict) -> Optional[tuple]:
-    """The cosmetic identity; None when the kind has none (a section, a normal: identity holds no text)."""
-    if kind == "paragraph":
-        covers = frozenset(" ".join(c.lower().split()) for c in ident.get("covers") or [])
-        return (kind, ident.get("section", ""), covers, tlm.gates(ident.get("name", ""))) if covers else None
-    if not any(how in ("text", "items") for _, how in _FIELDS[kind]):
+def _rename(kind: str, ident: dict) -> Optional[tuple]:
+    """A paragraph's rename identity (decision 5): section uid + the same non-empty COVERS set, the name ignored.
+    None for every other kind, and for a paragraph without COVERS."""
+    if kind != "paragraph":
         return None
-    key = [ident.get(p, "") for p in _PARENTS[kind]]
-    for name, how in _FIELDS[kind]:
-        v = ident.get(name)
-        if how == "items":
-            key.append(tuple(tlm.cosmetic_key(x) for x in v or []))
-        elif how == "text":
-            key.append(tlm.cosmetic_key(v or ""))
-        elif how == "name":
-            key.append(" ".join((v or "").lower().split()))
-        else:
-            key.append(v or "")
-    return (kind, *key)
+    covers = frozenset(tlm.rep_key(c) for c in ident.get("covers") or [])
+    return (kind, ident.get("section", ""), covers) if covers else None
+
 
 def _mint(kind: str, ident: dict, taken: set, salt: str = "") -> str:
     """A new uid: kind prefix + 6 base32 characters of sha256(salt | kind | identity | n), deterministic given the
@@ -230,8 +216,8 @@ def _pair(new: List[Tuple[Unit, dict]], pool: Dict[str, dict], keyfn) -> Tuple[D
 def rebind(registry, st, carried: Optional[Dict[str, str]] = None, *,
            now: Optional[str] = None) -> Tuple[dict, dict]:
     """(new registry, report) for the parse `st` against the previous registry (module doc). `carried`: {uid: the raw
-    line apply_ledger rewrote that unit to}. report = {exact, cosmetic, carried, revived, new, gone, ambiguous}, each a
-    list of uids. Never mutates its inputs."""
+    line apply_ledger rewrote that unit to}. report = {exact, carried, revived, new, gone, ambiguous}, each a
+    list of uids (a paragraph kept by the COVERS rename rule counts as exact). Never mutates its inputs."""
     reg, report, _ = _bind(registry, st, carried, now)
     return reg, report
 
@@ -241,7 +227,7 @@ def _bind(registry, st, carried, now):
     reg.setdefault("salt", secrets.token_hex(4))   # minted once per registry; uids differ across templates
     prev = reg["units"]
     now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
-    report = {k: [] for k in ("exact", "cosmetic", "carried", "revived", "new", "gone", "ambiguous")}
+    report = {k: [] for k in ("exact", "carried", "revived", "new", "gone", "ambiguous")}
     assigned: Dict[str, str] = {}   # unit ref -> uid
     used: set = set()
     all_units = units(st)
@@ -250,12 +236,7 @@ def _bind(registry, st, carried, now):
     def exact_key(k: str, ident: dict, text: str) -> tuple:
         """Across a paragraph rename a normal also needs its own text (decision 5, option c)."""
         base = _exact(k, ident)
-        return (*base, norm_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
-
-    def cosmetic_key(k: str, ident: dict, text: str) -> Optional[tuple]:
-        if k == "normal" and ident.get("paragraph") in renamed:
-            return (*_exact(k, ident), tlm.cosmetic_key(text))
-        return _cosmetic(k, ident)
+        return (*base, tlm.rep_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
 
     for kind in KINDS:
         todo = [u for u in all_units if u.kind == kind]
@@ -278,14 +259,17 @@ def _bind(registry, st, carried, now):
                 if len(hits) == 1:
                     take(hits[0], uid, _identity(hits[0], assigned), "carried")
         excluded: set = set()
-        tiers = (("exact", live, exact_key), ("cosmetic", live, cosmetic_key), ("revived", gone, exact_key))
-        for how, pool, keyfn in tiers:
+        tiers = (("exact", live, exact_key), ("exact", live, lambda k, i, t: _rename(k, i)),
+                 ("revived", gone, exact_key))
+        for tier, (how, pool, keyfn) in enumerate(tiers):
             rest = [(u, _identity(u, assigned)) for u in todo if u.ref not in assigned and u.ref not in excluded]
             avail = {uid: e for uid, e in pool.items() if uid not in used}
             paired, ambiguous, burnt = _pair(rest, avail, keyfn)
             for u, ident in rest:
                 if u.ref in paired:
                     take(u, paired[u.ref], ident, how)
+                    if tier == 1:
+                        renamed.add(paired[u.ref])
             excluded.update(ambiguous)
             used.update(burnt)   # a uid two new units competed for pairs with nothing
         for u in todo:
@@ -302,13 +286,11 @@ def _bind(registry, st, carried, now):
             if uid not in assigned.values():
                 prev[uid] = {**prev[uid], "status": "gone"}
                 report["gone"].append(uid)
-        if kind == "paragraph":
-            renamed = {u for u in report["cosmetic"] if u.startswith(PREFIX["paragraph"])}
     return reg, report, assigned
 
 
 def summary(report: dict) -> str:
-    """The rebind report as one log fragment: "exact=9 cosmetic=1 …"."""
+    """The rebind report as one log fragment: "exact=9 carried=1 …"."""
     return " ".join(f"{k}={len(v)}" for k, v in report.items())
 
 def uids_for(st, registry) -> Dict[str, str]:
@@ -326,9 +308,9 @@ def uids_for(st, registry) -> Dict[str, str]:
 
 
 def match(st, registry) -> Dict[str, str]:
-    """{unit ref: uid} for the units rebind would pair with a live unit of `registry` (exact or cosmetic identity, a
-    paragraph rename included), without minting or storing anything: apply_ledger's uid-first resolution (spec gap 1).
+    """{unit ref: uid} for the units rebind would pair with a live unit of `registry` (exact identity, a paragraph
+    rename included), without minting or storing anything: apply_ledger's uid-first resolution (spec gap 1).
     Gone units are never matched here (a gone uid falls back to key matching)."""
     _, report, assigned = _bind(registry, st, None, "")
-    kept = set(report["exact"]) | set(report["cosmetic"])
+    kept = set(report["exact"])
     return {ref: uid for ref, uid in assigned.items() if uid in kept}

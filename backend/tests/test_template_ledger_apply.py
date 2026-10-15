@@ -584,17 +584,25 @@ def test_registry_none_is_todays_key_matching():
     assert b.carried == {} and b.satisfied == [] and b.rekeyed == [] and b.ledger == led
 
 
-def test_uid_first_finds_a_negative_the_writer_reworded_and_rekeys_it():
+def test_uid_first_finds_a_negative_across_a_paragraph_rename_and_rekeys_it():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.apply_ledger(renamed, led).unmatched == led                 # today: paragraph not found, a card
+    res = tla.apply_ledger(renamed, led, registry=reg)
+    assert not res.unmatched and 'NEGATIVE "No focal liver lesion."' in res.sheet
+    assert res.ledger[0]["key"] == 'Hepatobiliary :: "No focal liver lesion."' and res.ledger[0]["uid"] == uid
+    assert res.rekeyed == [{"kind": "normal", "uid": uid, "old": NEG, "new": res.ledger[0]["key"]}]
+
+
+def test_a_negative_the_writer_reworded_is_not_found_by_uid():
     reg = _reg(LEDGER_SHEET)
     uid = _uid(LEDGER_SHEET, reg, "n0")
     led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
     rebuilt = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert tla.apply_ledger(rebuilt, led).unmatched == led                 # today: lost, a card
-    res = tla.apply_ledger(rebuilt, led, registry=reg)
-    assert not res.unmatched and 'NEGATIVE "No focal liver lesion."' in res.sheet
-    assert res.ledger[0]["key"] == 'Liver :: "There is no focal liver lesion"' and res.ledger[0]["uid"] == uid
-    assert res.rekeyed == [{"kind": "normal", "uid": uid, "old": NEG, "new": res.ledger[0]["key"]}]
-    assert res.carried == {uid: 'NEGATIVE "No focal liver lesion."'}
+    res = tla.apply_ledger(rebuilt, led, registry=reg)                    # exact matching only: lost, a card
+    assert res.unmatched == led and not res.rekeyed and res.carried == {}
 
 
 def test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line():
@@ -738,6 +746,8 @@ def test_uid_share_counts_line_bound_entries_by_uid_and_by_text():
     uid = _uid(LEDGER_SHEET, reg, "n0")
     led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid),
            *_led(("value", "LVEF", {"need": "every"}))]
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert tla.uid_share(led, cosmetic, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.uid_share(led, renamed, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert tla.uid_share(led, reworded, reg) == {"line_bound": 1, "by_uid": 0, "by_text": 0}   # exact matching only
     assert tla.uid_share(led, "# free", reg) == {"line_bound": 0, "by_uid": 0, "by_text": 0}
