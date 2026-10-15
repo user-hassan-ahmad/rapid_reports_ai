@@ -14,7 +14,9 @@ one (a new template has no previous; a rebuild may legitimately reword units, a 
 Voice lines: a prose line under a paragraph (Opening:, Order:, Abnormal pattern: …) is wording, not content. On an
 automatic write, such a line that still fails the lint after the one repair is dropped (reported in `dropped`) rather
 than refusing the whole sheet; the sheet is then re-parsed and its units checked as usual. A user's edit (chat,
-restore) with such a line is refused, and so is any sheet left unusable for another reason."""
+restore) with such a line is refused, and so is any sheet left unusable for another reason.
+
+persist_sheet is the persisted save: vet_sheet with the stored line registry, then the rebind, the ledger's uids and sheet_rev (spec 2026-10-15-stable-line-ids-design)."""
 from __future__ import annotations
 
 import dataclasses
@@ -295,3 +297,65 @@ def ledger_notes(out: VetOutcome) -> List[str]:
     if out.ledger_warnings:
         notes.append(LEDGER_RESTATED)
     return notes
+
+
+# ── the persisted save (spec 2026-10-15-stable-line-ids-design, "Where rebind runs") ─────────────────────────────
+
+@dataclass
+class Persisted:
+    outcome: VetOutcome
+    config: Optional[dict]                        # the config to store; None when the save function refused
+    report: dict = field(default_factory=dict)    # the rebind report ({} for a non-grammar sheet)
+
+
+# Server-written config keys (stable line IDs spec): never taken from a client config. persist_sheet writes
+# line_registry, sheet_rev and uncertain; the confirm endpoint writes normal_confirms; main._carry_structure keeps the
+# stored copies on a PUT or a restore.
+SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
+
+
+def stored_rev(v) -> int:
+    """A stored sheet_rev as an int (absent or malformed: 0, a template saved before sheet_rev existed)."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Origin, *,
+                        ledger: Optional[List[dict]] = None, now: Optional[str] = None) -> Persisted:
+    """The one persisted save of a grammar sheet: load the stored registry -> vet_sheet(registry=...) -> rebind ->
+    stamp the ledger's uids -> sheet_rev. Every path that writes a template's sheet to the database calls this
+    (main._vet_config, scripts.template_upgrade_apply); stateless callers use vet_sheet and never mint a uid.
+    `stored_config`: the template's stored config ({} or None for a new template): its registry and sheet_rev are the
+    only ones trusted. `ledger`: the cleaned decisions (None: none). The returned config holds skill_sheet,
+    coverage_sections (a changed sheet), line_registry, sheet_rev and decisions (stamped, when a ledger was given).
+    sheet_rev is incremented from the stored value when the stored sheet changes; the pair (sheet_rev, sheet_hash)
+    is the reference, never sheet_rev alone."""
+    from . import template_ledger_apply as tla
+    from . import template_line_registry as tlr
+    stored = stored_config or {}
+    previous = stored.get("skill_sheet") or ""
+    registry = tlr.load(stored.get("line_registry"))
+    if origin == "rebuild" and ledger:
+        logger.info("[line-registry] rebuild resolution %s", tla.uid_share(ledger, config.get("skill_sheet") or "",
+                                                                          registry))
+    out = await vet_sheet(config.get("skill_sheet") or "", origin=origin, previous=previous, ledger=ledger,
+                          registry=registry)
+    if out.status == "refused":
+        return Persisted(out, None)
+    cfg = {k: v for k, v in config.items() if k not in SERVER_WRITTEN}   # a client copy is never trusted (L2)
+    cfg.update({k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored})
+    cfg["skill_sheet"] = out.sheet
+    if out.status != "unchanged":
+        cfg["coverage_sections"] = out.coverage_sections
+    if ledger is not None:
+        cfg["decisions"] = out.ledger
+    report: dict = {}
+    if tsg.is_grammar_sheet(out.sheet):
+        st = tsg.parse_sheet(out.sheet, mode="template").structure
+        registry, report = tlr.rebind(registry, st, out.carried, now=now)
+        cfg["line_registry"] = registry
+        if ledger is not None:
+            cfg["decisions"] = tla.stamp_uids(out.ledger, st, registry)
+        logger.info("[line-registry] origin=%s %s drift=%d", origin, tlr.summary(report), out.ledger_drift)
+    rev = stored_rev(stored.get("sheet_rev"))
+    cfg["sheet_rev"] = rev + 1 if out.sheet != previous else rev
+    return Persisted(out, cfg, report)
