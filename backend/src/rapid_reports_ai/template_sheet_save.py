@@ -21,7 +21,7 @@ import dataclasses
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, TypedDict
+from typing import Dict, List, Literal, Optional, Set, TypedDict
 
 from . import template_sheet_grammar as tsg
 from . import template_sheet_lab_prompts as P
@@ -74,6 +74,8 @@ class VetOutcome:
     ledger_warnings: List[dict] = field(default_factory=list)   # lint warnings, never blocking: prose quoting a
                                                                 # decided concept's line (tla.restated_quotes)
     habits_pending: List[dict] = field(default_factory=list)    # habit lines with no ledger entry: inactive, asked
+    carried: Dict[str, str] = field(default_factory=dict)        # with a registry: {uid: final raw line} of every
+                                                                 # line the ledger rewrote (rebind keeps those uids)
 
 
 def _shape(sheet: str) -> tuple:
@@ -217,17 +219,19 @@ async def _vet(sheet: str, origin: Origin, previous: str = "") -> VetOutcome:
     return VetOutcome("saved", sheet, message=notice, dropped=dropped, coverage_sections=coverage)
 
 
-async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Optional[List[dict]] = None) -> VetOutcome:
+async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Optional[List[dict]] = None,
+                    registry: Optional[dict] = None) -> VetOutcome:
     """Vet a sheet before it is stored (see _vet), then apply the decision ledger by code as the last step
     (template_ledger_apply.apply_ledger), on every origin. `ledger` is template_config["decisions"]; None leaves the
     save exactly as before the Rules step. Only a chat edit folds its own changes to decided items back into the
     ledger (reported in ledger_changes), except one that removes a whole decided item: that entry is kept and
     returned as a card (ledger_cards; product decision D3). Every other origin is overwritten by the ledger
-    (counted in ledger_drift)."""
+    (counted in ledger_drift). `registry` (the stored line registry; persist_sheet only): the ledger resolves uid
+    first and the outcome carries `carried`; None (every stateless caller) is exactly the key and text matching."""
     out = await _vet(sheet, origin, previous)
     if ledger is None:
         return _with_pending_habits(out)
-    return _with_ledger(out, origin, previous, list(ledger))
+    return _with_ledger(out, origin, previous, list(ledger), registry)
 
 
 def _with_pending_habits(out: VetOutcome) -> VetOutcome:
@@ -242,7 +246,8 @@ def _with_pending_habits(out: VetOutcome) -> VetOutcome:
     return dataclasses.replace(out, habits_pending=pending)
 
 
-def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]) -> VetOutcome:
+def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict],
+                 registry: Optional[dict] = None) -> VetOutcome:
     from . import template_ledger_apply as tla
     if out.status == "refused":
         return dataclasses.replace(out, ledger=ledger)
@@ -250,7 +255,7 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     cards: List[dict] = []
     if origin == "chat" and previous and out.status == "saved":
         ledger, changes, cards = tla.reconcile_chat(previous, out.sheet, ledger)
-    res = tla.apply_ledger(out.sheet, ledger, before=previous)
+    res = tla.apply_ledger(out.sheet, ledger, before=previous, registry=registry)
     drift = res.changed if origin in AUTOMATIC else 0
     if res.failed:
         logger.error("[sheet-save] %s: ledger entries not applied (a bug): %s", origin,
@@ -265,11 +270,11 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
         coverage = [s.name for s in sorted(st.sections, key=lambda s: s.order)]
     if previous and res.sheet == previous:   # the ledger put back what the edit changed: nothing was applied
         status = "unchanged"
-    return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
+    return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=res.ledger,
                                ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
                                ledger_unmatched=res.unmatched,
                                ledger_drift=drift, stale_quotes=res.stale_quotes, ledger_warnings=res.restated,
-                               habits_pending=res.pending)
+                               habits_pending=res.pending, carried=res.carried)
 
 
 LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."
