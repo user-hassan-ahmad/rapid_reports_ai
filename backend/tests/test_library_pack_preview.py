@@ -26,7 +26,8 @@ def _ids(assumptions) -> list[str]:
 
 @pytest.fixture
 def jev(monkeypatch):
-    st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "scores": {}, "calls": 0, "payloads": []}
+    st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "scores": {}, "calls": 0, "payloads": [],
+          "stated": {}, "stated_default": ("not_mentioned", 0.95)}
 
     def score(text):
         if any(d in text for d in st["deny"]):
@@ -38,7 +39,12 @@ def jev(monkeypatch):
         st["payloads"].append(payload)
         if st["fail"] or (st["fail_if"] and st["fail_if"] in payload["state"]):
             raise TimeoutError("jev slow")
-        return _Resp({"answers": {k: {"noul": score(q["instructions"])} for k, q in payload["questions"].items()}})
+        def answer(q):
+            if q["type"] == "choice":      # a yes/no's four-way question: by a label fragment, else the default
+                c, conf = next((v for k, v in st["stated"].items() if k in q["instructions"]), st["stated_default"])
+                return {"choice": c, "confidence": conf}
+            return {"noul": score(q["instructions"])}
+        return _Resp({"answers": {k: answer(q) for k, q in payload["questions"].items()}})
     monkeypatch.setattr(P, "jev_post", post)
     return st
 
@@ -732,7 +738,7 @@ async def test_lab_case_36_two_lesions_in_one_sentence_prefills_never_reads(monk
     out = await PP.preview_pack(_bts(), LAB_36 + " No previous imaging.", "64-year-old woman.", {}, finding=LAB_36)
     for k in ("upper_lobe", "nodule_type", "spiculation", "diameter_mm"):   # the granuloma's lobe and type: shown
         assert _states(out)[k] == "prefilled" and PP.WHY_SEVERAL in _why(out, k)   # highlighted, never read
-    assert PP.WHY_NOT_OPTION_WORD in _why(out, "nodule_type") and PP.WHY_KIND in _why(out, "upper_lobe")
+    assert PP.WHY_NOT_OPTION_WORD in _why(out, "nodule_type") and PP.WHY_NOT_IN_WORDS in _why(out, "upper_lobe")
 
 
 @pytest.mark.parametrize("item,inp", [({"input": "upper_lobe", "value": True, "quote": "right upper lobe"}, "upper_lobe"),
@@ -782,7 +788,7 @@ async def test_a_qualified_negation_no_longer_asks(monkeypatch, jev, finding):
 
 
 # prior_study is a whole-study fact (Hassan 2026-10-13): patient-scoped, so the model may propose Yes or No with a quote
-# from anywhere in the history or the dictation; as a boolean it is never read, so it is pre-filled or asked
+# from anywhere in the history or the dictation; read only when stated in words (four-way), else pre-filled or asked
 PRIOR_FINDING = "7 mm solid nodule in the right upper lobe."
 
 
@@ -792,7 +798,7 @@ async def test_no_previous_imaging_in_another_paragraph_drafts_prior_study(monke
     _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
     out = await PP.preview_pack(_bts(), dictation, "", {}, finding=PRIOR_FINDING)
     d = next(x for x in out.draft if x.input == "prior_study")
-    assert (d.state, d.value, d.quote) == ("prefilled", "No", "No previous imaging") and PP.WHY_KIND in d.why
+    assert (d.state, d.value, d.quote) == ("prefilled", "No", "No previous imaging") and PP.WHY_NOT_IN_WORDS in d.why
     assert "prior_study" not in out.missing
     prompts = []
     _model(monkeypatch, prompts=prompts)
@@ -826,7 +832,7 @@ async def test_the_model_may_propose_prior_study_no_from_the_finding(monkeypatch
     finding = "7 mm solid nodule in the right upper lobe, new since the previous CT."
     _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "new"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
-    assert _states(out)["prior_study"] == "prefilled" and PP.WHY_KIND in _why(out, "prior_study")
+    assert _states(out)["prior_study"] == "prefilled" and PP.WHY_NOT_IN_WORDS in _why(out, "prior_study")
 
 
 async def test_prior_study_yes_is_drafted_from_the_finding_or_elsewhere_in_the_dictation(monkeypatch, jev):
@@ -975,7 +981,7 @@ async def test_a_context_stripped_quote_fails_the_finding_claim(monkeypatch, jev
     """The reviewer's 'upper lobe' from 'separating it from the upper lobe': no modifier; the finding claim asks."""
     from tests.test_library_partial import _bts
     finding = "7 mm solid nodule in the right lower lobe, adjacent to the oblique fissure separating it from the upper lobe."
-    jev["scores"] = {"The FINDING states Upper lobe location": 0.04}
+    jev["stated"] = {"Upper lobe location": ("stated_no", 0.97)}       # the four-way: the finding says lower lobe
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "upper lobe"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
     assert _states(out)["upper_lobe"] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, "upper_lobe")
@@ -1095,7 +1101,8 @@ def test_the_retired_guards_are_gone():
 
 
 async def test_prior_study_is_proposed_like_any_input(monkeypatch, jev):
-    """prior_study is an ordinary lesion boolean: the model may propose Yes or No with a quote; never read."""
+    """prior_study is an ordinary lesion boolean: the model may propose Yes or No with a quote; read only when Jev's
+    four-way choice says it is stated in words (here not: pre-filled)."""
     from tests.test_library_partial import _bts
     e = _bts()
     assert e.input("prior_study").type == "boolean"
@@ -1103,7 +1110,7 @@ async def test_prior_study_is_proposed_like_any_input(monkeypatch, jev):
     _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
     s = await PP.settle_pack(e, finding, "", finding=finding)
     assert s.values["prior_study"].value.value is False and s.values["prior_study"].tier == "prefilled"
-    assert PP.WHY_KIND in s.values["prior_study"].why and jev["calls"] == 1
+    assert PP.WHY_NOT_IN_WORDS in s.values["prior_study"].why and jev["calls"] == 1
 
 
 # re-review I-a: a generic comparison line is not "this nodule on an earlier study"
@@ -1167,3 +1174,55 @@ async def test_an_ex_smoker_history_prefills_fleischner_risk_high(monkeypatch, j
     d = next(x for x in out.draft if x.input == "risk")
     assert (d.state, d.value, d.quote) == ("prefilled", "high", "ex-smoker")       # never read: not the option word
     assert "ex-smoker" in prompts[0]
+
+
+# reading lab 2026-10-15 (Hassan approved): a yes/no is read when Jev's four-way choice says the text states it in words,
+# in the drafted direction, at STATED_MIN; implied, not mentioned, the other direction or a lower confidence pre-fill it
+RLL = "7 mm solid nodule in the right upper lobe."
+
+
+@pytest.mark.parametrize("pick,conf,state,why", [
+    ("stated_yes", 0.95, "read", None),
+    ("stated_yes", 0.89, "prefilled", "WHY_UNCONFIRMED"),
+    ("stated_no", 0.99, "prefilled", "WHY_UNCONFIRMED"),
+    ("implied", 0.99, "prefilled", "WHY_NOT_IN_WORDS"),
+    ("not_mentioned", 0.99, "prefilled", "WHY_NOT_IN_WORDS")])
+async def test_a_yes_no_is_read_only_when_jev_says_it_is_stated_in_words(monkeypatch, jev, pick, conf, state, why):
+    from tests.test_library_partial import _bts
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    jev["stated"] = {"Upper lobe location": (pick, conf)}
+    _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "right upper lobe"})
+    out = await PP.preview_pack(_bts(), RLL, "", {}, finding=RLL)
+    d = next(x for x in out.draft if x.input == "upper_lobe")
+    assert d.state == state and PP.WHY_KIND not in d.why
+    assert (why is None and d.why == []) or getattr(PP, why) in d.why
+
+
+async def test_a_stated_no_is_read_and_the_four_way_rides_in_the_scope_batch(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    dictation = f"{PRIOR_FINDING}\n\nComparison: No previous imaging."
+    jev["stated"] = {"Prior CT": ("stated_no", 0.96)}
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
+    out = await PP.preview_pack(_bts(), dictation, "", {}, finding=PRIOR_FINDING)
+    d = next(x for x in out.draft if x.input == "prior_study")
+    assert (d.state, d.value) == ("read", "No")
+    q = next(q for p in jev["payloads"] for q in p["questions"].values() if "Prior CT" in q["instructions"])
+    assert q["type"] == "choice" and set(q["criteria"]) == {"stated_yes", "stated_no", "implied", "not_mentioned"}
+
+
+async def test_an_eligibility_yes_no_is_never_read_even_when_jev_says_stated(monkeypatch, jev):
+    from tests.test_library_suspected_cancer import _fleischner
+    jev["stated"] = {"": ("stated_yes", 1.0)}
+    e, s, p = await _fleischner(monkeypatch, "Known breast cancer.", "Known breast cancer")
+    d = s.values["exclusion"]
+    assert d.tier == "prefilled" and PP.WHY_SCOPE_KIND in d.why and "exclusion" in p.scope_doubt
+
+
+async def test_a_malformed_four_way_answer_is_an_outage_never_a_read(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    jev["stated"] = {"Upper lobe location": (None, 0.99)}
+    _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "right upper lobe"})
+    out = await PP.preview_pack(_bts(), RLL, "", {}, finding=RLL)
+    d = next(x for x in out.draft if x.input == "upper_lobe")
+    assert d.state == "prefilled" and PP.WHY_NO_CHECK in d.why

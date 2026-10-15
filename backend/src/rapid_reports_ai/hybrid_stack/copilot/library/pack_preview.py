@@ -50,10 +50,16 @@ ONE_LESION_MIN = 0.8      # Jev ONE_LESION: below it, every lesion input on the 
 ONE_LESION = "The FINDING describes only one lesion of any kind (nodule, granuloma, mass, cyst, scar or other)"
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
-CHOICE_MIN = 0.8          # the scope's batched Jev claim for an enum or a boolean: below it, WHY_UNCONFIRMED
+CHOICE_MIN = 0.8          # the scope's batched Jev claim for an enum: below it, WHY_UNCONFIRMED
+# a clinical yes/no is read only when Jev's four-way choice says the text states it in words, in the drafted direction,
+# at this bar (reading lab 2026-10-15, n=73 x2: 32/78 stated values read, no silence or inference read; Hassan approved)
+STATED_MIN = 0.9
+STATED = {"stated_yes": True, "stated_no": False}
 NOT_STATED = "Not stated"   # always offered (spec §7.6): clears a value to unknown
 # why a drafted value is pre-filled rather than read (spec §7.5); shown with the value
-WHY_KIND = "yes/no and absent values are never read"
+WHY_KIND = "absent values are never read"
+WHY_SCOPE_KIND = "a yes/no about the guideline's scope is always confirmed"   # eligibility: reading it could exclude
+WHY_NOT_IN_WORDS = "not said in words: implied or not mentioned"              # the four-way choice (STATED_MIN)
 WHY_NOT_OPTION_WORD = "the quote does not use the option's own words"
 WHY_MODIFIED = "a negation or hedge before the quote"
 WHY_OTHER_NUMBER = "another number in this finding"
@@ -466,7 +472,9 @@ def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[
     """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
     present = v.state == "present"
     out = [WHY_SUSPECTED] if _hedged_cancer(i, v, quote, texts) else []
-    out += [] if present and i.type != "boolean" else [WHY_KIND]
+    out += [] if present else [WHY_KIND]
+    if present and i.type == "boolean" and i.role == "eligibility":
+        out.append(WHY_SCOPE_KIND)
     if present and i.type == "enum" and not _has_option_words(str(v.value), quote):
         out.append(WHY_NOT_OPTION_WORD)
     if i.type != "number" and _modified(quote, texts):
@@ -479,13 +487,36 @@ def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[
     return out
 
 
-async def _jev(claims: list[str], state: str) -> list[float]:
-    qs = {f"v{n}": {"type": "noul", "instructions": c} for n, c in enumerate(claims)}
+async def _jev(qs: dict[str, dict], state: str) -> tuple[dict[str, float], dict[str, tuple[str, float]]]:
+    """One batched call: (noul score per noul question, (choice, confidence) per choice question). Malformed raises:
+    an outage, never a low score."""
     r = await P.jev_post({"model": P.JEV_MODEL, "state": state, "questions": qs},
                          os.environ.get("OPENROUTER_API_KEY", ""), P.JEV_TIMEOUT_S)
     r.raise_for_status()
-    s = J.scores(r.json(), qs)        # malformed raises: an outage, never a low score
-    return [s[f"v{n}"] for n in range(len(claims))]
+    body = r.json()
+    nouls = J.scores(body, [k for k, q in qs.items() if q["type"] == "noul"])
+    return nouls, {k: J.choice(body, k) for k, q in qs.items() if q["type"] == "choice"}
+
+
+_WHERE = {"lesion": "the FINDING", "patient": "the CLINICAL HISTORY or DICTATION"}
+
+
+def _stated_question(scope: str, label: str) -> dict:
+    """Reading lab 2026-10-15, the four-way wording: only stated_yes / stated_no in the drafted direction is read."""
+    w = _WHERE[scope]
+    return {"type": "choice", "instructions": f"How does {w} deal with this item: {label}?", "criteria": {
+        "stated_yes": f"{w} says in words that it is present or true.",
+        "stated_no": f"{w} says in words that it is absent or not true (for example 'no ...', 'without ...', "
+                     "'never ...').",
+        "implied": f"{w} does not say it in words; it could only be inferred from other details or from what is "
+                   "left unsaid.",
+        "not_mentioned": f"{w} says nothing that bears on it."}}
+
+
+def _four_way(e: Entry, k: str, v: InputValue) -> bool:
+    """A clinical yes/no with a value: put to the four-way choice instead of the claim."""
+    i = e.input(k)
+    return i.type == "boolean" and i.role != "eligibility" and v.state == "present"
 
 
 UNENHANCED_MIN = 0.8      # Jev _phase_claim below it: the attenuation is asked (review M2)
@@ -501,8 +532,10 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
                    history: str) -> tuple[dict[str, list[str]], bool]:
     """(input -> the reasons it is not read, empty when confirmed; whether a Jev call failed). Both scopes together:
     - per scope, one batched call: "The FINDING states <label>: <value>" with the finding unit alone as state
-      (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or a
-      boolean CHOICE_MIN; below it, WHY_UNCONFIRMED. An attenuation adds the phase claim (WHY_PHASE). The lesion batch
+      (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or an
+      eligibility yes/no CHOICE_MIN; below it, WHY_UNCONFIRMED. A clinical yes/no is asked the four-way choice
+      instead (_stated_question): stated in the drafted direction at STATED_MIN, else WHY_UNCONFIRMED (the other
+      direction, or lower confidence) or WHY_NOT_IN_WORDS (implied, not mentioned). An attenuation adds the phase claim (WHY_PHASE). The lesion batch
       also carries ONE_LESION whenever any lesion input is pending: below ONE_LESION_MIN every lesion input gets
       WHY_SEVERAL.
     A failed call gives each of its inputs WHY_NO_CHECK (the lesion batch: every lesion input). Nothing is dropped:
@@ -521,30 +554,41 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
         if not ids:
             return False
         one_lesion = scope == "lesion"
-        claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
-                  for k in ids]
+        qs: dict[str, dict] = {}
+        for n, k in enumerate(ids):
+            v = pending[k][0]
+            qs[f"v{n}"] = (_stated_question(scope, e.input(k).label) if _four_way(e, k, v) else
+                           {"type": "noul", "instructions":
+                            f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), v).replace('_', ' ')}"})
         # an attenuation not stated as unenhanced may be an enhanced value, not the one the input means
         hu = [k for k in ids if scope == "lesion" and e.input(k).type == "number"
               and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
-        claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
+        for n, k in enumerate(hu):
+            qs[f"p{n}"] = {"type": "noul", "instructions": _phase_claim(_show(e, e.input(k), pending[k][0]))}
         if one_lesion:                 # one lesion or several is a question of meaning: Jev, in the same batch
-            claims.append(ONE_LESION)
+            qs["one"] = {"type": "noul", "instructions": ONE_LESION}
         try:
-            got = await _jev(claims, states[scope])
+            nouls, picks = await _jev(qs, states[scope])
         except Exception as ex:
             logger.info("[library.preview] %s value check failed (%s)", scope, type(ex).__name__)
             for k in ids:
                 add(k, WHY_NO_CHECK)
             return True
-        for k, sc in zip(ids, got):
-            if sc < (P.SETTLED_MIN if e.input(k).type == "number" else CHOICE_MIN):
+        for n, k in enumerate(ids):
+            if f"v{n}" in picks:
+                pick, conf = picks[f"v{n}"]
+                if pick not in STATED:
+                    add(k, WHY_NOT_IN_WORDS)
+                elif STATED[pick] is not pending[k][0].value or conf < STATED_MIN:
+                    add(k, WHY_UNCONFIRMED)
+            elif nouls[f"v{n}"] < (P.SETTLED_MIN if e.input(k).type == "number" else CHOICE_MIN):
                 add(k, WHY_UNCONFIRMED)
-        for k, sc in zip(hu, got[len(ids):len(ids) + len(hu)]):
-            if sc < UNENHANCED_MIN:
+        for n, k in enumerate(hu):
+            if nouls[f"p{n}"] < UNENHANCED_MIN:
                 add(k, WHY_PHASE)
-        if one_lesion and got[-1] < ONE_LESION_MIN:
+        if one_lesion and nouls["one"] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding may not be one lesion (%.2f); lesion values pre-filled",
-                        e.key, got[-1])
+                        e.key, nouls["one"])
             for k in ids:
                 add(k, WHY_SEVERAL)
         return False
