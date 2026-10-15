@@ -105,36 +105,50 @@ Several endpoints are stateless: they return a sheet to the client and never wri
 
 | Path | Persists? | Change |
 | --- | --- | --- |
-| `POST /api/templates` (`main.py:1814`) | Yes | rebind in `_vet_config`; resolve the writer's uncertain lines |
-| `POST /skill-sheet/save` (`main.py:3111`) | Yes | rebind in `_vet_config`; resolve the writer's uncertain lines |
-| `PUT /api/templates/{id}` (`main.py:1846`) | Yes | rebind in `_vet_config` against the **stored** registry |
-| Restore (`main.py:2396`) | Yes | rebind the restored sheet against the **current** registry (not the snapshot's), exact revival allowed |
-| `scripts/template_upgrade_apply.py:164` | Yes | rebind in `_vet_config` |
+| `POST /api/templates` (`main.py:1814`) | Yes | `persist_sheet`; resolve the writer's uncertain lines |
+| `POST /skill-sheet/save` (`main.py:3111`) | Yes | `persist_sheet`; resolve the writer's uncertain lines |
+| `PUT /api/templates/{id}` (`main.py:1846`) | Yes | `persist_sheet` against the **stored** registry |
+| Restore (`main.py:2396`) | Yes | `persist_sheet` with the restored sheet against the **current** registry (not the snapshot's), exact revival allowed |
+| `scripts/template_upgrade_apply.py` (calls `tsave.vet_sheet` at :99, writes at :164; never `_vet_config`) | Yes | switch to `persist_sheet` |
+| `scripts/audit_and_fix_organization_defaults.py:129` | Edits `config["sections"]` only | none |
 | `scripts/copy_template_to_user.py:60` | Yes | copies registry and ledger verbatim; uids stay valid within the copy (stated, no change) |
 | Refine router / fallback (`main.py:2877`), `/refine/card` (`:3065`), `/refine/undo` (`:3031`), `/apply-decisions` (`:2912`), `template_writer.py:28` | No | no rebind, no minting |
 | `store_structure` (`template_sheet_structure.py:1049`), `template_decision_run.py:470` | Writes `sheet_structure` / `rules_step` only | none |
-| `scripts/audit_and_fix_organization_defaults.py:129` | Config write | check during planning whether it touches the sheet; if so, rebind |
 
-`_vet_config` loads the stored registry, calls `vet_sheet`, then rebinds. `vet_sheet` gains no registry parameter; `apply_ledger` gains a returned `carried` map (`{uid: new raw line}`), computed by resolving each entry's uid before the edit.
+**One helper owns the persisted save.** `persist_sheet(config, stored_config, origin)` = load the stored registry → `vet_sheet(…, registry=registry)` → rebind → stamp uids → bump `sheet_rev` if the sheet changed. `_vet_config` and the upgrade script both call it, so no persisting path can skip a step.
 
-`_carry_structure` (`main.py:1728`) treats `line_registry`, `uncertain` and `normal_confirms` as server-written, like `sheet_structure`: a client copy on PUT is ignored and the stored one kept.
+**Registry threading.** `vet_sheet` and `apply_ledger` gain `registry=None`:
+
+- Stateless callers pass `None`: key and text matching only, no `carried` map, no uids touched.
+- With a registry, `apply_ledger` resolves uid-first (via `uids_for` on the current parse) and returns `carried = {uid: new raw line}` for **every** line it rewrites, including secondary rewrites (`_normal` retargeting context rules that pointed at the old wording, `template_ledger_apply.py:~350`). A line edited by more than one step has its edits composed, so `carried` holds its final text.
+- Uids are stamped **after** the rebind: each entry's matched unit in the final parse gets its uid from `uids_for(final parse, new registry)`. On a first save this is where every entry first gets a uid.
+
+`_carry_structure` (`main.py:1728`) treats `line_registry`, `uncertain`, `normal_confirms` and `sheet_rev` as server-written, like `sheet_structure`: a client copy on PUT is ignored and the stored one kept.
 
 ## Ledger changes
 
 - `clean_ledger` (`template_decisions.py:472`) keeps `uid` (it currently rebuilds entries from a fixed key list).
 - Resolution in `apply_ledger`, per entry:
   1. `uid` known and live → the unit's current line; run the existing edit path on it.
-  2. `uid` unknown, gone, or absent → today's key and text matching; on success, stamp the matched unit's uid.
+  2. `uid` unknown, gone, or absent → today's key and text matching; on success the matched unit's uid is stamped after the rebind (above).
   3. Otherwise unmatched, as today (card through `unmatched_cards`).
 - **Removal decisions** (fixed `keep: remove`, normal `text: ""`) whose line is absent count as **satisfied**, not unmatched; they never become cards.
 - A normal entry binds to the slot (paragraph uid + structure), so it survives a writer rewording and keeps rewriting the line to the radiologist's text.
-- `reconcile_chat` (`template_ledger_apply.py:688`) re-stamps the uid of any entry it re-keys.
+- `reconcile_chat` (`template_ledger_apply.py:688`) runs inside `vet_sheet` before any new uid exists, so it **clears** `uid` on any entry it re-keys; the post-rebind stamping then gives it the right one.
 - When resolution keeps a uid on a line whose key label differs, the entry's `key` is updated to the new label and the change logged.
 - `ledger_drift` stays a logged metric; the rebind `report` is logged beside it.
 
 ## The normals confirm record
 
 Decision 5: normals are confirmed in small groups beside their sentences, each confirm recorded. Stored at `template_config["normal_confirms"]`, server-written only, through a dedicated endpoint (`POST /api/templates/{id}/normal-confirms`, used by slice 3). It is not a ledger kind: it changes no sheet text, and keeping it out of the client-held ledger means a client can't forge one.
+
+The endpoint:
+
+- Takes only `{group, sheet_rev, sheet_hash}` from the client: the group and the sheet the radiologist was looking at.
+- Rejects the confirm (409) if `sheet_rev` / `sheet_hash` differ from the stored ones, so a concurrent edit is never attested unseen.
+- Works out the group's units and their `text_hash` from the stored sheet and registry itself; never from the client.
+- Sets `user_id` from the session.
+- Confirms happen only after the template exists (Refine runs after Create). There is no creation-time confirm to carry.
 
 ```json
 {
@@ -150,9 +164,9 @@ Decision 5: normals are confirmed in small groups beside their sentences, each c
 
 **Groups** (one definition, no threshold flip):
 
-- In the findings section: one group per paragraph from `paragraph_regions` (`hybrid_stack/template.py:42`), the groups the scratchpad shows.
+- In the findings section: one group per paragraph from `paragraph_regions` (`hybrid_stack/template.py:42`), the groups the scratchpad shows. Findings-section units with no paragraph form one section-level group.
 - Every other section: one group per section.
-- A group with more than 8 attestable units is split into consecutive chunks of at most 8, in document order (`group` = `<uid>#1`, `#2`, …).
+- A group with more than 8 attestable units is split into consecutive chunks of at most 8, in document order (`group` = `<uid>#1`, `#2`, …). Inserting or removing a normal shifts later chunks, so every chunk from that point goes stale and is confirmed again. That is the safe outcome and is accepted.
 
 **Attestable units** of a group: its live NORMAL lines and its unconditional default NEGATIVE lines. One predicate is used both when confirming and when checking.
 
@@ -168,7 +182,8 @@ Confirms are never written by code and never carried across a text change.
 
 `version_number` is not stable (`renumber_template_versions` renumbers after a delete; `cleanup_old_versions` keeps 10; it is not in config). Instead:
 
-- `template_config["sheet_rev"]`: a monotonic integer, incremented by `_vet_config` on every persisted change to `skill_sheet`. Never renumbered, survives version cleanup.
+- `template_config["sheet_rev"]`: an integer, server-written, incremented by `persist_sheet` from the **stored** value on every persisted change to `skill_sheet`. Never renumbered, survives version cleanup.
+- Two concurrent saves can store the same number, so the reference is always the pair `sheet_rev` + `sheet_hash`, never `sheet_rev` alone.
 - `generation_stamp` (`template_sheet_structure.py:268-279`) already carries `sheet_hash`; it gains `sheet_rev`. Confirms carry both.
 
 ## Writer: name the line for each uncertainty
@@ -177,7 +192,7 @@ Today the writer drops its questions (`template_sheet_lab_prompts.py:457-476`, `
 
 - Re-enable `questions` in the writer's JSON, each item `{line, why}`: `line` is the sheet line copied verbatim, `why` one sentence. Remove the "## Open Questions" prose instruction.
 - The writer is stateless, so the items travel to the client with the sheet and come back on Create. At Create, code resolves each `line` by `norm_key` to exactly one parsed unit, then to its uid via the fresh registry. No match or several matches → dropped and logged.
-- Stored at `template_config["uncertain"] = [{"uid", "why", "source": "writer", "at"}]` (server-written). Nothing consumes it in this slice; slice 4 reads it.
+- Stored at `template_config["uncertain"] = [{"uid", "text_hash", "why", "source": "writer", "at"}]` (server-written). `text_hash` lets slice 4 discard an item whose slot kept its uid but whose text has since changed. Nothing consumes it in this slice; slice 4 reads it.
 - Check before merge: run the writer on the existing synthetic template sets before and after (reuse outputs, at most 2 runs) and report sheet quality, question count and resolve rate to Hassan.
 
 ## Existing templates and the backfill
@@ -188,7 +203,7 @@ Today the writer drops its questions (`template_sheet_lab_prompts.py:457-476`, `
   - Mints a registry, stamps uids onto ledger entries that resolve by today's exact key and text matching (never cosmetic), sets `sheet_rev = 1`.
   - Leaves every unresolved entry exactly as it is. Value and concept entries are reported as `not line-bound`, not as unresolved.
   - Dry run: read-only session, rolled back, with a test that it commits nothing. Writes a per-template report to the scratchpad (never the repo; it reflects production templates): resolved count, and one row per unresolved entry with kind, key and reason (`no line`, `paragraph not found`, `paragraph ambiguous`, `lint failure`).
-  - Apply: takes the row lock the upgrade script uses (`_locked_check`), writes config directly, creates no new `TemplateVersion`. On Hassan's go-ahead only.
+  - Apply: takes the row lock the upgrade script uses (`_locked_check`, `template_upgrade_apply.py:125`), re-checks under the lock that the sheet hash is unchanged since the dry run and skips the template if it moved, writes config directly, creates no new `TemplateVersion`. On Hassan's go-ahead only.
 
 ## Metrics (logged, no gates)
 
@@ -204,7 +219,7 @@ Per persisted save: the rebind report and origin. Per rebuild: share of earlier 
 - **Adversarial pairs never match** (pass condition: zero wrong matches): pleural / pericardial effusion; left / right; mild / moderate; "no evidence of" / "evidence of"; with / without; "score > 0" / "score < 0" / "score ≥ 100"; `1.5` / `15`; mGycm / mGy; "left kidney, right adrenal" / "right kidney, left adrenal"; the same normal text under a different structure; a conditional and an unconditional negative with the same text; two SUPPRESS rules with the same condition and different targets; identical FIXED lines in two paragraphs.
 - Paragraph rename keeps uids only with an identical non-empty COVERS set and passing name gates.
 - One old uid matched by two new lines, and two old by one new: both `ambiguous`, new uids.
-- Carried units keep their uid after `apply_ledger` rewrites them.
+- Carried units keep their uid after `apply_ledger` rewrites them, including context rules retargeted by `_normal` and a line edited by two steps.
 - Gone units revive on exact identity only.
 - Spelling table and filler list: collision test.
 
@@ -212,8 +227,10 @@ Existing suites:
 
 - `test_template_ledger_apply.py`: uid-first then key fallback with re-stamp; a normal entry survives a writer rewording; removal decisions across a rebuild count as satisfied; `carried` map returned.
 - `test_template_decisions.py`: `clean_ledger` keeps `uid`.
-- `reconcile_chat` re-stamps the uid of a re-keyed entry.
-- `test_template_sheet_save.py` / route tests: rebind runs on the five persisting paths and never on the stateless ones; `_carry_structure` ignores a client `line_registry`, `uncertain` and `normal_confirms`; `sheet_rev` increments only on a sheet change.
+- `reconcile_chat` clears the uid of a re-keyed entry and the post-rebind stamp restores the right one.
+- `vet_sheet` / `apply_ledger` with `registry=None` behave exactly as today (existing suites unchanged).
+- `test_template_sheet_save.py` / route tests: `persist_sheet` runs on the five persisting paths (including the upgrade script) and never on the stateless ones; `_carry_structure` ignores a client `line_registry`, `uncertain`, `normal_confirms` and `sheet_rev`; `sheet_rev` increments from the stored value only on a sheet change.
+- Confirm endpoint: 409 on a stale `sheet_rev` / `sheet_hash`; units computed server-side; a client-sent unit list is ignored.
 - Restore of a version with no registry rebinds against the current registry.
 - Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session.
 - Backfill: dry run commits nothing; unresolved entries listed with reasons and untouched; no new version on apply.
@@ -222,6 +239,6 @@ Existing suites:
 ## Decisions taken (2026-10-15)
 
 1. No similarity threshold: exact or cosmetic equivalence only, tokenised before normalising, with hard clinical-token gates; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric.
-2. Answers carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when cosmetically equal; a changed normal makes its group's confirm stale.
-3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8.
-4. Independent review before the implementation plan (round 1 done; round 2 pending).
+2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when cosmetically equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
+3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8, through a server-computed endpoint that rejects a stale sheet.
+4. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), all addressed in this revision.
