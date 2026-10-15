@@ -251,7 +251,7 @@ def _clause_log(g: GateClause) -> dict:
 
 
 _NUM = re.compile(r"\d+(?:\.\d+)?")
-_NEG = re.compile(r"\b(?:no|not|nil|none|without|never|unnecessary|declin\w*|n't)\b", re.I)
+_NEG = re.compile(r"\b(?:no|not|nil|none|without|never|unnecessary|declin\w*|cannot|avoid\w*)\b|\w+n't\b", re.I)
 
 
 def _rec_said(al: Alignment, c: ReportClause) -> bool:

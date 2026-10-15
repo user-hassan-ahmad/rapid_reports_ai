@@ -558,3 +558,10 @@ def test_backstop_still_flags_a_recommendation_the_radiologist_did_not_dictate()
 def test_backstop_flags_a_recommendation_that_only_shares_a_word_with_a_dictated_one(report, dictation, flagged):
     recs, log = _live_rec(report, dictation, 0.1)
     assert recs == [flagged] and log["rec_dictated"] == 0
+
+
+@pytest.mark.parametrize("text", ["Follow-up CT isn't needed.", "CT needn't be repeated.", "We don't need follow-up.",
+                                  "Further imaging cannot be justified.", "Avoid further CT.", "No further imaging.",
+                                  "Follow-up not required.", "Nil further.", "Surveillance is unnecessary."])
+def test_the_word_rule_sees_negation_and_contractions(text):
+    assert dg._NEG.search(text)
