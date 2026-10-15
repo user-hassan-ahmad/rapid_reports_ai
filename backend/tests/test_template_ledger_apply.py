@@ -671,3 +671,28 @@ def test_a_carried_line_deleted_later_never_moves_its_uid_to_an_identical_line_e
     assert tla._uid_map(st, reg, res.carried)["n0"] == lower        # the Lower line keeps its own uid
     _, rep = tlr.rebind(reg, st, res.carried, now="T")
     assert liver in rep["gone"] and lower in rep["exact"] and not rep["carried"]
+
+
+def test_a_removal_is_satisfied_only_when_its_line_is_shown_absent():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    removal = _led(("normal", NEG, {"text": ""}))[0]
+    reworded = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    # no uid: nothing shows the line is gone (a reworded negative) -> a card, as today
+    assert [e["key"] for e in tla.apply_ledger(reworded, [removal], registry=reg).unmatched] == [NEG]
+    # its uid names no unit of this sheet: the line is gone -> satisfied, never a card
+    res = tla.apply_ledger(reworded, [_with_uid(removal, uid)], registry=reg)
+    assert res.sheet == reworded and res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG]
+    # paragraph renamed with the negative still there, no uid: a card (never silently satisfied)
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Abdomen (FINDINGS)")
+    assert [e["key"] for e in tla.apply_ledger(renamed, [removal], registry=_reg(renamed)).unmatched] == [NEG]
+    # the same rename with the uid: the line is found through it and removed
+    out = tla.apply_ledger(renamed, [_with_uid(removal, uid)], registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' not in out.sheet and out.unmatched == []
+
+
+def test_is_removal():
+    assert tla.is_removal({"kind": "fixed", "choice": {"keep": "remove"}})
+    assert tla.is_removal({"kind": "normal", "choice": {"text": ""}})
+    assert not tla.is_removal({"kind": "normal", "choice": {"text": "x"}})
+    assert not tla.is_removal({"kind": "habit", "choice": {"mode": "removed"}})

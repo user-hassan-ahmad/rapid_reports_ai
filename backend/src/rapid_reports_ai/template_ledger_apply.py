@@ -581,6 +581,14 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Opt
         res.sheet = new
         if registry is not None:
             _carry(rewrites, st, uid_map, res.carried)
+            # a removal is satisfied only when its line is shown absent: its uid is in the registry and no unit of this
+            # parse holds it; without that evidence (no uid, paragraph not found or ambiguous, a reworded negative) it
+            # stays a card, as today (plan review H1)
+            known = set(tlr.load(registry)["units"]) if mapped else set()
+            done = [x for x in unmatched if is_removal(x) and x.get("uid") in known and x["uid"] not in uid_map.values()]
+            unmatched = [x for x in unmatched if x not in done]
+            res.satisfied += done
+            applied = applied + [{"kind": x["kind"], "key": x["key"], "action": "kept"} for x in done]
         res.applied += applied
         res.unmatched += unmatched
         stale += olds
@@ -592,6 +600,13 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Opt
     if res.pending:
         logger.info("[ledger] habits_pending=%d (inactive until a card confirms them)", len(res.pending))
     return res
+
+
+def is_removal(entry: dict) -> bool:
+    """A decision that removes its line: a fixed line kept "remove", a normal or negative with no wording."""
+    choice = (entry or {}).get("choice") or {}
+    return ((entry.get("kind") == "fixed" and choice.get("keep") == "remove")
+            or (entry.get("kind") == "normal" and choice.get("text") == ""))
 
 
 # ── stable line IDs (spec 2026-10-15-stable-line-ids-design) ─────────────────────────────────────────────────────
