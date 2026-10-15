@@ -24,9 +24,9 @@ Each of these is either a place where the spec's wording cannot be met literally
 6. **Line identity includes the section uid as well as the paragraph uid** (the spec lists the paragraph uid for normals and negatives). This matters only for units outside any paragraph (Report-wide units that name a section). A paragraph uid already implies its section, so nothing else changes.
 7. **`set_decision` keeps the existing entry's `uid`** (a new answer on the same line belongs to the same slot). **`rekey_decision` drops it.** That is how `reconcile_chat` "clears uid on any entry it re-keys" without new code in `reconcile_chat`.
 8. **Existing tests that must change** (each one tests behaviour this spec changes): four `vet_sheet` spies in `tests/test_template_sheet_save_routes.py` gain `**kw` (persist_sheet passes `registry=`); `test_generation_stamp_is_total` gains `"sheet_rev": None`. (The three writer-prompt assertions that moved to the `{line, why}` format went with Task 15 to slice 4.)
-9. **Backfill `--apply` takes the dry-run report as its plan (`--plan`).** That is the only way to know "the sheet hash since the dry run".
+9. **Dropped 2026-10-15** (was: backfill `--apply` takes the dry-run report as its plan). There is no backfill; see Task 18.
 10. **Registry `text` per kind:** normal, negative and fixed store the quoted text, rule stores its raw line stripped, and section and paragraph store their name. `text_hash = "sha256:" + sha256(text)`.
-11. **A legacy template saved without a sheet change keeps `sheet_rev` 0** (no stored value means 0). The first change makes it 1, and the backfill sets it to 1.
+11. **A legacy template saved without a sheet change keeps `sheet_rev` 0** (no stored value means 0). The first change makes it 1. (The backfill that would have set it to 1 was dropped 2026-10-15.)
 12. **The per-rebuild metric** ("share resolved by uid against today's text matching") is computed by `tla.uid_share` on the incoming sheet and logged by `persist_sheet` when `origin == "rebuild"`. The rebuild fixture test prints the same numbers.
 13. **Carried lines never move (plan review M2).** A carried uid pairs only with a line in the same section and paragraph (by uid) as its previous identity, both in `rebind` and in `apply_ledger`'s per-step map. A rewritten line deleted later in the run therefore cannot hand its uid to an identical line elsewhere.
 14. **The upgrade script writes its planned config later, under the lock (plan review L3).** The sheet hash re-check guarantees the sheet, and so the registry and `sheet_rev` the plan computed, did not move. The server-written keys the plan does not own (`uncertain`, reserved for slice 4, and `normal_confirms`) are re-read under the lock and kept, so a confirm recorded between plan and write survives.
@@ -58,7 +58,6 @@ Each of these is either a place where the spec's wording cannot be met literally
 | `backend/src/rapid_reports_ai/template_line_match.py` | Create | `rep_key` / `same_text`: exact after lookalikes and whitespace (decision 7). Versioned `LOOKALIKES`. |
 | `backend/src/rapid_reports_ai/template_line_registry.py` | Create | Units of a parse, identity keys, `rebind`, `match`, `uids_for`. |
 | `backend/src/rapid_reports_ai/template_normal_confirms.py` | Create | Confirm groups, attestable units, `record`, `confirm_state`. |
-| `backend/src/rapid_reports_ai/scripts/backfill_line_registry.py` | Create | `--dry-run` / `--apply` backfill. |
 | `backend/src/rapid_reports_ai/template_decisions.py` | Modify | `LINE_BOUND`, `UID`; `clean_ledger` keeps `uid`; `set_decision` keeps it. |
 | `backend/src/rapid_reports_ai/template_ledger_apply.py` | Modify | `apply_ledger(registry=)`: uid-first re-key, `carried`, removal-satisfied; `locate`, `stamp_uids`, `uid_share`. |
 | `backend/src/rapid_reports_ai/template_sheet_save.py` | Modify | `vet_sheet(registry=)`, `VetOutcome.carried`, `persist_sheet`. |
@@ -68,7 +67,6 @@ Each of these is either a place where the spec's wording cannot be met literally
 | `backend/tests/test_template_line_registry.py` | Create | Text identity, adversarial pairs, lookalike collisions, rebind, uids_for, match. |
 | `backend/tests/test_template_normal_confirms.py` | Create | Groups, chunks, state. |
 | `backend/tests/test_template_line_ids_routes.py` | Create | Persisting vs stateless paths, server-written keys, confirm endpoint. |
-| `backend/tests/test_backfill_line_registry.py` | Create | Backfill dry run and apply. |
 | `backend/tests/template_line_fixtures.py` | Create | Rebuild fixture (two writer outputs + planted truth). |
 | `backend/tests/test_template_line_rebuild.py` | Create | Rebuild metric test. |
 | Existing tests (listed per task) | Modify | New cases appended; the changed assertions in gap 8. |
@@ -1695,7 +1693,7 @@ Append after `_by_uid` (before `RESTATED`):
 ```python
 def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
     """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
-    is none or more than one (never guessed). The backfill uses it as-is."""
+    is none or more than one (never guessed)."""
     kind = entry.get("kind")
     try:
         if kind == "normal":
@@ -3086,7 +3084,7 @@ This slice keeps only `uncertain` as a reserved server-written key in `_carry_st
 | Groups (findings paragraphs, section-level, other sections, chunks of 8), attestable predicate, valid/stale/missing | 13 |
 | `sheet_rev` from stored value, pair with `sheet_hash`, survives cleanup | 10, 17 |
 | Writer uncertainty and its check | deferred to slice 4 (decision 8) |
-| Backfill dry-run/apply, reasons, not line-bound, scratch report, lock, re-check hash, no version | 18 |
+| Backfill dry-run/apply | 18 (dropped 2026-10-15) |
 | Metrics per save and per rebuild | 10 (`uid_share` on rebuild), 19 |
 | Rebuild fixture: wrong matches 0, resolved share | 19 |
 | Restore against the current registry | 11 |
