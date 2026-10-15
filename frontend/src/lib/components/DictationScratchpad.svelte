@@ -39,6 +39,8 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
+	import { applyOn } from '$lib/copilot/flag';
+	import { recommendationsForGate } from '$lib/copilot/applied';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
 	import { mountCopilot } from '$lib/copilot/mount';
 	import { unresolved, type Unresolved } from '$lib/copilot/gate';
@@ -352,6 +354,7 @@
 	// It reads grouping rounds only and never writes the editor, the findings block, the gate or Generate.
 	const noCopilot: Readable<CopilotState | null> = readable(null);
 	let copilot: CopilotSession | null = null;
+	const copilotApply = applyOn(); // spec 2026-10-14 §7.6: Hassan's browser only (localStorage rr_copilot_apply = '1')
 	let copilotState: Readable<CopilotState | null> = noCopilot;
 	$: copilotActive = stackCopilot && hybridStack && stackView;
 	$: if (copilotActive && !copilot) startCopilot();
@@ -2151,6 +2154,7 @@
 		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
 		const assumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups,
 			removedSentences, blockedSegments(stackLevelGroups, [...stackUnits, ...tail]));
+		const recs = recommendationsForGate(copilotApply && !!copilot, $copilotState?.applied);
 		const gate: GateRecord = {
 			confirmed_at: new Date().toISOString(),
 			conclusion_text: dictatedConclusion || draft?.text || '',
@@ -2179,6 +2183,7 @@
 			findings_hash: findingsHash([...stackUnits, ...tail]), // the server refuses a gate the units no longer match
 			flagged: flaggedNow, // kept normals the dictation may conflict with, confirmed as shown (R1 evidence)
 			...(valueChips.length ? { values: valueChips } : {}),
+			...(recs.length ? { recommendations: recs } : {}),
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
@@ -2857,6 +2862,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
+							recommendations={recommendationsForGate(copilotApply && !!copilotActive, $copilotState?.applied)} onRecEdit={(k, t) => copilot?.editApplied(k, t)} onRecDelete={(k) => copilot?.removeApplied(k)}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
@@ -2911,6 +2917,11 @@
 		onEdit={copilot.edit}
 		unresolved={guidelinesUnresolved}
 		onSeen={copilot.seen}
+		applyOn={copilotApply}
+		applied={$copilotState.applied ?? {}}
+		onTick={copilot.tick}
+		onPick={copilot.pick}
+		onApply={copilot.apply}
 		bind:this={copilotRail}
 	/>
 {/if}
