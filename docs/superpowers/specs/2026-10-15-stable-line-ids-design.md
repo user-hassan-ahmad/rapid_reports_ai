@@ -20,10 +20,9 @@ In:
 1. A line registry: a stable `uid` per line-bound sheet unit, kept across persisted edits, stored beside the sheet.
 2. Ledger entries carry the `uid`; resolution is uid first, today's key matching second.
 3. A normals confirm record (decision 5), server-written, with staleness.
-4. The writer names a sheet line for each uncertainty; code resolves it to a `uid` at Create.
-5. Reports and confirms record a stable sheet revision.
+4. Reports and confirms record a stable sheet revision.
 
-Out: any UI (slice 3); NORMAL behaviours other than today's rule (decision 6, separate lab); Generate and provenance; report-time row IDs (`hybrid_stack/items.py:175`); uncertainty scoring (slice 4); deleting the legacy analyser at `template_manager.py:3311` (still used by `scripts/template_e2e_lab.py:327` and three tests; separate cleanup).
+Out: any UI (slice 3); NORMAL behaviours other than today's rule (decision 6, separate lab); Generate and provenance; report-time row IDs (`hybrid_stack/items.py:175`); writer uncertainty (the writer naming a sheet line per uncertainty, resolved to a `uid` at Create) and uncertainty scoring, both slice 4 (decision 8); deleting the legacy analyser at `template_manager.py:3311` (still used by `scripts/template_e2e_lab.py:327` and three tests; separate cleanup).
 
 Not line-bound, unchanged: value entries (keyed by value name; Always / If dictated / Leave out map onto `need: every | relevant | not_needed`, `template_decisions.py:7-9`) and concept entries (comparison, contrast, sequences, limitation). TERM lines get no uid (no ledger kind uses them; the parser gives them no id).
 
@@ -37,12 +36,14 @@ A uid names a **slot** in the template, not a string. What defines the slot depe
 
 | Kind | Identity (all must match) | Text in identity? |
 | --- | --- | --- |
-| section | normalised name | n/a |
-| paragraph | section uid + normalised name; or, for a rename, section uid + the **same non-empty** COVERS set, with the names passing the clinical gates | n/a |
-| normal | paragraph uid + normalised structure | No, within an unchanged paragraph: the normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`. **Across a paragraph rename** (the paragraph kept its uid by the COVERS rule) a normal keeps its uid only if its text is also exact or cosmetic; otherwise it is a new unit and its answer is asked again |
-| negative | paragraph uid + `condition` + `condition_source` + `kind` + `origin` + text | Yes (exact or cosmetic) |
-| fixed | section uid + `paragraph` + text | Yes (exact or cosmetic) |
-| rule (incl. LIST_MISSING, ASK) | section uid + paragraph uid (or none for section-level rules) + `effect` + `condition` + `condition_source` + `target` + `anchor` + `position` + output (`then_text`, `else_text`, `items`, `question`) | Yes: condition and every output field, exact or cosmetic |
+| section | name | n/a |
+| paragraph | section uid + name; or, for a rename, section uid + the **same non-empty** COVERS set (the name ignored) | n/a |
+| normal | paragraph uid + structure | No, within an unchanged paragraph: the normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`. **Across a paragraph rename** (the paragraph kept its uid by the COVERS rule) a normal keeps its uid only if its text is also exactly equal; otherwise it is a new unit and its answer is asked again |
+| negative | paragraph uid + `condition` + `condition_source` + `kind` + `origin` + text | Yes (exact) |
+| fixed | section uid + `paragraph` + text | Yes (exact) |
+| rule (incl. LIST_MISSING, ASK) | section uid + paragraph uid (or none for section-level rules) + `effect` + `condition` + `condition_source` + `target` + `anchor` + `position` + output (`then_text`, `else_text`, `items`, `question`) | Yes: condition and every output field, exact |
+
+Every name, structure, COVERS entry and text in the table compares **exactly** after representation-only normalising (below); nothing in identity is case-folded.
 
 Consequences, by design:
 
@@ -53,25 +54,14 @@ Consequences, by design:
 
 ## Wrong matches are worse than lost answers
 
-Carrying an answer to the wrong line is a clinical error; losing one costs a repeat question. Word-overlap similarity is unsafe ("No pleural effusion" / "No pericardial effusion", "left" / "right", "mild" / "moderate", "no evidence of" / "evidence of"). So there is **no similarity threshold**. A text field matches only if it is exactly equal after `norm_key`, or cosmetically equal:
+Carrying an answer to the wrong line is a clinical error; losing one costs a repeat question. Word-overlap similarity is unsafe ("No pleural effusion" / "No pericardial effusion", "left" / "right", "mild" / "moderate", "no evidence of" / "evidence of"). So there is **no similarity and no cosmetic matching** (decision 7). A text field matches only if it is **exactly equal after normalising its representation** (`template_line_match.rep_key`):
 
-1. **Unify lookalike characters first:** en and em dashes and minus signs → `-`; curly quotes and apostrophes → straight; `×` → `x`; non-breaking and other Unicode spaces → space. This is the only step that merges characters, so cosmetic typography never causes a re-ask.
-2. **Tokenise, then normalise.** These are split into their own tokens before anything else and are never removed:
-   - numbers, including decimals with or without a leading digit (`1.5`, `.5`; `1.5` ≠ `15`, `.5` ≠ `5`);
-   - comparators and operators: `<`, `>`, `≤`, `≥`, `=`, `±`, `+`, `/`, `%`, and `x` between numbers (`5 x 3 mm` ≠ `53 mm`);
-   - units;
-   - punctuation inside the sentence: `.`, `;`, `:`, `,`, `(`, `)`, `?` (`No fracture. Dislocation.` ≠ `No fracture, dislocation.`).
-   Hyphenated words stay one token (`non-enhancing` ≠ `enhancing`; `well-defined` ≠ `defined`).
-3. **Normalise:** lower case; collapse whitespace; drop only a final full stop and quotation marks; map spelling with a fixed UK↔US lookup table (no suffix rules); remove a fixed list of filler phrases: "is seen", "is noted", "is identified", "is demonstrated", "there is", "there are".
-4. **Compare every remaining token, in order.** No stopword removal: "with" / "without", "and" / "or" stay. Order is kept because reordering can swap laterality between structures ("left kidney, right adrenal").
-5. **Hard gates, checked on the raw tokens, fail closed.** These must be identical as multisets and in order:
-   - negation: `no`, `not`, `without`, `absent`, `neither`, `nor`, `negative`, `non-` and `un-` prefixes;
-   - hedging: `possible`, `possibly`, `likely`, `probable`, `probably`, `suspicious`, `suggestive`, `may`, `query`, `?`, `cannot be excluded`, `not excluded`, `in keeping with`, `consistent with`;
-   - laterality: `left`, `right`, `bilateral`, `unilateral`;
-   - severity: `minimal`, `mild`, `moderate`, `severe`, `marked`, `small`, `large`, grade and category numbers;
-   - numbers, comparators, operators and units.
-6. **Protected words and scope:** a filler phrase is never removed when a negation or hedge token appears earlier in the same sentence (up to the previous `.` or `;`): in "No collapse, there is consolidation." the filler marks a present finding outside the negation, and removing it would make the line read as "No collapse, consolidation." A quote mark directly after a number is kept as a unit token (`5'` ≠ `5`). The filler list can never contain, or delete, a negation or hedge word. A filler phrase is removed only as an exact whole-phrase match, so "is not seen" never tidies to the same thing as "is seen". A constant-level test enforces this.
-7. When in doubt, a new uid. The lookalike map, filler list and spelling table are versioned constants with a collision test (no two distinct words map to the same form).
+1. **Unify lookalike characters:** en and em dashes, minus signs and other Unicode dashes → `-`; curly quotes and apostrophes → straight; `×` → `x`; non-breaking and other Unicode spaces → space. Nothing else merges: prime (`′`) is not an apostrophe, `≤` is not `<`, a zero-width space is not a space, `X` is not `x`.
+2. **Collapse whitespace:** runs become one space; ends trimmed.
+
+Everything else stays significant: case, punctuation (a final full stop included), spelling ("Oedema" ≠ "Edema"), filler words ("There is no mass." ≠ "No mass."), hyphens. A rewording, however small, is a new uid and its answer is asked again.
+
+Why (Hassan, 2026-10-15): the measured gain of the earlier cosmetic layer (filler list, UK/US spelling table, tokeniser, negation / hedge / laterality / severity gates) was about one carried answer per rebuild, and every false match the reviewers found lived in that layer. Exact matching makes the adversarial pairs non-matching by construction; they stay in the tests as a tripwire against fuzzy matching coming back. The lookalike map is a versioned constant (`MATCH_VERSION`) with a collision test.
 
 ## The registry
 
@@ -93,7 +83,7 @@ Carrying an answer to the wrong line is a clinical error; losing one costs a rep
 
 - `uid` = kind prefix (`s_ p_ n_ g_ f_ r_`) + 6 random base32 characters; minted once.
 - `text_hash` = sha256 of the exact line text (no normalisation).
-- `status`: `live` or `gone`. Gone units are kept, so a ledger entry pointing at one is visibly orphaned rather than silently rebound. A gone unit may be **revived only by an exact identity match** (restore, or a rebuild that brings the identical line back); never by cosmetic match.
+- `status`: `live` or `gone`. Gone units are kept, so a ledger entry pointing at one is visibly orphaned rather than silently rebound. A gone unit may be **revived only by an exact identity match** (restore, or a rebuild that brings the identical line back); never by any other match.
 - `minted` is written once. No per-save timestamps (they would churn the config).
 
 ## Rebind (pure code, no model)
@@ -102,10 +92,10 @@ Carrying an answer to the wrong line is a clinical error; losing one costs a rep
 
 1. Inputs: the new parse, the previous registry, and `carried`, a map `{uid: new raw line}` returned by `apply_ledger` for every line it rewrote (below).
 2. Carried units keep their uid unconditionally: the ledger rewrote that exact unit, so no re-matching.
-3. For the rest, kind by kind in parent-first order (sections, paragraphs, then lines), pair new units with previous units: exact identity first, then cosmetic identity. Live units first; gone units only on exact identity (revival).
+3. For the rest, kind by kind in parent-first order (sections, paragraphs, then lines), pair new units with previous units by exact identity. Live units first; a paragraph not paired exactly may then pair with a live paragraph by the COVERS rename rule (same section uid, same non-empty COVERS set; reported as `exact`), and across that rename its normals also need exactly equal text; gone units last, on exact identity only (revival).
 4. Pairs are 1:1. If a new unit has more than one candidate, or a previous unit is the candidate of more than one new unit, none of them pairs: each new unit gets a new uid and the event is logged `ambiguous`.
 5. Unpaired new units get new uids; unpaired previous live units become `gone`.
-6. Returns the registry and `report = {exact, cosmetic, carried, revived, new, gone, ambiguous}`.
+6. Returns the registry and `report = {exact, carried, revived, new, gone, ambiguous}`.
 
 Deterministic: same inputs, same result.
 
@@ -117,8 +107,8 @@ Several endpoints are stateless: they return a sheet to the client and never wri
 
 | Path | Persists? | Change |
 | --- | --- | --- |
-| `POST /api/templates` (`main.py:1814`) | Yes | `persist_sheet`; resolve the writer's uncertain lines |
-| `POST /skill-sheet/save` (`main.py:3111`) | Yes | `persist_sheet`; resolve the writer's uncertain lines |
+| `POST /api/templates` (`main.py:1814`) | Yes | `persist_sheet` |
+| `POST /skill-sheet/save` (`main.py:3111`) | Yes | `persist_sheet` |
 | `PUT /api/templates/{id}` (`main.py:1846`) | Yes | `persist_sheet` against the **stored** registry |
 | Restore (`main.py:2396`) | Yes | `persist_sheet` with the restored sheet against the **current** registry (not the snapshot's), exact revival allowed |
 | `scripts/template_upgrade_apply.py` (calls `tsave.vet_sheet` at :99, writes at :164; never `_vet_config`) | Yes | switch to `persist_sheet` |
@@ -135,7 +125,7 @@ Several endpoints are stateless: they return a sheet to the client and never wri
 - With a registry, `apply_ledger` resolves uid-first (via `uids_for` on the current parse) and returns `carried = {uid: new raw line}` for **every** line it rewrites, including secondary rewrites (`_normal` retargeting context rules that pointed at the old wording, `template_ledger_apply.py:~350`). A line edited by more than one step has its edits composed, so `carried` holds its final text.
 - Uids are stamped **after** the rebind: each entry's matched unit in the final parse gets its uid from `uids_for(final parse, new registry)`. On a first save this is where every entry first gets a uid.
 
-`_carry_structure` (`main.py:1728`) treats `line_registry`, `uncertain`, `normal_confirms` and `sheet_rev` as server-written, like `sheet_structure`: a client copy on PUT is ignored and the stored one kept.
+`_carry_structure` (`main.py:1728`) treats `line_registry`, `uncertain` (reserved for slice 4), `normal_confirms` and `sheet_rev` as server-written, like `sheet_structure`: a client copy on PUT is ignored and the stored one kept.
 
 ## Ledger changes
 
@@ -186,7 +176,7 @@ The endpoint:
 **State**, `confirm_state(group, record, registry)`:
 
 - `valid`: the group's current attestable units are exactly the record's units, each with the same `text_hash`.
-- `stale`: anything else (a unit added, removed, gone, or its text changed), **or the group's paragraph or section has been renamed since the confirm**, even if every sentence carried over unchanged. The record stores the normalised group name (`group_name`) to check this. A confirm given in one context ("Arterial phase") never silently covers another. A stale confirm is asked again and never counts as confirmed.
+- `stale`: anything else: a unit added, removed or gone, or **any unit's `text_hash` changed**, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so the `text_hash` check is what catches it); **or the group's paragraph or section has been renamed since the confirm** (`group_name` differs), even if every sentence carried over unchanged. The record stores the group name after `rep_key` (`group_name`) to check this; any rename, case included, makes it stale. A confirm given in one context ("Arterial phase") never silently covers another. A stale confirm is asked again and never counts as confirmed.
 - `missing`: no record for the group.
 
 Confirms are never written by code and never carried across a text change.
@@ -199,21 +189,16 @@ Confirms are never written by code and never carried across a text change.
 - Two concurrent saves can store the same number, so the reference is always the pair `sheet_rev` + `sheet_hash`, never `sheet_rev` alone.
 - `generation_stamp` (`template_sheet_structure.py:268-279`) already carries `sheet_hash`; it gains `sheet_rev`. Confirms carry both.
 
-## Writer: name the line for each uncertainty
+## Writer uncertainty: deferred to slice 4
 
-Today the writer drops its questions (`template_sheet_lab_prompts.py:457-476`, `questions=False` about :519); uncertainty survives only as "## Open Questions" prose that nothing reads.
-
-- Re-enable `questions` in the writer's JSON, each item `{line, why}`: `line` is the sheet line copied verbatim, `why` one sentence. Remove the "## Open Questions" prose instruction.
-- The writer is stateless, so the items travel to the client with the sheet and come back on Create. At Create, code resolves each `line` by `norm_key` to exactly one parsed unit, then to its uid via the fresh registry. No match or several matches → dropped and logged.
-- Stored at `template_config["uncertain"] = [{"uid", "text_hash", "why", "source": "writer", "at"}]` (server-written). `text_hash` lets slice 4 discard an item whose slot kept its uid but whose text has since changed. Nothing consumes it in this slice; slice 4 reads it.
-- Check before merge: run the writer on the existing synthetic template sets before and after (reuse outputs, at most 2 runs) and report sheet quality, question count and resolve rate to Hassan.
+The writer naming a sheet line for each uncertainty (re-enabling `questions` as `{line, why}`, resolving each `line` to a uid at Create, storing `template_config["uncertain"]`) moves to slice 4, where uncertainty is consumed (decision 8). This slice only reserves the `uncertain` key as server-written in `_carry_structure`.
 
 ## Existing templates and the backfill
 
 - No registry: everything works as today. The registry is minted on the next persisted save. Reads never write (the read path re-parses without persisting today; unchanged).
 - `scripts/backfill_line_registry.py --dry-run | --apply`:
   - Skips inactive and non-grammar templates.
-  - Mints a registry, stamps uids onto ledger entries that resolve by today's exact key and text matching (never cosmetic), sets `sheet_rev = 1`.
+  - Mints a registry, stamps uids onto ledger entries that resolve by today's exact key and text matching, sets `sheet_rev = 1`.
   - Leaves every unresolved entry exactly as it is. Value and concept entries are reported as `not line-bound`, not as unresolved.
   - Dry run: read-only session, rolled back, with a test that it commits nothing. Writes a per-template report to the scratchpad (never the repo; it reflects production templates): resolved count, and one row per unresolved entry with kind, key and reason (`no line`, `paragraph not found`, `paragraph ambiguous`, `lint failure`).
   - Apply: takes the row lock the upgrade script uses (`_locked_check`, `template_upgrade_apply.py:125`), re-checks under the lock that the sheet hash is unchanged since the dry run and skips the template if it moved, writes config directly, creates no new `TemplateVersion`. On Hassan's go-ahead only.
@@ -228,15 +213,16 @@ Per persisted save: the rebind report and origin. Per rebuild: share of earlier 
 
 - First save mints a uid per line-bound unit; an identical second save is all `exact`.
 - Reordering sections or paragraphs keeps every uid. Inserting a normal mints one uid and changes no other.
-- A cosmetic rewording ("There is no pleural effusion." → "No pleural effusion") keeps the uid; any token change gives `gone` + `new`.
+- Any rewording gives `gone` + `new`: filler ("There is no pleural effusion." → "No pleural effusion"), spelling ("Oedema" → "Edema"), case, a final full stop. These pairs were cosmetic matches before decision 7 and now assert the opposite.
 - **Adversarial pairs never match** (pass condition: zero wrong matches): pleural / pericardial effusion; left / right; mild / moderate; "no evidence of" / "evidence of"; with / without; "score > 0" / "score < 0" / "score ≥ 100"; `1.5` / `15`; mGycm / mGy; "left kidney, right adrenal" / "right kidney, left adrenal"; the same normal text under a different structure; a conditional and an unconditional negative with the same text; two SUPPRESS rules with the same condition and different targets; identical FIXED lines in two paragraphs; `.5 mm` / `5 mm`; "No fracture. Dislocation." / "No fracture, dislocation."; "No mass; effusion." / "No mass effusion."; `<25%` / `25%`; `5 x 3 mm` / `53 mm`; "non-enhancing" / "enhancing"; "is seen" / "is not seen"; "likely pneumonia" / "pneumonia"; "cannot be excluded" / "excluded"; "possible" / "probable"; "No collapse, there is consolidation." / "No collapse, consolidation."; "No mass, fluid is seen." / "No mass, fluid."; `5'` / `5`.
-- **Cosmetic typography always matches:** en dash / hyphen, curly / straight quotes, `×` / `x`, non-breaking space / space.
-- Paragraph rename (Arterial phase → Portal venous phase, same COVERS): a normal with different text gets a new uid; a word-for-word identical normal keeps its uid, **and** that group's confirm becomes stale.
-- Paragraph rename keeps uids only with an identical non-empty COVERS set and passing name gates.
+- **Typography-only differences always match:** en dash / hyphen, curly / straight quotes, `×` / `x`, non-breaking or other Unicode space / space, extra whitespace.
+- **Lookalike collision:** the lookalike map merges only into `-`, `"`, `'`, `x`, space, and never merges a different character (`X` / `x`, `′` / `'`, `≤` / `<`, zero-width space / nothing).
+- Paragraph rename (Arterial phase → Portal venous phase, same COVERS): a normal with different text (a full stop included) gets a new uid; a normal with exactly equal text (typography aside) keeps its uid, **and** that group's confirm becomes stale.
+- Paragraph rename keeps uids only with an identical non-empty COVERS set; a paragraph without COVERS, or with different COVERS ("left kidney" → "right kidney"), is a new paragraph.
 - One old uid matched by two new lines, and two old by one new: both `ambiguous`, new uids.
 - Carried units keep their uid after `apply_ledger` rewrites them, including context rules retargeted by `_normal` and a line edited by two steps.
 - Gone units revive on exact identity only.
-- Spelling table and filler list: collision test.
+- The adversarial pairs above stay as a tripwire: exact matching makes them non-matching by construction.
 
 Existing suites:
 
@@ -247,15 +233,17 @@ Existing suites:
 - `test_template_sheet_save.py` / route tests: `persist_sheet` runs on the five persisting paths (including the upgrade script) and never on the stateless ones; `_carry_structure` ignores a client `line_registry`, `uncertain`, `normal_confirms` and `sheet_rev`; `sheet_rev` increments from the stored value only on a sheet change.
 - Confirm endpoint: 409 on a stale `sheet_rev` / `sheet_hash`; units computed server-side; a client-sent unit list is ignored.
 - Restore of a version with no registry rebinds against the current registry.
-- Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session.
+- Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session. Stale safety nets: (a) a normal reworded in place keeps its slot uid but its changed `text_hash` makes the confirm stale; (b) a paragraph or section rename with every sentence identical makes the confirm stale (`group_name`).
 - Backfill: dry run commits nothing; unresolved entries listed with reasons and untouched; no new version on apply.
 - Rebuild fixture: two writer outputs for the same synthetic reports. Primary metric: wrong matches (0). Secondary: resolved share against text matching.
 
 ## Decisions taken (2026-10-15)
 
-1. No similarity threshold: exact or cosmetic equivalence only, tokenised before normalising, with hard clinical-token gates; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric.
-2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when cosmetically equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
+1. No similarity threshold; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric. (The cosmetic equivalence first chosen here is superseded by decision 7.)
+2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when exactly equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
 3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8, through a server-computed endpoint that rejects a stale sheet.
-4. Punctuation inside a sentence, comparators, operators, `x` between numbers and hyphen prefixes are meaningful tokens; only lookalike characters, the final full stop and quotes are cosmetic. Negation and hedge words are hard gates and can never be part of the filler list (Hassan, 2026-10-15).
-5. A normal's answer follows a renamed paragraph only if its own text is exact or cosmetic (option c); any paragraph or section rename makes that group's normal confirm stale (Hassan, 2026-10-15).
+4. Superseded by decision 7 (it defined the cosmetic layer's tokens, gates and filler protection).
+5. A normal's answer follows a renamed paragraph only if its own text is exactly equal (option c); any paragraph or section rename makes that group's normal confirm stale (Hassan, 2026-10-15).
 6. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
+7. Exact matching only, representation-normalised; cosmetic layer removed (Hassan, 2026-10-15). Lookalike characters and whitespace are the only normalisation; case, punctuation, spelling and filler words are significant. A paragraph rename is the COVERS rule alone (no name gates).
+8. Writer uncertainty (the writer naming a line per uncertainty, resolved at Create) moves to slice 4 (Hassan, 2026-10-15).

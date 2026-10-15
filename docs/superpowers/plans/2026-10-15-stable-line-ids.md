@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give every line-bound unit of a template's skill sheet a stable `uid` kept across persisted saves, key the decision ledger on it (uid first, today's key matching second), and add the server-written normals confirm record, writer uncertainty items and `sheet_rev`.
+**Goal:** Give every line-bound unit of a template's skill sheet a stable `uid` kept across persisted saves, key the decision ledger on it (uid first, today's key matching second), and add the server-written normals confirm record and `sheet_rev`. Writer uncertainty items are deferred to slice 4 (see "Deferred to slice 4").
 
-**Architecture:** A sidecar registry (`template_config["line_registry"]`) re-bound by pure code on every persisted save. A tokeniser with hard clinical gates decides "same text" (exact or cosmetic only; no similarity score). One helper, `template_sheet_save.persist_sheet`, owns every persisted save (vet, rebind, stamp ledger uids, `sheet_rev`); stateless endpoints keep calling `vet_sheet` with no registry and never mint. Confirms are computed server-side from the stored sheet and registry.
+**Architecture:** A sidecar registry (`template_config["line_registry"]`) re-bound by pure code on every persisted save. "Same text" is exact equality after representation-only normalising (lookalike characters, whitespace; spec decision 7): no similarity score, no cosmetic matching. One helper, `template_sheet_save.persist_sheet`, owns every persisted save (vet, rebind, stamp ledger uids, `sheet_rev`); stateless endpoints keep calling `vet_sheet` with no registry and never mint. Confirms are computed server-side from the stored sheet and registry.
 
 **Tech Stack:** Python 3.13, FastAPI, SQLAlchemy (JSON column `Template.template_config`), Pydantic v2, pytest (asyncio auto mode, SQLite in-memory in tests).
 
@@ -14,22 +14,22 @@
 
 ## Spec gaps found while planning
 
-Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts. The plan follows the spec as of `d234b67a` (Hassan's decisions 4 and 5: the wider meaningful-token set with protected negation and hedge words, filler scope ending at the sentence's earlier negation or hedge, quote-after-number as a unit token, Task 1; a normal follows a renamed paragraph only with its own text unchanged, Task 3; a renamed group's confirm is stale, Task 13).
+Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1 and 2 before execution starts. The plan follows the spec as of `d234b67a` (Hassan's decisions 4 and 5: the wider meaningful-token set with protected negation and hedge words, filler scope ending at the sentence's earlier negation or hedge, quote-after-number as a unit token, Task 1, since superseded by decision 7: exact matching only, representation-normalised, cosmetic layer removed; a normal follows a renamed paragraph only with its own text unchanged, Task 3; a renamed group's confirm is stale, Task 13).
 
-1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS), the normals in it whose text is unchanged (decision 5), or a cosmetically reworded negative therefore have no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact and cosmetic tiers against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping, `uncertain`). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line`.
+1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS), the normals in it whose text is unchanged (decision 5), therefore have no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact identity and the COVERS rename rule against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line`.
 2. **"Removal decisions … never become cards" is narrowed (plan review H1).** A removal counts as satisfied only when its line is *shown* absent: the entry carries a uid the registry knows, and no unit of the current parse holds that uid. Without that evidence (no uid, a paragraph not found or ambiguous, a reworded negative) it stays a card, as today. It applies only on the registry path (persisted saves), so `registry=None` stays exactly as today and `test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept` is unchanged.
 3. **"Deterministic: same inputs, same result" vs "6 random base32 characters".** Each registry gets a random 8-hex `salt` when it is first minted; uids are `sha256(salt | kind | identity | n)`, base32, first 6 characters. Given the stored registry, rebind is fully deterministic, and two templates never share uids.
-4. **Writer questions only reach Create if the client sends them back.** The real creator (`frontend/src/routes/components/SkillSheetCreator.svelte`) ignores `questions` today, and the spec puts all UI out of scope. This plan adds `questions` to `TemplateCreate` and `SkillSheetSaveRequest` and resolves them. Until slice 3 echoes them, `uncertain` stays empty in production. Two dev-only pages (`/skill-sheet-proto`, `/skill-sheet-test`) show `questions` in the old `{question, suggestions}` shape and will display the new `{line, why}` items oddly. They are not production routes.
+4. **Writer questions: deferred to slice 4** (spec decision 8). The gap noted here (the creator UI ignores `questions`, so they only reach Create once the client echoes them) moves with Tasks 15 and 16.
 5. **Confirm endpoint, an unknown group:** returns **422** (the spec names only 404 and 409). **Storage:** `normal_confirms` is `{group id: latest record}`. "Each confirm recorded" is read as one current record per group, which keeps the config size bounded.
 6. **Line identity includes the section uid as well as the paragraph uid** (the spec lists the paragraph uid for normals and negatives). This matters only for units outside any paragraph (Report-wide units that name a section). A paragraph uid already implies its section, so nothing else changes.
 7. **`set_decision` keeps the existing entry's `uid`** (a new answer on the same line belongs to the same slot). **`rekey_decision` drops it.** That is how `reconcile_chat` "clears uid on any entry it re-keys" without new code in `reconcile_chat`.
-8. **Existing tests that must change** (each one tests behaviour this spec changes): four `vet_sheet` spies in `tests/test_template_sheet_save_routes.py` gain `**kw` (persist_sheet passes `registry=`); `test_generation_stamp_is_total` gains `"sheet_rev": None`; three writer-prompt assertions (`test_the_writer_asks_no_questions…`, `test_write_returns_a_vetted_sheet_summary_and_questions`, `test_writer_arms_use_the_next_prompts…`) move to the `{line, why}` format.
+8. **Existing tests that must change** (each one tests behaviour this spec changes): four `vet_sheet` spies in `tests/test_template_sheet_save_routes.py` gain `**kw` (persist_sheet passes `registry=`); `test_generation_stamp_is_total` gains `"sheet_rev": None`. (The three writer-prompt assertions that moved to the `{line, why}` format went with Task 15 to slice 4.)
 9. **Backfill `--apply` takes the dry-run report as its plan (`--plan`).** That is the only way to know "the sheet hash since the dry run".
 10. **Registry `text` per kind:** normal, negative and fixed store the quoted text, rule stores its raw line stripped, and section and paragraph store their name. `text_hash = "sha256:" + sha256(text)`.
 11. **A legacy template saved without a sheet change keeps `sheet_rev` 0** (no stored value means 0). The first change makes it 1, and the backfill sets it to 1.
 12. **The per-rebuild metric** ("share resolved by uid against today's text matching") is computed by `tla.uid_share` on the incoming sheet and logged by `persist_sheet` when `origin == "rebuild"`. The rebuild fixture test prints the same numbers.
 13. **Carried lines never move (plan review M2).** A carried uid pairs only with a line in the same section and paragraph (by uid) as its previous identity, both in `rebind` and in `apply_ledger`'s per-step map. A rewritten line deleted later in the run therefore cannot hand its uid to an identical line elsewhere.
-14. **The upgrade script writes its planned config later, under the lock (plan review L3).** The sheet hash re-check guarantees the sheet, and so the registry and `sheet_rev` the plan computed, did not move. The server-written keys the plan does not own (`uncertain`, `normal_confirms`) are re-read under the lock and kept, so a confirm recorded between plan and write survives.
+14. **The upgrade script writes its planned config later, under the lock (plan review L3).** The sheet hash re-check guarantees the sheet, and so the registry and `sheet_rev` the plan computed, did not move. The server-written keys the plan does not own (`uncertain`, reserved for slice 4, and `normal_confirms`) are re-read under the lock and kept, so a confirm recorded between plan and write survives.
 15. **Baseline:** the suite on this branch has one failure that predates this work: `tests/test_provider_key_routing.py::test_every_provider_client_carries_its_key_explicitly[claude-sonnet-5-5-anthropic-key]`. It is not ours; leave it.
 
 ---
@@ -55,22 +55,19 @@ Each of these is either a place where the spec's wording cannot be met literally
 
 | File | Status | Responsibility |
 | --- | --- | --- |
-| `backend/src/rapid_reports_ai/template_line_match.py` | Create | Tokeniser, clinical gates, cosmetic form, `same_text`. Versioned constants. |
-| `backend/src/rapid_reports_ai/template_line_registry.py` | Create | Units of a parse, identity keys, `rebind`, `match`, `uids_for`, `resolve_uncertain`. |
+| `backend/src/rapid_reports_ai/template_line_match.py` | Create | `rep_key` / `same_text`: exact after lookalikes and whitespace (decision 7). Versioned `LOOKALIKES`. |
+| `backend/src/rapid_reports_ai/template_line_registry.py` | Create | Units of a parse, identity keys, `rebind`, `match`, `uids_for`. |
 | `backend/src/rapid_reports_ai/template_normal_confirms.py` | Create | Confirm groups, attestable units, `record`, `confirm_state`. |
 | `backend/src/rapid_reports_ai/scripts/backfill_line_registry.py` | Create | `--dry-run` / `--apply` backfill. |
 | `backend/src/rapid_reports_ai/template_decisions.py` | Modify | `LINE_BOUND`, `UID`; `clean_ledger` keeps `uid`; `set_decision` keeps it. |
 | `backend/src/rapid_reports_ai/template_ledger_apply.py` | Modify | `apply_ledger(registry=)`: uid-first re-key, `carried`, removal-satisfied; `locate`, `stamp_uids`, `uid_share`. |
 | `backend/src/rapid_reports_ai/template_sheet_save.py` | Modify | `vet_sheet(registry=)`, `VetOutcome.carried`, `persist_sheet`. |
-| `backend/src/rapid_reports_ai/main.py` | Modify | `_carry_structure` server-written keys; `_vet_config` via `persist_sheet`; `questions` on Create; confirm endpoint. |
+| `backend/src/rapid_reports_ai/main.py` | Modify | `_carry_structure` server-written keys; `_vet_config` via `persist_sheet`; confirm endpoint. |
 | `backend/src/rapid_reports_ai/scripts/template_upgrade_apply.py` | Modify | `_plan_entry` uses `persist_sheet`. |
 | `backend/src/rapid_reports_ai/template_sheet_structure.py` | Modify | `generation_stamp` gains `sheet_rev`. |
-| `backend/src/rapid_reports_ai/template_sheet_lab_prompts.py` | Modify | Writer names lines (`{line, why}`), no Open Questions prose. |
-| `backend/src/rapid_reports_ai/template_writer.py` | Modify | Returns well-formed `{line, why}` questions. |
-| `backend/src/rapid_reports_ai/scripts/rules_step_lab.py` | Modify | Writer check: question count and resolve rate. |
-| `backend/tests/test_template_line_registry.py` | Create | Tokeniser, gates, adversarial pairs, rebind, uids_for, match. |
+| `backend/tests/test_template_line_registry.py` | Create | Text identity, adversarial pairs, lookalike collisions, rebind, uids_for, match. |
 | `backend/tests/test_template_normal_confirms.py` | Create | Groups, chunks, state. |
-| `backend/tests/test_template_line_ids_routes.py` | Create | Persisting vs stateless paths, server-written keys, confirm endpoint, questions on Create. |
+| `backend/tests/test_template_line_ids_routes.py` | Create | Persisting vs stateless paths, server-written keys, confirm endpoint. |
 | `backend/tests/test_backfill_line_registry.py` | Create | Backfill dry run and apply. |
 | `backend/tests/template_line_fixtures.py` | Create | Rebuild fixture (two writer outputs + planted truth). |
 | `backend/tests/test_template_line_rebuild.py` | Create | Rebuild metric test. |
@@ -78,11 +75,13 @@ Each of these is either a place where the spec's wording cannot be met literally
 
 ---
 
-### Task 1: Tokeniser, gates and cosmetic equality
+### Task 1: Representation-only text identity (exact matching; revised by decision 7)
 
 **Files:**
 - Create: `backend/src/rapid_reports_ai/template_line_match.py`
 - Create: `backend/tests/test_template_line_registry.py`
+
+> **Revised 2026-10-15 (spec decision 7).** Built first as a tokeniser with clinical gates, a filler list and a UK/US spelling table (commit 202da478); replaced by exact matching after representation-only normalising (lookalikes, whitespace). The code below is the revised version. Every adversarial pair is kept as a tripwire; the former cosmetic matches now assert a new uid; typography-only pairs still match.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -99,7 +98,7 @@ from rapid_reports_ai import template_line_match as tlm
 from tests.template_sheet_fixtures import LEDGER_SHEET
 
 
-# ── tokeniser and gates ────────────────────────────────────────────────────────────────────────────────────────
+# ── text identity: exact after representation-only normalising (decision 7) ─────────────────────────────────────
 
 ADVERSARIAL = [
     ("No pleural effusion.", "No pericardial effusion."),
@@ -132,15 +131,23 @@ ADVERSARIAL = [
 
 @pytest.mark.parametrize("a,b", ADVERSARIAL)
 def test_adversarial_texts_are_never_the_same_line(a, b):
-    assert tlm.same_text(a, b) is None and tlm.same_text(b, a) is None
+    """Near misses: once guarded by the cosmetic layer's gates, now non-matching by construction. They stay as a
+    tripwire against fuzzy matching being re-added."""
+    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
 
 
-def test_cosmetic_rewordings_are_the_same_line():
-    assert tlm.same_text("There is no pleural effusion.", "No pleural effusion") == "cosmetic"
-    assert tlm.same_text("Oedema is seen.", "Edema") == "cosmetic"
-    assert tlm.same_text("No focal liver lesion.", "no focal liver lesion") == "exact"
-    assert tlm.same_text("No mass. There is fluid.", "No mass. Fluid.") == "cosmetic"   # the scope ends at "."
-    assert tlm.same_text("Possible mass; there is fluid.", "Possible mass; fluid.") == "cosmetic"   # and at ";"
+@pytest.mark.parametrize("a,b", [
+    ("There is no pleural effusion.", "No pleural effusion"),         # filler words
+    ("Oedema is seen.", "Edema"),                                      # spelling
+    ("Oedema.", "Edema."),
+    ("No focal liver lesion.", "no focal liver lesion."),              # case
+    ("No focal liver lesion.", "No focal liver lesion"),               # a final full stop
+    ("No mass. There is fluid.", "No mass. Fluid."),
+    ("Possible mass; there is fluid.", "Possible mass; fluid."),
+    ("Well-defined margin.", "Well defined margin."),                  # a hyphen is punctuation
+])
+def test_rewordings_case_punctuation_and_spelling_are_other_lines(a, b):
+    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
 
 
 @pytest.mark.parametrize("a,b", [
@@ -151,39 +158,27 @@ def test_cosmetic_rewordings_are_the_same_line():
     ("Measures 5 \u00d7 3 mm.", "Measures 5 x 3 mm."),
     ("No\u00a0effusion.", "No effusion."),
     ("No\u202feffusion.", "No effusion."),
+    ("  No   effusion. ", "No effusion."),
 ])
-def test_cosmetic_typography_always_matches(a, b):
-    assert tlm.same_text(a, b) in ("exact", "cosmetic")
+def test_typography_only_differences_are_the_same_line(a, b):
+    assert tlm.same_text(a, b) and tlm.rep_key(a) == tlm.rep_key(b)
 
 
-def test_meaningful_tokens_are_their_own_tokens():
-    assert tlm.tokens("1.5mm<2") == ("1.5", "mm", "<", "2")
-    assert tlm.tokens(".5 x3, (well-defined)?") == (".5", "x", "3", ",", "(", "well-defined", ")", "?")
-    assert tlm.gates("Mild left 1.5 mm effusion, no mass.") == ("mild", "left", "1.5", "mm", "no")
-    assert tlm.gates("Possibly 5 x 3 mm; cannot be excluded.") == ("possibly", "5", "x", "3", "mm", "cannot be excluded")
-    assert tlm.gates("Unremarkable, non-enhancing.") == ("unremarkable", "non-enhancing")
-    assert tlm.tokens("5' and \"x\" 6\"") == ("5", "\u2032", "and", '"', "x", '"', "6", "\u2033")
+@pytest.mark.parametrize("a,b", [
+    ("Measures 5 X 3 mm.", "Measures 5 x 3 mm."),     # only the multiplication sign merges into "x", never case
+    ("Length 5\u2032.", "Length 5'."),                # prime is not a lookalike
+    ("Grade \u2264 2.", "Grade < 2."),                # comparators never merge
+    ("Grade \u2265 2.", "Grade > 2."),
+    ("Change of -1 mm.", "Change of 1 mm."),
+    ("No\u200beffusion.", "No effusion."),            # a zero-width space is not a space
+])
+def test_lookalikes_never_collide_with_a_different_character(a, b):
+    assert not tlm.same_text(a, b)
 
 
-def test_spelling_table_lookalikes_and_filler_list_do_not_collide():
-    keys, values = set(tlm.SPELLING), set(tlm.SPELLING.values())
-    assert len(values) == len(tlm.SPELLING)          # no two UK words map to one US word
-    assert not keys & values                         # no word is both a source and a target
-    gate_words = tlm.NEGATION | tlm.HEDGE_WORDS | tlm.LATERALITY | tlm.SEVERITY | tlm.UNITS
-    assert not (keys | values) & gate_words          # spelling never touches a gate token
-    assert len(set(tlm.FILLERS)) == len(tlm.FILLERS)
-    assert set(tlm.LOOKALIKES.values()) <= {"-", '"', "'", "x", " "}    # lookalikes merge into these forms only
-
-
-def test_no_filler_contains_or_can_delete_a_negation_or_hedge_word():
-    protected = tlm.NEGATION | tlm.HEDGE_WORDS | {w for p in tlm.HEDGE_PHRASES for w in p}
-    assert not {w for f in tlm.FILLERS for w in f} & protected
-    for f in tlm.FILLERS:                            # a protected word inside a filler phrase stops the removal
-        words = list(f)
-        for k in range(1, len(words)):
-            for w in sorted(tlm.NEGATION | tlm.HEDGE_WORDS):
-                broken = " ".join(words[:k] + [w] + words[k:])
-                assert tlm.same_text(f"Effusion {broken}.", f"Effusion {' '.join(words)}.") is None
+def test_lookalike_map_merges_only_into_ascii_forms():
+    assert set(tlm.LOOKALIKES.values()) <= {"-", '"', "'", "x", " "}
+    assert all(ord(k) > 127 for k in tlm.LOOKALIKES) and not set(tlm.LOOKALIKES) & set(tlm.LOOKALIKES.values())
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -196,31 +191,23 @@ Expected: collection error `ModuleNotFoundError: No module named 'rapid_reports_
 Create `backend/src/rapid_reports_ai/template_line_match.py`:
 
 ```python
-"""Cosmetic equality of two sheet-line texts (spec 2026-10-15-stable-line-ids-design, "Wrong matches are worse than lost
-answers"; Hassan's decision 4). No similarity threshold: two texts are the same line only when they are exactly equal
-after norm_key, or cosmetically equal:
+"""Text identity of two sheet-line texts (spec 2026-10-15-stable-line-ids-design, "Wrong matches are worse than lost
+answers"; Hassan's decision 7): two texts are the same line only when they are EXACTLY equal after normalising their
+representation, nothing else:
 
-1. lookalike characters unified (dashes and minus -> "-", curly -> straight quotes, "×" -> "x", Unicode spaces ->
-   space): the only step that merges characters;
-2. tokenised, nothing removed: numbers (".5" and "1.5" are one token each), comparators and operators, units,
-   in-sentence punctuation (. ; : , ( ) ?) and hyphenated words (one token each);
-3. normalised: lower case, only a final full stop and quotation marks dropped, a fixed UK/US spelling table, a fixed
-   list of filler phrases removed only as exact whole phrases;
-4. every remaining token compared in order, and the clinical gate tokens (negation, hedging, laterality, severity,
-   numbers, comparators, operators, units) identical in order.
-Protected words: no filler phrase contains a negation or hedge word, so "is not seen" never tidies to "is seen".
-When in doubt, not the same.
+1. lookalike characters unified (en/em dash, minus and other dashes -> "-", curly -> straight quotes and apostrophes,
+   the multiplication sign -> "x", Unicode spaces -> space);
+2. whitespace collapsed (runs become one space, ends trimmed).
 
-Versioned constants: changing LOOKALIKES, FILLERS or SPELLING changes which lines keep their uid, so bump MATCH_VERSION
-and keep the constant tests green."""
+Case, punctuation (a final full stop included), spelling and filler words all stay significant: "No effusion." and
+"No effusion", "Oedema" and "Edema", "There is no mass." and "No mass." are different lines. No similarity, no
+tokeniser, no clinical gates.
+
+Versioned constant: changing LOOKALIKES changes which lines keep their uid, so bump MATCH_VERSION and keep the
+constant tests green."""
 from __future__ import annotations
 
-import re
-from typing import Optional, Tuple
-
-from .hybrid_stack.template import norm_key
-
-MATCH_VERSION = 1
+MATCH_VERSION = 2
 
 # Lookalike characters -> one form. The only merging step.
 LOOKALIKES = {
@@ -232,139 +219,28 @@ LOOKALIKES = {
 }
 _LOOKALIKE = str.maketrans(LOOKALIKES)
 
-# A number (".5", "5", "1.5"), a comparator, operator or in-sentence punctuation mark, a word (hyphenated and
-# apostrophe words are one token), or any other single non-space character.
-_TOKEN = re.compile(r"\d*\.\d+|\d+|[<>≤≥=±+/%.;:,()?]|[a-z]+(?:[-'][a-z0-9]+)*|\S")
-_QUOTE_TOKENS = frozenset({'"', "'"})
 
-# Filler phrases, removed only as exact whole-phrase token runs. Never a negation or hedge word (test enforced).
-FILLERS: Tuple[Tuple[str, ...], ...] = (
-    ("there", "is"), ("there", "are"), ("is", "seen"), ("is", "noted"), ("is", "identified"),
-    ("is", "demonstrated"),
-)
-
-# UK -> US spelling, whole words only (no suffix rules). Both spellings normalise to the US form.
-SPELLING = {
-    "oedema": "edema", "oedematous": "edematous", "haemorrhage": "hemorrhage", "haemorrhagic": "hemorrhagic",
-    "haematoma": "hematoma", "haemangioma": "hemangioma", "haemodynamic": "hemodynamic",
-    "haemodynamically": "hemodynamically", "ischaemia": "ischemia", "ischaemic": "ischemic",
-    "oesophagus": "esophagus", "oesophageal": "esophageal", "anaemia": "anemia", "paediatric": "pediatric",
-    "orthopaedic": "orthopedic", "tumour": "tumor", "tumours": "tumors", "colour": "color", "grey": "gray",
-    "centre": "center", "centres": "centers", "fibre": "fiber", "fibres": "fibers", "calibre": "caliber",
-    "localised": "localized", "visualised": "visualized", "characterised": "characterized",
-    "faeces": "feces", "faecal": "fecal", "foetal": "fetal",
-    "leukaemia": "leukemia", "diarrhoea": "diarrhea", "aetiology": "etiology", "haemothorax": "hemothorax",
-}
-
-NEGATION = frozenset({"no", "not", "without", "absent", "neither", "nor", "negative"})
-_NEGATION_PREFIX = re.compile(r"^(?:non-?|un)[a-z]")   # non-enhancing, nonspecific, unremarkable, … (fail closed)
-HEDGE_WORDS = frozenset({"possible", "possibly", "likely", "probable", "probably", "suspicious", "suggestive", "may",
-                         "query", "?"})
-HEDGE_PHRASES: Tuple[Tuple[str, ...], ...] = (
-    ("cannot", "be", "excluded"), ("not", "excluded"), ("in", "keeping", "with"), ("consistent", "with"),
-)
-_HEDGE_PHRASE_WORDS = frozenset({"cannot", "excluded", "keeping", "consistent"})
-LATERALITY = frozenset({"left", "right", "bilateral", "unilateral"})
-SEVERITY = frozenset({"minimal", "mild", "moderate", "severe", "marked", "small", "large", "grade", "category"})
-UNIT_QUOTES = {"'": "\u2032", '"': "\u2033"}   # 5' and 5": prime and double prime unit tokens
-UNITS = frozenset({"mm", "cm", "m", "ml", "l", "mg", "g", "kg", "mgy", "mgycm", "msv", "hu", "ms", "s", "bpm",
-                   "mmhg", "cc", *UNIT_QUOTES.values()})
-_SENTENCE_END = frozenset({".", ";"})
-OPERATORS = frozenset("<>≤≥=±+/%")
-_NUMBER = re.compile(r"\d*\.\d+$|\d+$")
+def rep_key(text: str) -> str:
+    """The text with its representation normalised (lookalikes unified, whitespace collapsed); nothing else changed."""
+    return " ".join((text or "").translate(_LOOKALIKE).split())
 
 
-def tokens(text: str) -> Tuple[str, ...]:
-    """Every token of the text after the lookalike map, lower case, nothing removed. A quote mark directly after a
-    digit is a unit (5' feet, 5" inches) and becomes its own unit token, never a dropped quotation mark."""
-    t = (text or "").translate(_LOOKALIKE).lower()
-    out = []
-    for m in _TOKEN.finditer(t):
-        tok = m.group()
-        if tok in _QUOTE_TOKENS and m.start() > 0 and t[m.start() - 1].isdigit():
-            tok = UNIT_QUOTES[tok]
-        out.append(tok)
-    return tuple(out)
-
-
-def _gate(toks: Tuple[str, ...], i: int) -> bool:
-    t = toks[i]
-    if _NUMBER.match(t) or t in OPERATORS:
-        return True
-    if t == "x":   # an operator only between two numbers ("5 x 3 mm")
-        return 0 < i < len(toks) - 1 and bool(_NUMBER.match(toks[i - 1])) and bool(_NUMBER.match(toks[i + 1]))
-    return (t in NEGATION or bool(_NEGATION_PREFIX.match(t)) or t in HEDGE_WORDS or t in LATERALITY
-            or t in SEVERITY or t in UNITS)
-
-
-def gates(text: str) -> Tuple[str, ...]:
-    """The clinical gate tokens of the raw text, in order (they must be identical for a cosmetic match); a hedge
-    phrase ("cannot be excluded") is one gate."""
-    toks = tokens(text)
-    out = []
-    i = 0
-    while i < len(toks):
-        phrase = next((p for p in HEDGE_PHRASES if toks[i:i + len(p)] == p), None)
-        if phrase:
-            out.append(" ".join(phrase))
-            i += len(phrase)
-            continue
-        if _gate(toks, i):
-            out.append(toks[i])
-        i += 1
-    return tuple(out)
-
-
-def _protected(t: str) -> bool:
-    return t in NEGATION or bool(_NEGATION_PREFIX.match(t)) or t in HEDGE_WORDS or t in _HEDGE_PHRASE_WORDS
-
-
-def form(text: str) -> Tuple[str, ...]:
-    """The cosmetic form: tokens without quotation marks or a final full stop, spelling mapped, filler phrases removed
-    as exact whole runs, order kept. Scope: a filler is never removed once a negation or hedge token has appeared in
-    the same sentence (since the last "." or ";"): "No collapse, there is consolidation." keeps its "there is"."""
-    toks = [SPELLING.get(t, t) for t in tokens(text) if t not in _QUOTE_TOKENS]
-    if toks and toks[-1] == ".":
-        toks.pop()
-    out: list = []
-    guarded = False   # a negation or hedge token earlier in this sentence
-    i = 0
-    while i < len(toks):
-        hit = None if guarded else next((f for f in FILLERS if tuple(toks[i:i + len(f)]) == f), None)
-        if hit:
-            i += len(hit)
-            continue
-        t = toks[i]
-        guarded = False if t in _SENTENCE_END else guarded or _protected(t)
-        out.append(t)
-        i += 1
-    return tuple(out)
-
-
-def cosmetic_key(text: str) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
-    return form(text), gates(text)
-
-
-def same_text(a: str, b: str) -> Optional[str]:
-    """"exact" (equal after norm_key), "cosmetic" (equal cosmetic form and identical gate tokens), else None."""
-    if norm_key(a or "") == norm_key(b or ""):
-        return "exact"
-    if cosmetic_key(a) == cosmetic_key(b):
-        return "cosmetic"
-    return None
+def same_text(a: str, b: str) -> bool:
+    """True when the two texts are the same line: equal after rep_key."""
+    return rep_key(a) == rep_key(b)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `36 passed` (25 adversarial pairs and 7 typography pairs, parametrised, plus 4 others).
+Expected: `48 passed` (25 adversarial pairs, 8 rewording pairs, 8 typography pairs, 6 lookalike-collision pairs, parametrised, plus 1 constant test).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/line-ids
 git add backend/src/rapid_reports_ai/template_line_match.py backend/tests/test_template_line_registry.py
-git commit -m "feat(line-ids): lookalike map, meaningful-token tokeniser, clinical and hedge gates, cosmetic equality
+git commit -m "feat(line-ids): representation-only text identity (lookalikes, whitespace)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -428,20 +304,20 @@ persist_sheet). Pure code, no model call. The sheet text is never changed.
 
 A uid names a slot, not a string. Identity per kind (all must match):
     section    normalised name
-    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set, the two
-               names passing the clinical gates
+    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set
     normal     section uid + paragraph uid + structure (its text is tracked by text_hash, not identity); across a
-               paragraph rename (the COVERS rule) its text must also be exact or cosmetic (decision 5)
+               paragraph rename (the COVERS rule) its text must also be exactly equal (decision 5)
     negative   section uid + paragraph uid + condition + condition_source + kind + origin + text
     fixed      section uid + paragraph uid + text
     rule       section uid + paragraph uid + effect + condition + condition_source + target + anchor + position +
                then_text + else_text + items + question
-Text fields match exactly (norm_key) or cosmetically (template_line_match); nothing else. TERM, COVERS and IF_PRESENT
-lines get no uid.
+Every text and name compares EXACTLY after representation-only normalising (template_line_match.rep_key: lookalike
+characters unified, whitespace collapsed); case, punctuation, spelling and filler words stay significant (decision 7).
+TERM, COVERS and IF_PRESENT lines get no uid.
 
 rebind(registry, structure, carried) pairs the new parse's units with the previous registry's, kind by kind,
-parents first: carried units (lines apply_ledger rewrote) keep their uid; then exact identity, then cosmetic identity
-against live units; then exact identity against gone units (revival). Pairs are 1:1: a unit with two candidates, or a
+parents first: carried units (lines apply_ledger rewrote) keep their uid; then exact identity against live units (a
+paragraph also by the COVERS rename rule, reported as exact); then exact identity against gone units (revival). Pairs are 1:1: a unit with two candidates, or a
 candidate claimed twice, pairs with nothing (`ambiguous`, new uids). Deterministic, uid minting included.
 
 uids_for(structure, registry) maps a parse's units to their uids by exact identity against live units (read time);
@@ -460,7 +336,6 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from . import template_line_match as tlm
-from .hybrid_stack.template import norm_key
 
 logger = logging.getLogger(__name__)
 
@@ -469,12 +344,12 @@ KINDS = ("section", "paragraph", "normal", "negative", "fixed", "rule")
 LINE_KINDS = ("normal", "negative", "fixed", "rule")
 PREFIX = {"section": "s_", "paragraph": "p_", "normal": "n_", "negative": "g_", "fixed": "f_", "rule": "r_"}
 
-# Identity fields after the parents, and how each is compared: "plain" (as is), "name" (case and spacing), "text"
-# (norm_key exactly, or cosmetically), "items" (a list of texts, each as "text", in order).
+# Identity fields after the parents, and how each is compared: "plain" (as is), "text" (tlm.rep_key, exactly), "items"
+# (a list of texts, each as "text", in order).
 _FIELDS: Dict[str, Tuple[Tuple[str, str], ...]] = {
-    "section": (("name", "name"),),
-    "paragraph": (("name", "name"),),
-    "normal": (("structure", "name"),),
+    "section": (("name", "text"),),
+    "paragraph": (("name", "text"),),
+    "normal": (("structure", "text"),),
     "negative": (("condition", "text"), ("condition_source", "plain"), ("kind", "plain"), ("origin", "plain"),
                  ("text", "text")),
     "fixed": (("text", "text"),),
@@ -575,41 +450,27 @@ def _exact(kind: str, ident: dict) -> tuple:
     for name, how in _FIELDS[kind]:
         v = ident.get(name)
         if how == "items":
-            key.append(tuple(norm_key(x) for x in v or []))
+            key.append(tuple(tlm.rep_key(x) for x in v or []))
         elif how == "text":
-            key.append(norm_key(v or ""))
-        elif how == "name":
-            key.append(" ".join((v or "").lower().split()))
+            key.append(tlm.rep_key(v or ""))
         else:
             key.append(v or "")
     return (kind, *key)
 
 
-def _cosmetic(kind: str, ident: dict) -> Optional[tuple]:
-    """The cosmetic identity; None when the kind has none (a section, a normal: identity holds no text)."""
-    if kind == "paragraph":
-        covers = frozenset(" ".join(c.lower().split()) for c in ident.get("covers") or [])
-        return (kind, ident.get("section", ""), covers, tlm.gates(ident.get("name", ""))) if covers else None
-    if not any(how in ("text", "items") for _, how in _FIELDS[kind]):
+def _rename(kind: str, ident: dict) -> Optional[tuple]:
+    """A paragraph's rename identity (decision 5): section uid + the same non-empty COVERS set, the name ignored.
+    None for every other kind, and for a paragraph without COVERS."""
+    if kind != "paragraph":
         return None
-    key = [ident.get(p, "") for p in _PARENTS[kind]]
-    for name, how in _FIELDS[kind]:
-        v = ident.get(name)
-        if how == "items":
-            key.append(tuple(tlm.cosmetic_key(x) for x in v or []))
-        elif how == "text":
-            key.append(tlm.cosmetic_key(v or ""))
-        elif how == "name":
-            key.append(" ".join((v or "").lower().split()))
-        else:
-            key.append(v or "")
-    return (kind, *key)
+    covers = frozenset(tlm.rep_key(c) for c in ident.get("covers") or [])
+    return (kind, ident.get("section", ""), covers) if covers else None
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `38 passed`.
+Expected: `50 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -712,12 +573,18 @@ def test_inserting_a_normal_mints_one_uid_and_changes_no_other():
     assert {u: e for u, e in reg2["units"].items() if u not in rep["new"]} == reg["units"]
 
 
-def test_a_cosmetic_rewording_keeps_the_uid_and_a_token_change_does_not():
+def test_a_rewording_is_a_new_unit_and_a_typography_change_keeps_the_uid():
     reg, _ = _bind(LEDGER_SHEET)
     uid = _live(reg, "No focal liver lesion.")
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    reg2, rep = _bind(cosmetic, reg)
-    assert rep["cosmetic"] == [uid] and reg2["units"][uid]["text"] == "There is no focal liver lesion"
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    reg2, rep = _bind(reworded, reg)
+    assert rep["gone"] == [uid] and len(rep["new"]) == 1 and reg2["units"][uid]["status"] == "gone"
+    for variant in ('"No focal liver lesion"', '"no focal liver lesion."'):        # a full stop, case: other lines
+        _, repv = _bind(LEDGER_SHEET.replace('"No focal liver lesion."', variant), reg)
+        assert repv["gone"] == [uid]
+    typo = LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal\u00a0liver  lesion."')
+    reg4, rep4 = _bind(typo, reg)
+    assert uid in rep4["exact"] and not rep4["gone"] and reg4["units"][uid]["text"] == "No focal\u00a0liver  lesion."
     changed = LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal hepatic lesion."')
     reg3, rep3 = _bind(changed, reg)
     assert rep3["gone"] == [uid] and len(rep3["new"]) == 1 and reg3["units"][uid]["status"] == "gone"
@@ -729,7 +596,7 @@ def test_adversarial_negatives_never_keep_a_uid(a, b):
     reg, _ = _bind(_sheet(para.format(a)))
     uid = _live(reg, a)
     _, rep = _bind(_sheet(para.format(b)), reg)
-    assert rep["gone"] == [uid] and uid not in rep["exact"] + rep["cosmetic"]
+    assert rep["gone"] == [uid] and uid not in rep["exact"]
 
 
 def test_the_same_normal_text_under_another_structure_is_another_unit():
@@ -786,20 +653,26 @@ def test_each_registry_has_its_own_salt_and_keeps_it():
     assert _bind(LEDGER_SHEET, a)[0]["salt"] == a["salt"]
 
 
-def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers_and_passing_gates():
+def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers():
     a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\nNORMAL [liver] "The liver is normal."')
     reg, _ = _bind(a)
     para, normal = _live(reg, "Liver"), _live(reg, "The liver is normal.")
     renamed = a.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
     _, rep = _bind(renamed, reg)
-    assert para in rep["cosmetic"] and normal in rep["exact"]
+    assert para in rep["exact"] and normal in rep["exact"]   # a COVERS rename reports as exact
     other_covers = renamed.replace('COVERS ["liver" | "gallbladder"]', 'COVERS ["liver"]')
     _, rep3 = _bind(other_covers, reg)
     assert para in rep3["gone"]
-    sided = a.replace("Paragraph: Liver", "Paragraph: Left liver")
+    no_covers = _sheet('## Paragraph: Protocol (TECHNIQUE)\nFIXED "Axial CT."')
+    reg5, _ = _bind(no_covers)
+    _, rep5 = _bind(no_covers.replace("Paragraph: Protocol", "Paragraph: Method"), reg5)
+    assert _live(reg5, "Protocol") in rep5["gone"]                         # no COVERS: a rename is a new paragraph
+    sided = _sheet('## Paragraph: Left kidney (FINDINGS)\nCOVERS ["left kidney"]\nNORMAL [left kidney] "Normal."')
     reg4, _ = _bind(sided)
-    _, rep4 = _bind(sided.replace("Paragraph: Left liver", "Paragraph: Right liver"), reg4)
-    assert _live(reg4, "Left liver") in rep4["gone"]
+    _, rep4 = _bind(sided.replace("Left kidney", "Right kidney").replace("left kidney", "right kidney"), reg4)
+    assert _live(reg4, "Left kidney") in rep4["gone"]                     # the side lives in COVERS
+    _, rep6 = _bind(a.replace("Paragraph: Liver", "Paragraph: liver"), reg)
+    assert para in rep6["exact"]                                          # case only: the COVERS rule keeps it
 
 
 def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_text():
@@ -809,12 +682,16 @@ def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_tex
     changed, same = _live(reg, "The liver enhances normally."), _live(reg, "The spleen is normal.")
     renamed = a.replace("Arterial phase", "Portal venous phase")
     _, rep = _bind(renamed.replace("The liver enhances normally.", "The liver enhances homogeneously."), reg)
-    assert _live(reg, "Arterial phase") in rep["cosmetic"]                 # the paragraph kept its uid (COVERS)
+    assert _live(reg, "Arterial phase") in rep["exact"]                    # the paragraph kept its uid (COVERS)
     assert changed in rep["gone"] and same in rep["exact"]                 # a reworded normal is a new unit
     _, rep2 = _bind(renamed.replace('"The liver enhances normally."', '"There is normal liver enhancement"'), reg)
     assert changed in rep2["gone"]
-    _, rep3 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    _, rep3 = _bind(renamed, reg)
     assert changed in rep3["exact"]                                        # exact text: kept
+    _, rep4 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    assert changed in rep4["gone"]                                         # a full stop is significant
+    _, rep5 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances\u00a0normally."'), reg)
+    assert changed in rep5["exact"]                                        # typography only: kept
 
 
 def test_one_old_uid_claimed_by_two_new_lines_is_ambiguous():
@@ -856,8 +733,8 @@ def test_gone_units_revive_on_exact_identity_only():
     away = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', "")
     reg2, _ = _bind(away, reg)
     assert reg2["units"][uid]["status"] == "gone"
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    _, rep = _bind(cosmetic, reg2)
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    _, rep = _bind(reworded, reg2)
     assert not rep["revived"] and len(rep["new"]) == 1
     reg4, rep4 = _bind(LEDGER_SHEET, reg2)
     assert rep4["revived"] == [uid] and reg4["units"][uid]["status"] == "live"
@@ -922,8 +799,8 @@ def _pair(new: List[Tuple[Unit, dict]], pool: Dict[str, dict], keyfn) -> Tuple[D
 def rebind(registry, st, carried: Optional[Dict[str, str]] = None, *,
            now: Optional[str] = None) -> Tuple[dict, dict]:
     """(new registry, report) for the parse `st` against the previous registry (module doc). `carried`: {uid: the raw
-    line apply_ledger rewrote that unit to}. report = {exact, cosmetic, carried, revived, new, gone, ambiguous}, each a
-    list of uids. Never mutates its inputs."""
+    line apply_ledger rewrote that unit to}. report = {exact, carried, revived, new, gone, ambiguous}, each a
+    list of uids (a paragraph kept by the COVERS rename rule counts as exact). Never mutates its inputs."""
     reg, report, _ = _bind(registry, st, carried, now)
     return reg, report
 
@@ -933,7 +810,7 @@ def _bind(registry, st, carried, now):
     reg.setdefault("salt", secrets.token_hex(4))   # minted once per registry; uids differ across templates
     prev = reg["units"]
     now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
-    report = {k: [] for k in ("exact", "cosmetic", "carried", "revived", "new", "gone", "ambiguous")}
+    report = {k: [] for k in ("exact", "carried", "revived", "new", "gone", "ambiguous")}
     assigned: Dict[str, str] = {}   # unit ref -> uid
     used: set = set()
     all_units = units(st)
@@ -942,12 +819,7 @@ def _bind(registry, st, carried, now):
     def exact_key(k: str, ident: dict, text: str) -> tuple:
         """Across a paragraph rename a normal also needs its own text (decision 5, option c)."""
         base = _exact(k, ident)
-        return (*base, norm_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
-
-    def cosmetic_key(k: str, ident: dict, text: str) -> Optional[tuple]:
-        if k == "normal" and ident.get("paragraph") in renamed:
-            return (*_exact(k, ident), tlm.cosmetic_key(text))
-        return _cosmetic(k, ident)
+        return (*base, tlm.rep_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
 
     for kind in KINDS:
         todo = [u for u in all_units if u.kind == kind]
@@ -970,14 +842,17 @@ def _bind(registry, st, carried, now):
                 if len(hits) == 1:
                     take(hits[0], uid, _identity(hits[0], assigned), "carried")
         excluded: set = set()
-        tiers = (("exact", live, exact_key), ("cosmetic", live, cosmetic_key), ("revived", gone, exact_key))
-        for how, pool, keyfn in tiers:
+        tiers = (("exact", live, exact_key), ("exact", live, lambda k, i, t: _rename(k, i)),
+                 ("revived", gone, exact_key))
+        for tier, (how, pool, keyfn) in enumerate(tiers):
             rest = [(u, _identity(u, assigned)) for u in todo if u.ref not in assigned and u.ref not in excluded]
             avail = {uid: e for uid, e in pool.items() if uid not in used}
             paired, ambiguous, burnt = _pair(rest, avail, keyfn)
             for u, ident in rest:
                 if u.ref in paired:
                     take(u, paired[u.ref], ident, how)
+                    if tier == 1:
+                        renamed.add(paired[u.ref])
             excluded.update(ambiguous)
             used.update(burnt)   # a uid two new units competed for pairs with nothing
         for u in todo:
@@ -994,26 +869,24 @@ def _bind(registry, st, carried, now):
             if uid not in assigned.values():
                 prev[uid] = {**prev[uid], "status": "gone"}
                 report["gone"].append(uid)
-        if kind == "paragraph":
-            renamed = {u for u in report["cosmetic"] if u.startswith(PREFIX["paragraph"])}
     return reg, report, assigned
 
 
 def summary(report: dict) -> str:
-    """The rebind report as one log fragment: "exact=9 cosmetic=1 …"."""
+    """The rebind report as one log fragment: "exact=9 carried=1 …"."""
     return " ".join(f"{k}={len(v)}" for k, v in report.items())
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `82 passed` (38 before + 44 new, 25 of them adversarial).
+Expected: `94 passed` (50 before + 44 new, 25 of them adversarial).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/template_line_registry.py backend/tests/test_template_line_registry.py
-git commit -m "feat(line-ids): rebind — carried, exact, cosmetic, revival tiers; 1:1 pairing
+git commit -m "feat(line-ids): rebind — carried, exact (with the COVERS rename), revival tiers; 1:1 pairing
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -1040,18 +913,18 @@ def test_uids_for_reads_exact_identity_against_live_units_only():
     got = tlr.uids_for(_st(LEDGER_SHEET), reg)
     assert set(got) == {"S:TECHNIQUE", "S:FINDINGS", "S:IMPRESSION", "p0", "p1", "p2", "m0", "n0", "f0", "f1"}
     assert got["n0"] == _live(reg, "No focal liver lesion.")
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert "n0" not in tlr.uids_for(_st(cosmetic), reg)    # reading never pairs cosmetically
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert "n0" not in tlr.uids_for(_st(reworded), reg)    # a rewording is another line
 
 
-def test_match_pairs_cosmetic_rewordings_and_renames_without_minting():
+def test_match_pairs_renames_but_never_rewordings_without_minting():
     reg, _ = _bind(LEDGER_SHEET)
     snapshot = repr(reg)
     exact = tlr.uids_for(_st(LEDGER_SHEET), reg)
     renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)") \
                           .replace('"No focal liver lesion."', '"There is no focal liver lesion"')
     got = tlr.match(_st(renamed), reg)
-    assert (got["p1"], got["m0"], got["n0"]) == (exact["p1"], exact["m0"], exact["n0"])
+    assert (got["p1"], got["m0"]) == (exact["p1"], exact["m0"]) and "n0" not in got
     assert "p1" not in tlr.uids_for(_st(renamed), reg) and repr(reg) == snapshot
     assert tlr.match(_st(LEDGER_SHEET), None) == {}
 ```
@@ -1079,18 +952,18 @@ def uids_for(st, registry) -> Dict[str, str]:
 
 
 def match(st, registry) -> Dict[str, str]:
-    """{unit ref: uid} for the units rebind would pair with a live unit of `registry` (exact or cosmetic identity, a
-    paragraph rename included), without minting or storing anything: apply_ledger's uid-first resolution (spec gap 1).
+    """{unit ref: uid} for the units rebind would pair with a live unit of `registry` (exact identity, a paragraph
+    rename included), without minting or storing anything: apply_ledger's uid-first resolution (spec gap 1).
     Gone units are never matched here (a gone uid falls back to key matching)."""
     _, report, assigned = _bind(registry, st, None, "")
-    kept = set(report["exact"]) | set(report["cosmetic"])
+    kept = set(report["exact"])
     return {ref: uid for ref, uid in assigned.items() if uid in kept}
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `84 passed`.
+Expected: `96 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -1251,17 +1124,25 @@ def test_registry_none_is_todays_key_matching():
     assert b.carried == {} and b.satisfied == [] and b.rekeyed == [] and b.ledger == led
 
 
-def test_uid_first_finds_a_negative_the_writer_reworded_and_rekeys_it():
+def test_uid_first_finds_a_negative_across_a_paragraph_rename_and_rekeys_it():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.apply_ledger(renamed, led).unmatched == led                 # today: paragraph not found, a card
+    res = tla.apply_ledger(renamed, led, registry=reg)
+    assert not res.unmatched and 'NEGATIVE "No focal liver lesion."' in res.sheet
+    assert res.ledger[0]["key"] == 'Hepatobiliary :: "No focal liver lesion."' and res.ledger[0]["uid"] == uid
+    assert res.rekeyed == [{"kind": "normal", "uid": uid, "old": NEG, "new": res.ledger[0]["key"]}]
+
+
+def test_a_negative_the_writer_reworded_is_not_found_by_uid():
     reg = _reg(LEDGER_SHEET)
     uid = _uid(LEDGER_SHEET, reg, "n0")
     led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
     rebuilt = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert tla.apply_ledger(rebuilt, led).unmatched == led                 # today: lost, a card
-    res = tla.apply_ledger(rebuilt, led, registry=reg)
-    assert not res.unmatched and 'NEGATIVE "No focal liver lesion."' in res.sheet
-    assert res.ledger[0]["key"] == 'Liver :: "There is no focal liver lesion"' and res.ledger[0]["uid"] == uid
-    assert res.rekeyed == [{"kind": "normal", "uid": uid, "old": NEG, "new": res.ledger[0]["key"]}]
-    assert res.carried == {uid: 'NEGATIVE "No focal liver lesion."'}
+    res = tla.apply_ledger(rebuilt, led, registry=reg)                    # exact matching only: lost, a card
+    assert res.unmatched == led and not res.rekeyed and res.carried == {}
 
 
 def test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line():
@@ -1564,8 +1445,8 @@ with
 # ── stable line IDs (spec 2026-10-15-stable-line-ids-design) ─────────────────────────────────────────────────────
 
 def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str, str]) -> Dict[str, str]:
-    """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact or
-    cosmetic identity; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
+    """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact
+    identity, a paragraph rename included; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
     the same section and paragraph only (spec gap 13)."""
     out = tlr.match(st, registry)
     if carried:
@@ -1795,8 +1676,10 @@ def test_uid_share_counts_line_bound_entries_by_uid_and_by_text():
     uid = _uid(LEDGER_SHEET, reg, "n0")
     led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid),
            *_led(("value", "LVEF", {"need": "every"}))]
-    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
-    assert tla.uid_share(led, cosmetic, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.uid_share(led, renamed, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert tla.uid_share(led, reworded, reg) == {"line_bound": 1, "by_uid": 0, "by_text": 0}   # exact matching only
     assert tla.uid_share(led, "# free", reg) == {"line_bound": 0, "by_uid": 0, "by_text": 0}
 ```
 
@@ -1812,7 +1695,7 @@ Append after `_by_uid` (before `RESTATED`):
 ```python
 def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
     """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
-    is none or more than one (never guessed). The backfill uses it as-is (never cosmetic)."""
+    is none or more than one (never guessed). The backfill uses it as-is."""
     kind = entry.get("kind")
     try:
         if kind == "normal":
@@ -1904,7 +1787,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```python
 # ── stable line IDs: the registry reaches apply_ledger only through vet_sheet(registry=...) ───────────────────────
 
-async def test_with_a_registry_the_ledger_resolves_uid_first_and_reports_carried():
+async def test_with_a_registry_the_ledger_resolves_uid_first_across_a_rename():
     from rapid_reports_ai import template_line_registry as tlr
     from rapid_reports_ai import template_sheet_grammar as tsg
     st = tsg.parse_sheet(LEDGER_SHEET).structure
@@ -1912,12 +1795,18 @@ async def test_with_a_registry_the_ledger_resolves_uid_first_and_reports_carried
     uid = tlr.uids_for(st, reg)["n0"]
     key = td.negative_key("Liver", "No focal liver lesion.")
     led = [{**_led(("normal", key, {"text": "No focal liver lesion."}))[0], "uid": uid}]
-    rebuilt = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    rebuilt = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
     out = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=led, registry=reg)
     assert 'NEGATIVE "No focal liver lesion."' in out.sheet and out.ledger_unmatched == []
-    assert out.carried == {uid: 'NEGATIVE "No focal liver lesion."'} and out.ledger[0]["uid"] == uid
+    assert out.carried == {} and out.ledger[0]["uid"] == uid
+    assert out.ledger[0]["key"] == td.negative_key("Hepatobiliary", "No focal liver lesion.")
     plain = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=led)
     assert plain.carried == {} and [e["key"] for e in plain.ledger_unmatched] == [key]
+    m_uid = tlr.uids_for(st, reg)["m0"]
+    m_led = [{**_led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}))[0],
+              "uid": m_uid}]
+    moved = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=m_led, registry=reg)
+    assert moved.carried == {m_uid: 'NORMAL [liver] "The liver is unremarkable."'}   # a rewrite is carried
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -2143,7 +2032,7 @@ Create `backend/tests/test_template_line_ids_routes.py`:
 ```python
 """Stable line IDs on the persisting endpoints (spec 2026-10-15-stable-line-ids-design, "Where rebind runs"): every
 path that stores a sheet runs template_sheet_save.persist_sheet; stateless paths never mint; server-written keys are
-never taken from a client; the normals confirm endpoint; the writer's uncertain lines on Create."""
+never taken from a client; the normals confirm endpoint."""
 import uuid
 
 import pytest
@@ -2283,7 +2172,7 @@ Expected: FAIL with `KeyError: 'sheet_rev'` / `KeyError: 'line_registry'` (the e
 At the end of `_carry_structure`, before `return new` (the key list lives in `template_sheet_save`, Task 10):
 
 ```python
-    # stable line IDs (spec 2026-10-15): the registry, the writer's uncertain lines, the normals confirms and the sheet
+    # stable line IDs (spec 2026-10-15): the registry, `uncertain` (slice 4), the normals confirms and the sheet
     # revision are server-written only: a client (or a restored version's) copy is dropped, the stored one kept
     for k in tsave.SERVER_WRITTEN:
         new.pop(k, None)
@@ -2445,7 +2334,7 @@ with (plan review L3; spec gap 14)
 ```python
     # converted_at: the banner names its owner's converted templates (integration spec §10, P2c). The planned config
     # owns the sheet, its registry and sheet_rev (the hash re-check above guarantees the sheet, and so the registry,
-    # did not move); the server-written keys the plan does not own (the writer's uncertain lines, the normals
+    # did not move); the server-written keys the plan does not own (`uncertain`, reserved for slice 4, the normals
     # confirms) are re-read here under the lock, so a confirm recorded since the plan is never overwritten.
     stored = t.template_config or {}
     kept = {k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored}
@@ -2556,7 +2445,8 @@ def test_state_is_valid_until_a_unit_changes_is_added_or_removed():
     reworded = LEDGER_SHEET.replace('"The liver is normal in size."\nNEGATIVE', '"The liver is unremarkable."\nNEGATIVE')
     reg2 = _reg(reworded, reg)
     g2 = _groups(reworded, reg2)[0]
-    assert g2.id == g.id and tnc.confirm_state(g2, rec, reg2) == "stale"      # text_hash changed
+    assert (g2.id, g2.units) == (g.id, g.units)                               # (a) the reworded normal kept its slot uid
+    assert tnc.confirm_state(g2, rec, reg2) == "stale"                        # ... and its changed text_hash makes it stale
     added = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."',
                                  'NEGATIVE "No focal liver lesion."\nNORMAL [gallbladder] "The gallbladder is normal."')
     reg3 = _reg(added, reg)
@@ -2570,12 +2460,14 @@ def test_state_is_valid_until_a_unit_changes_is_added_or_removed():
 def test_a_renamed_group_is_stale_even_when_every_sentence_carried():
     reg = _reg(LEDGER_SHEET)
     g, rec = _confirmed(LEDGER_SHEET, reg)
-    assert rec["group_name"] == "liver"
-    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
-    reg2 = _reg(renamed, reg)
-    g2 = _groups(renamed, reg2)[0]
-    assert (g2.id, g2.units) == (g.id, g.units)                       # the same paragraph and sentences (uids kept)
-    assert tnc.confirm_state(g2, rec, reg2) == "stale"
+    assert rec["group_name"] == "Liver"
+    for new_name in ("Hepatobiliary", "liver"):                          # (b) a rename, a case-only one included
+        renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", f"## Paragraph: {new_name} (FINDINGS)")
+        reg2 = _reg(renamed, reg)
+        g2 = _groups(renamed, reg2)[0]
+        assert (g2.id, g2.units) == (g.id, g.units)                   # every sentence identical, every uid kept
+        assert all(reg2["units"][u]["text_hash"] == reg["units"][u]["text_hash"] for u in g.units)
+        assert tnc.confirm_state(g2, rec, reg2) == "stale"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2600,8 +2492,10 @@ document order ("<uid>#1", "#2", …). Inserting or removing a normal shifts lat
 confirmed again (accepted). Attestable units: the group's NORMAL lines and its unconditional template NEGATIVE lines.
 
 State: valid (the group's current attestable units are exactly the record's, each with the same text_hash, and its
-paragraph or section still has the recorded name), stale (anything else, including a rename even when every sentence
-carried over: a confirm given in one context never silently covers another), missing (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
+paragraph or section still has the recorded name), stale (anything else: a unit added, removed or gone; ANY unit's
+text_hash changed, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so
+this check is the safety net); or a paragraph or section rename (group_name), even when every sentence carried over:
+a confirm given in one context never silently covers another), missing (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
 once the template is saved: there are no creation-time confirms."""
 from __future__ import annotations
 
@@ -2610,6 +2504,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from . import template_line_match as tlm
 from . import template_line_registry as tlr
 from .hybrid_stack.template import paragraph_regions
 
@@ -2624,7 +2519,7 @@ class Group:
     id: str
     label: str
     units: Tuple[str, ...]   # uids, in document order
-    name: str = ""           # the paragraph's or section's normalised name: a rename makes a confirm stale
+    name: str = ""           # the paragraph's or section's name (group_name): a rename makes a confirm stale
 
 
 def attestable(st) -> List[str]:
@@ -2649,8 +2544,9 @@ def _positions(sheet: str, st) -> Dict[str, int]:
 
 
 def group_name(name: str) -> str:
-    """A paragraph's or section's name as a confirm record stores it (case and spacing ignored)."""
-    return " ".join((name or "").lower().split())
+    """A paragraph's or section's name as a confirm record stores it: tlm.rep_key (lookalikes and spacing only; any
+    other change, case included, is a rename and makes the confirm stale, decision 7)."""
+    return tlm.rep_key(name)
 
 
 def groups(st, sheet: str, registry) -> List[Group]:
@@ -2879,366 +2775,6 @@ Expected: all pass (13).
 ```bash
 git add backend/src/rapid_reports_ai/main.py backend/tests/test_template_line_ids_routes.py
 git commit -m "feat(line-ids): normals confirm endpoint (server-computed units, 409 on a stale sheet)
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
-```
-
----
-
-### Task 15: The writer names a line for each uncertainty
-
-**Files:**
-- Modify: `backend/src/rapid_reports_ai/template_sheet_lab_prompts.py:457-519` (writer swaps, `WRITER_LINES_SPEC`, `_user_prompt`, `writer_user_prompt`)
-- Modify: `backend/src/rapid_reports_ai/template_writer.py`
-- Modify: `backend/tests/test_template_sheet_lab_prompts.py`, `backend/tests/test_template_writer.py`, `backend/tests/test_rules_step_lab.py` (spec gap 8)
-
-- [ ] **Step 1: Rewrite the three affected assertions (the failing tests)**
-
-In `tests/test_template_sheet_lab_prompts.py`, replace `test_the_writer_asks_no_questions_and_places_a_normals_measured_part` with:
-
-```python
-def test_the_writer_names_lines_for_its_questions_and_places_a_normals_measured_part():
-    u = P.writer_user_prompt([{"content": "X"}], "<scan>")
-    assert 'exactly two keys, "summary" and "questions"' in u and '"line"' in u and '"why"' in u
-    assert '"suggestions"' not in u and "clarifying question" not in u
-    assert P.SHEET_OPEN in u and P.SHEET_CLOSE in u and "### Example 1\n```\nX\n```" in u
-    assert "so it can be raised as a question" not in P.WRITER_SYSTEM_PROMPT
-    assert "## Open Questions" not in P.WRITER_SYSTEM_PROMPT and "Domain Rules, Open Questions" not in P.WRITER_SYSTEM_PROMPT
-    assert P.WRITER_UNCERTAIN in P.WRITER_SYSTEM_PROMPT
-    assert "the measured part goes in a FIXED field line" in P.WRITER_SYSTEM_PROMPT
-    assert P.WRITER_SYSTEM_PROMPT.count("A NORMAL or NEGATIVE line is the exception: it never holds a slot.") == 1
-    assert "## Open Questions" in P.ANALYSER_SYSTEM_PROMPT        # the older lab prompt stays byte for byte
-```
-
-In `tests/test_template_writer.py`, change `QUESTIONS = [{"question": "q?", "suggestions": ["a", "b"]}]` to
-
-```python
-QUESTIONS = [{"line": 'NORMAL [menisci] "The menisci are intact."', "why": "Only two reports state it."}]
-```
-
-and in `test_write_returns_a_vetted_sheet_summary_and_questions` change `assert '"questions"' not in calls["user"] and P.DECIDED_HEADING not in calls["user"]` to `assert '"line"' in calls["user"] and P.DECIDED_HEADING not in calls["user"]`. Append:
-
-```python
-async def test_write_keeps_only_well_formed_line_questions(calls, monkeypatch):
-    junk = [*QUESTIONS, {"question": "old shape?"}, {"line": "  ", "why": "x"}, "text", {"line": 3}]
-
-    async def call(system, user, settings):
-        return f"{P.SHEET_OPEN}\n{GOOD}\n{P.SHEET_CLOSE}\n" + json.dumps({"summary": SUMMARY, "questions": junk})
-    monkeypatch.setattr(W, "model_call", call)
-    out = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee")
-    assert out["questions"] == QUESTIONS
-```
-
-In `tests/test_rules_step_lab.py::test_writer_arms_use_the_next_prompts_and_the_decisions_only_when_decided`, change `assert '"questions"' not in user_a + user_c` to `assert '"line"' in user_a and '"line"' in user_c`, and add `**kw` to its `vet` stub signature: `async def vet(sheet, origin, previous="", ledger=None, **kw):`.
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `PYTEST tests/test_template_sheet_lab_prompts.py tests/test_template_writer.py tests/test_rules_step_lab.py`
-Expected: 4 FAIL (`AttributeError: … no attribute 'WRITER_UNCERTAIN'`; `'"line"' in …` false; the junk questions not filtered).
-
-- [ ] **Step 3: Implement**
-
-In `template_sheet_lab_prompts.py`, replace the comment and `WRITER_SYSTEM_PROMPT` definition:
-
-```python
-# The slot conflict (template rules roadmap §5): a normal sentence's measured part has a place of its own; and no
-# clarifying questions (the Rules step asks instead).
-WRITER_SYSTEM_PROMPT = _swap(ANALYSER_SYSTEM_PROMPT, (
-```
-
-with
-
-```python
-# The slot conflict (template rules roadmap §5): a normal sentence's measured part has a place of its own. No
-# clarifying questions and no Open Questions prose: the writer names the sheet line it is unsure of instead (stable
-# line IDs spec, "Writer"), and code resolves each to that line's uid at Create.
-WRITER_UNCERTAIN = ('name the unit line it concerns in "questions" (see the answer format): the line copied character '
-                    "for character, and why in one sentence. Write no Open Questions block.")
-
-WRITER_SYSTEM_PROMPT = _swap(ANALYSER_SYSTEM_PROMPT, (
-```
-
-and in the same `_swap` call replace the second pair
-
-```python
-    ("flag it under Open Questions as [NEEDS CLARIFICATION] so it can be raised as a question.",
-     "flag it under Open Questions as [NEEDS CLARIFICATION]."),
-))
-```
-
-with
-
-```python
-    ("flag it under Open Questions as [NEEDS CLARIFICATION] so it can be raised as a question.",
-     WRITER_UNCERTAIN),
-    (", Domain Rules, Open Questions.", ", Domain Rules."),
-    ("\n\n## Open Questions\nProse list of [NEEDS CLARIFICATION] items the examples cannot settle.", ""),
-))
-```
-
-Before `WRITER_SUMMARY_SPEC = _swap(SUMMARY_SPEC, ((` add:
-
-```python
-WRITER_LINES_SPEC = _swap(SUMMARY_SPEC, ((
-    '{ "question": "<clarifying question>", "suggestions": ["<answer option>", "<answer option>"] }',
-    '{ "line": "<a NORMAL, NEGATIVE, FIXED or RULE line of your sheet, copied character for character>", '
-    '"why": "<one sentence: what the examples leave uncertain about it>" }'),))
-
-_LINE_QUESTIONS_RULE = ('- questions: one object per unit line of your sheet that the examples leave uncertain (at most '
-                        '10; an empty list when there is none). "line" is that NORMAL, NEGATIVE, FIXED or RULE line '
-                        'exactly as it stands in the sheet; "why" is one sentence. Never prose, never a line that is '
-                        'not in the sheet.')
-```
-
-In `_user_prompt`, change the signature's `questions: bool` to `questions` and add the docstring `"""`questions`: True (the older analyser: clarifying questions), False (summary only) or "lines" (the writer: the unit lines it is unsure of, [{"line", "why"}])."""`. Replace
-
-```python
-    spec = SUMMARY_SPEC if questions else WRITER_SUMMARY_SPEC
-    ask = f"\n{_QUESTIONS_RULE}" if questions else ""
-```
-
-with
-
-```python
-    if questions == "lines":
-        spec, ask = WRITER_LINES_SPEC, f"\n{_LINE_QUESTIONS_RULE}"
-    else:
-        spec = SUMMARY_SPEC if questions else WRITER_SUMMARY_SPEC
-        ask = f"\n{_QUESTIONS_RULE}" if questions else ""
-```
-
-Replace `writer_user_prompt`'s body and docstring with:
-
-```python
-    """The writer's user prompt: the summary and the unit lines it is unsure of ([{"line", "why"}]), with the decided
-    lines after the radiologist's notes when there are decisions."""
-    return _user_prompt(examples, scan_type, protocol_notes, decisions=decisions, questions="lines")
-```
-
-In `template_writer.py`, add above `write_sheet`:
-
-```python
-MAX_QUESTIONS = 10
-
-
-def _line_questions(raw) -> List[dict]:
-    """The writer's uncertain lines, well-formed only: [{"line": str, "why": str}] (stable line IDs spec). They travel
-    to the client with the sheet and come back on Create, where code resolves each line to its uid."""
-    out = []
-    for q in raw if isinstance(raw, list) else []:
-        if isinstance(q, dict) and isinstance(q.get("line"), str) and q["line"].strip():
-            out.append({"line": q["line"], "why": str(q.get("why") or "")})
-    return out[:MAX_QUESTIONS]
-```
-
-and in `write_sheet` replace
-
-```python
-    questions = ans.get("questions")
-    return {"skill_sheet": v.sheet, "summary": summary if isinstance(summary, dict) else {},
-            "questions": questions if isinstance(questions, list) else [], "dropped": v.dropped,
-```
-
-with
-
-```python
-    return {"skill_sheet": v.sheet, "summary": summary if isinstance(summary, dict) else {},
-            "questions": _line_questions(ans.get("questions")), "dropped": v.dropped,
-```
-
-Update `write_sheet`'s docstring: `"questions"` is `[{"line", "why"}]`, the unit lines the writer is unsure of.
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `PYTEST tests/test_template_sheet_lab_prompts.py tests/test_template_writer.py tests/test_rules_step_lab.py`
-Expected: all pass, including `test_the_older_analyser_prompts_stay_for_the_sheet_lab_script` and `test_prompts_are_case_agnostic` (unchanged).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add backend/src/rapid_reports_ai/template_sheet_lab_prompts.py backend/src/rapid_reports_ai/template_writer.py backend/tests/test_template_sheet_lab_prompts.py backend/tests/test_template_writer.py backend/tests/test_rules_step_lab.py
-git commit -m "feat(line-ids): the writer names the sheet line for each uncertainty
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
-```
-
----
-
-### Task 16: Uncertain lines resolved at Create
-
-**Files:**
-- Modify: `backend/src/rapid_reports_ai/template_line_registry.py` (append `resolve_uncertain`)
-- Modify: `backend/src/rapid_reports_ai/template_sheet_save.py` (`persist_sheet` gains `questions`)
-- Modify: `backend/src/rapid_reports_ai/main.py` (`TemplateCreate.questions`, `SkillSheetSaveRequest.questions`, `_vet_config(questions=)`, both create endpoints)
-- Modify: `backend/tests/test_template_sheet_save.py`, `backend/tests/test_template_line_ids_routes.py` (append)
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `tests/test_template_sheet_save.py`:
-
-```python
-async def test_writer_questions_resolve_to_uncertain_on_create(no_jev):
-    qs = [{"line": 'NEGATIVE "No focal liver lesion."', "why": "Seen in two of five reports."},
-          {"line": 'FIXED "Not in the sheet."', "why": "x"}, {"line": "", "why": "x"}, "junk"]
-    p = await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", questions=qs, now="T")
-    reg = p.config["line_registry"]
-    uid = _uids(LEDGER_SHEET, reg)["n0"]
-    assert p.config["uncertain"] == [{"uid": uid, "text_hash": reg["units"][uid]["text_hash"],
-                                      "why": "Seen in two of five reports.", "source": "writer", "at": "T"}]
-    assert "uncertain" not in (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
-```
-
-Append to `tests/test_template_line_ids_routes.py`:
-
-```python
-# ── the writer's uncertain lines, resolved at Create ─────────────────────────────────────────────────────────────
-
-QUESTION = {"line": 'NORMAL [menisci] "The menisci are intact."', "why": "One report."}
-
-
-def test_create_resolves_the_writers_uncertain_lines(client, auth_headers):
-    r = client.post("/api/templates", headers=auth_headers, json={
-        "name": "Knee", "questions": [QUESTION, {"line": 'NORMAL [x] "Not there."', "why": "y"}],
-        "template_config": {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD}}).json()
-    cfg = r["template"]["template_config"]
-    assert [(u["uid"], u["why"]) for u in cfg["uncertain"]] == [(_uids(GOOD, cfg["line_registry"])["m0"], "One report.")]
-
-
-def test_skill_sheet_save_resolves_the_writers_uncertain_lines(client, auth_headers, db_session):
-    from rapid_reports_ai.database.models import Template
-    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
-        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "questions": [QUESTION]}).json()
-    cfg = db_session.get(Template, uuid.UUID(r["template_id"])).template_config
-    assert len(cfg["uncertain"]) == 1 and cfg["uncertain"][0]["source"] == "writer"
-
-
-def test_a_put_never_takes_uncertain_from_the_client(client, auth_headers):
-    t = client.post("/api/templates", headers=auth_headers, json={
-        "name": "Knee", "questions": [QUESTION],
-        "template_config": {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD}}).json()["template"]
-    stored = t["template_config"]["uncertain"]
-    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={"template_config": {
-        **t["template_config"], "skill_sheet": EDITED, "uncertain": []}}).json()
-    assert r["template"]["template_config"]["uncertain"] == stored
-
-
-def test_more_than_twenty_questions_are_cut_not_refused(client, auth_headers):
-    qs = [QUESTION] + [{"line": f'FIXED "Line {k}."', "why": "w"} for k in range(30)]
-    r = client.post("/api/templates", headers=auth_headers, json={
-        "name": "Knee", "questions": qs,
-        "template_config": {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD}}).json()
-    assert r["success"] and len(r["template"]["template_config"]["uncertain"]) == 1
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run: `PYTEST tests/test_template_sheet_save.py tests/test_template_line_ids_routes.py -k "uncertain or questions"`
-Expected: FAIL with `TypeError: persist_sheet() got an unexpected keyword argument 'questions'`; the routes return no `uncertain`.
-
-- [ ] **Step 3: Implement**
-
-3a. Append to `template_line_registry.py` (`re` is already imported since Task 2):
-
-```python
-MAX_UNCERTAIN = 20
-_LINE_PREFIX = re.compile(r"^\s*(?:-\s+)?")
-
-
-def resolve_uncertain(questions, st, registry, *, now: Optional[str] = None) -> List[dict]:
-    """template_config["uncertain"] from the writer's questions [{"line", "why"}]: each `line` (a sheet line copied
-    verbatim) resolved by norm_key, bullet and indent ignored, to exactly one line-bound unit of the parse, then to its
-    uid in `registry`. No match, several matches or no uid: dropped and logged. One item per uid. text_hash lets a
-    later slice discard an item whose slot kept its uid but whose text changed."""
-    now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
-    reg = load(registry)
-    uids = uids_for(st, reg)
-    lines = [(u, norm_key(_LINE_PREFIX.sub("", u.raw, count=1))) for u in units(st) if u.kind in LINE_KINDS]
-    out: List[dict] = []
-    dropped = 0
-    for q in (questions if isinstance(questions, list) else [])[:MAX_UNCERTAIN]:
-        line = q.get("line") if isinstance(q, dict) else None
-        if not isinstance(line, str) or not line.strip():
-            dropped += 1
-            continue
-        key = norm_key(_LINE_PREFIX.sub("", line, count=1))
-        hits = [u for u, k in lines if k == key]
-        uid = uids.get(hits[0].ref) if len(hits) == 1 else None
-        if uid is None:
-            dropped += 1
-            continue
-        if any(x["uid"] == uid for x in out):
-            continue
-        why = " ".join(str(q.get("why") or "").split())[:300]
-        out.append({"uid": uid, "text_hash": reg["units"][uid]["text_hash"], "why": why, "source": "writer",
-                    "at": now})
-    if dropped:
-        logger.info("[line-registry] writer questions dropped=%d resolved=%d", dropped, len(out))
-    return out
-```
-
-3b. `persist_sheet`: add `questions: Optional[List[dict]] = None` to the keyword-only parameters (after `ledger`). In the docstring add `` `questions`: the writer's [{"line", "why"}] (on Create only), resolved to `uncertain`.`` Inside the `if tsg.is_grammar_sheet(out.sheet):` block, after the stamp:
-
-```python
-        if questions:
-            cfg["uncertain"] = tlr.resolve_uncertain(questions, st, registry, now=now)
-```
-
-3c. `main.py`: before `class TemplateCreate` add
-
-```python
-WRITER_QUESTIONS_MAX = 20   # the writer's uncertain lines sent back on Create (template_line_registry.MAX_UNCERTAIN)
-
-
-def _cap_questions(v):
-    return list(v or [])[:WRITER_QUESTIONS_MAX]
-```
-
-Add to `TemplateCreate`, and the same field and validator to `SkillSheetSaveRequest` (after `rules_step` and its validator). More than 20 are cut, never refused with a 422 (plan review L5):
-
-```python
-    questions: List[Dict[str, Any]] = []   # the writer's [{line, why}]; more than WRITER_QUESTIONS_MAX are cut, never refused
-
-    @field_validator("questions")
-    @classmethod
-    def _questions_cap(cls, v):
-        return _cap_questions(v)
-``` Change `_vet_config`'s signature to
-
-```python
-async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str, creating: bool = False,
-                      questions: Optional[List[dict]] = None) -> Tuple[Optional[dict], str, str, List[dict]]:
-```
-
-add `` `questions`: the writer's uncertain lines, sent back on Create only.`` to its docstring, and pass them on: `saved = await tsave.persist_sheet(new_cfg, old, origin, ledger=ledger or None, questions=questions)`.
-
-In `create_template_endpoint`:
-
-```python
-        normalized_config, refusal, _, _ = await _vet_config(normalized_config, {}, "analyser", creating=True,
-                                                              questions=template_data.questions)
-```
-
-In `skill_sheet_save_endpoint`:
-
-```python
-        template_config, refusal, notice, _ = await _vet_config(new_config, {}, "analyser", creating=True,
-                                                                questions=request.questions)
-```
-
-(`_carry_structure` already drops a client `uncertain`, Task 11. PUT and restore never pass `questions`.)
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `PYTEST tests/test_template_sheet_save.py tests/test_template_line_ids_routes.py`, then the regression set.
-Expected: all pass.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add backend/src/rapid_reports_ai/template_line_registry.py backend/src/rapid_reports_ai/template_sheet_save.py backend/src/rapid_reports_ai/main.py backend/tests/test_template_sheet_save.py backend/tests/test_template_line_ids_routes.py
-git commit -m "feat(line-ids): resolve the writer's uncertain lines to uids at Create
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -3640,10 +3176,10 @@ Create `backend/tests/template_line_fixtures.py`:
 
 ```python
 """Two writer outputs for the same synthetic example reports (stable line IDs spec, rebuild fixture). REBUILD_B is a
-rebuild of REBUILD_A with planted changes: paragraphs reordered, one renamed (same COVERS), cosmetic rewordings, a
-reworded NORMAL, real wording changes, adversarial near-misses (pleural/pericardial, left/right), a dropped and an
-added line. SAME lists every (A line, B line) pair that is the same slot; any other uid carried from A is a wrong
-match."""
+rebuild of REBUILD_A with planted changes: paragraphs reordered, one renamed (same COVERS), small rewordings (a dropped
+full stop, a filler; new slots under exact matching, decision 7), a reworded NORMAL, real wording changes, adversarial
+near-misses (pleural/pericardial, left/right), a dropped and an added line. SAME lists every (A line, B line) pair that
+is the same slot; any other uid carried from A is a wrong match."""
 
 REBUILD_A = """# Skill Sheet: Rebuild fixture
 
@@ -3713,11 +3249,10 @@ Opening: "Normal study."
 """
 
 # (A line, B line) of every line-bound unit that is the same slot in both (paragraphs by name). The reworded liver
-# NORMAL in the renamed paragraph is NOT the same slot (spec decision 5: across a rename a normal needs its own text).
+# NORMAL in the renamed paragraph is NOT the same slot (spec decision 5: across a rename a normal needs its own text),
+# nor are the FIXED line that lost its full stop and the NEGATIVE that gained "There is" (decision 7: exact matching).
 SAME = [
-    ('FIXED "Axial images were acquired after contrast."', 'FIXED "Axial images were acquired after contrast"'),
     ('NORMAL [gallbladder] "The gallbladder is unremarkable."', 'NORMAL [gallbladder] "The gallbladder is unremarkable."'),
-    ('NEGATIVE "No focal liver lesion."', 'NEGATIVE "There is no focal liver lesion"'),
     ('NORMAL [lung bases] "The lung bases are clear."', 'NORMAL [lung bases] "The lung bases are clear."'),
     ('NORMAL [kidneys] "The kidneys are normal."', 'NORMAL [kidneys] "The kidneys are normal."'),
     ('NEGATIVE "No hydronephrosis."', 'NEGATIVE "No hydronephrosis."'),
@@ -3793,7 +3328,7 @@ def test_the_rebuild_resolution_share_is_reported():
 - [ ] **Step 2: Run the tests**
 
 Run: `PYTEST tests/test_template_line_rebuild.py -s`
-Expected: `2 passed`, printing `rebuild: exact=12 cosmetic=2 carried=0 revived=0 new=6 gone=5 ambiguous=0 kept=14 wrong=0 missed=[]` and `rebuild resolution: {'line_bound': 5, 'by_uid': 2, 'by_text': 1}`. (These were verified against a scratch prototype while writing this plan. If they differ, investigate before going on: `wrong` must stay 0.)
+Expected: `2 passed`, printing `rebuild: exact=12 carried=0 revived=0 new=8 gone=7 ambiguous=0 kept=12 wrong=0 missed=[]` and `rebuild resolution: {'line_bound': 5, 'by_uid': 0, 'by_text': 1}`. (Re-verified after decision 7 against the fixture in a scratch copy: the two entries uid resolution carried before were the full-stop and "There is" rewordings, now new slots by design. If they differ, investigate before going on: `wrong` must stay 0.)
 
 - [ ] **Step 3: Commit**
 
@@ -3804,78 +3339,6 @@ git commit -m "test(line-ids): rebuild fixture — zero wrong matches; uid vs te
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
-
----
-
-### Task 20: Writer check: report only (needs a live model run and Hassan's review; not a gate)
-
-The spec asks for this check before merge: "run the writer on the existing synthetic template sets before and after (reuse outputs, at most 2 runs) and report sheet quality, question count and resolve rate to Hassan." The code part below is unit-tested. The run part makes paid model calls on data that lives in Hassan's private folder.
-
-**Files:**
-- Modify: `backend/src/rapid_reports_ai/scripts/rules_step_lab.py` (`_write_one`, `write`, `FIELDS`, new `question_stats`)
-- Modify: `backend/tests/test_rules_step_lab.py` (append)
-
-- [ ] **Step 1: Write the failing test**
-
-```python
-def test_question_stats_counts_named_and_resolved_lines():
-    from tests.template_sheet_fixtures import LEDGER_SHEET
-    qs = [{"line": 'NEGATIVE "No focal liver lesion."', "why": "w"}, {"line": 'FIXED "Absent."', "why": "w"}]
-    assert L.question_stats(LEDGER_SHEET, qs) == {"questions": 2, "questions_resolved": 1}
-    assert L.question_stats("# free", qs) == {"questions": 2, "questions_resolved": 0}
-    assert L.question_stats(LEDGER_SHEET, None) == {"questions": 0, "questions_resolved": 0}
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `PYTEST tests/test_rules_step_lab.py -k question_stats`
-Expected: FAIL with `AttributeError: module … has no attribute 'question_stats'`.
-
-- [ ] **Step 3: Implement**
-
-In `rules_step_lab.py`, add before `_write_one`:
-
-```python
-def question_stats(sheet: str, questions) -> dict:
-    """The writer's uncertain lines on one written sheet (stable line IDs spec, "Writer" check): how many it named and
-    how many resolve to exactly one unit line with a uid (template_line_registry.resolve_uncertain against a freshly
-    minted registry, as Create does)."""
-    from rapid_reports_ai import template_line_registry as tlr
-    from rapid_reports_ai import template_sheet_grammar as tsg
-    qs = questions if isinstance(questions, list) else []
-    if not tsg.is_grammar_sheet(sheet or ""):
-        return {"questions": len(qs), "questions_resolved": 0}
-    st = tsg.parse_sheet(sheet, mode="template").structure
-    reg, _ = tlr.rebind(None, st, now="")
-    return {"questions": len(qs), "questions_resolved": len(tlr.resolve_uncertain(qs, st, reg, now=""))}
-```
-
-In `_write_one`'s return dict add `"questions": ans.get("questions") if isinstance(ans.get("questions"), list) else []`. In `write`, change `res["score"] = {**score_sheet(...), "arm": arm, ...}` so that it also merges `**question_stats(res["sheet"], res["questions"])` (insert it right after the `score_sheet(...)` spread). In `FIELDS["write"]`, append `"questions", "questions_resolved"`. Update the comment above `ARMS` from `(…slot wording, no questions)` to `(…slot wording, the unit lines it is unsure of)`.
-
-- [ ] **Step 4: Run the tests to verify they pass, then commit**
-
-Run: `PYTEST tests/test_rules_step_lab.py`
-Expected: all pass.
-
-```bash
-git add backend/src/rapid_reports_ai/scripts/rules_step_lab.py backend/tests/test_rules_step_lab.py
-git commit -m "feat(line-ids): rules-step lab reports writer question count and resolve rate
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
-```
-
-- [ ] **Step 5 (live run; needs Hassan; report only, not a gate)**
-
-Message Hassan first and wait. The synthetic sets live in his private folder, which the executing agent must not open or read. He runs the lab himself, or gives the root path and approves one run. **Before** is the existing `runs/write/run<k>` outputs (reused, not re-run). **After** is one new run with this branch's prompts:
-
-```bash
-cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/line-ids/backend
-PYTHONPATH=src ../../hybrid-stack/backend/.venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab write --root <ROOT given by Hassan> --run <next free run number> --arms A,C
-PYTHONPATH=src ../../hybrid-stack/backend/.venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab report --root <ROOT> --stage write
-```
-
-At most 2 runs in total. A second run happens only if the first is broken (for example, every sheet refused). Report to Hassan, before against after per arm: usable, refused, drift, duplicate/multi-structure normals and gold_normals_hit (sheet quality), plus `questions` and `questions_resolved` (after only). Hassan decides. Nothing is merged on these numbers alone.
 
 ---
 
@@ -3893,7 +3356,19 @@ Expected: clean. No `backfill_report.json`, and no report or production data any
 
 - [ ] **Step 3: Hand over**
 
-Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), the rebuild metric line from Task 19, and that Task 18 Step 6 (backfill apply) and Task 20 Step 5 (live writer run) are waiting for his go-ahead. No push, no merge.
+Report to Hassan: the commits, the spec gaps above (1 and 2 need his eye), the rebuild metric line from Task 19, and that Task 18 Step 6 (backfill apply) is waiting for his go-ahead. No push, no merge.
+
+---
+
+## Deferred to slice 4
+
+Moved out of this plan on 2026-10-15 (spec decision 8: writer uncertainty belongs with uncertainty scoring in slice 4). Their full text, tests and code are in this file at commit `f14b85a2` (`git show f14b85a2:docs/superpowers/plans/2026-10-15-stable-line-ids.md`); task numbers are not reused.
+
+- **Task 15: the writer names a line for each uncertainty.** Re-enable `questions` as `{line, why}` in the writer's JSON, drop the "## Open Questions" prose, keep only well-formed items (`template_sheet_lab_prompts.py`, `template_writer.py`; three writer-prompt test assertions move to the new format).
+- **Task 16: uncertain lines resolved at Create.** `tlr.resolve_uncertain` (each `line` to exactly one unit, then its uid), `persist_sheet(questions=)`, `questions` on `TemplateCreate` / `SkillSheetSaveRequest`, stored as `template_config["uncertain"]`. In slice 4 the resolution must follow decision 7 (exact after `rep_key`, not `norm_key`).
+- **Task 20: writer check** (question count and resolve rate before and after, live model run). It measures Tasks 15 and 16, so it moves with them.
+
+This slice keeps only `uncertain` as a reserved server-written key in `_carry_structure` and the upgrade script (Tasks 11 and 12), so slice 4 needs no migration.
 
 ---
 
@@ -3905,10 +3380,10 @@ Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), th
 | --- | --- |
 | Registry, uid format, `text_hash`, status live/gone, `minted` once | 2, 3 |
 | Identity per kind (section, paragraph incl. rename, normal, negative, fixed, rule) | 2, 3 |
-| No similarity threshold; lookalikes unified first; meaningful tokens (decimals incl. `.5`, operators, `x` between numbers, in-sentence punctuation, hyphenated words) never removed; only final full stop and quotes dropped; hard gates incl. hedging and `un-`/`non-`; protected words in fillers; versioned constants; collision and constant tests; new adversarial and typography pairs | 1 |
-| A normal follows a renamed paragraph only with exact or cosmetic text (decision 5) | 3, 6 |
-| A renamed group's confirm is stale; record stores `group_name` (decision 5) | 13 |
-| Rebind: carried first, exact, cosmetic, revival on exact only, 1:1, ambiguous, deterministic, report | 3 |
+| No similarity threshold; exact matching after lookalikes and whitespace only (decision 7); adversarial pairs kept as a tripwire; lookalike collision test | 1, 3 |
+| A normal follows a renamed paragraph only with exactly equal text (decision 5) | 3, 6 |
+| A renamed group's confirm is stale (`group_name`); any unit's `text_hash` change (a normal reworded in place included) makes it stale (decision 5) | 13 |
+| Rebind: carried first, exact (paragraph COVERS rename reported as exact), revival on exact only, 1:1, ambiguous, deterministic, report | 3 |
 | `uids_for` pure, read time, never stored on `sheet_structure` | 4 |
 | Persisting vs stateless paths; no minting on stateless; unknown client uid treated as none | 6 (`_by_uid` ignores unknown), 8 (`stamp_uids` drops it), 11 (routes) |
 | `persist_sheet` owns the persisted save; `_vet_config` and the upgrade script call it | 10, 11, 12 |
@@ -3926,8 +3401,7 @@ Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), th
 | Confirm record: endpoint, `{group, sheet_rev, sheet_hash}` only, 409, server-side units, session user, 404 | 14 |
 | Groups (findings paragraphs, section-level, other sections, chunks of 8), attestable predicate, valid/stale/missing | 13 |
 | `sheet_rev` from stored value, pair with `sheet_hash`, survives cleanup | 10, 17 |
-| Writer `{line, why}`, Open Questions prose removed, resolved at Create, `uncertain` with `text_hash` | 15, 16 |
-| Writer check (report only) | 20 |
+| Writer uncertainty and its check | deferred to slice 4 (decision 8) |
 | Backfill dry-run/apply, reasons, not line-bound, scratch report, lock, re-check hash, no version | 18 |
 | Metrics per save and per rebuild | 10 (`uid_share` on rebuild), 19 |
 | Rebuild fixture: wrong matches 0, resolved share | 19 |
@@ -3936,7 +3410,7 @@ Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), th
 
 **Placeholder scan:** no "TBD"/"TODO"/"similar to". Two placeholders are deliberate: `<ROOT given by Hassan>` (private data path) and `<session>` (scratchpad path at run time).
 
-**Type consistency:** `tlr.rebind(registry, st, carried, *, now)` returns `(reg, report)`; `tlr.match`/`uids_for(st, registry)` return `{ref: uid}`; `tla.apply_ledger(sheet, ledger, before, registry)` returns `LedgerResult` with `.ledger/.carried/.satisfied/.rekeyed`; `tla.stamp_uids(ledger, st, registry)`; `tla.locate(entry, st)`; `tla.uid_share(ledger, sheet, registry)`; `S.vet_sheet(..., registry=)` returns `VetOutcome.carried`; `S.persist_sheet(config, stored_config, origin, *, ledger, questions, now)` returns `Persisted(outcome, config, report)` (`questions` added in Task 16); `S.SERVER_WRITTEN`, `S.stored_rev`; `tnc.groups(st, sheet, registry)`, `tnc.record(group, registry, *, sheet_rev, sheet_hash, user_id, now)`, `tnc.confirm_state(group, rec, registry)`. All of these were checked against a scratch prototype run on a copy of this branch's code and tests.
+**Type consistency:** `tlr.rebind(registry, st, carried, *, now)` returns `(reg, report)`; `tlr.match`/`uids_for(st, registry)` return `{ref: uid}`; `tla.apply_ledger(sheet, ledger, before, registry)` returns `LedgerResult` with `.ledger/.carried/.satisfied/.rekeyed`; `tla.stamp_uids(ledger, st, registry)`; `tla.locate(entry, st)`; `tla.uid_share(ledger, sheet, registry)`; `S.vet_sheet(..., registry=)` returns `VetOutcome.carried`; `S.persist_sheet(config, stored_config, origin, *, ledger, now)` returns `Persisted(outcome, config, report)` (`questions` comes with slice 4); `S.SERVER_WRITTEN`, `S.stored_rev`; `tnc.groups(st, sheet, registry)`, `tnc.record(group, registry, *, sheet_rev, sheet_hash, user_id, now)`, `tnc.confirm_state(group, rec, registry)`. All of these were checked against a scratch prototype run on a copy of this branch's code and tests.
 
 **Risky tasks**
 - **Task 6** (apply_ledger threading) touches the most code paths. The 4- or 5-value op return and the `is` identity in `_by_uid` are the subtle parts. The existing 49 ledger tests are the guard.
