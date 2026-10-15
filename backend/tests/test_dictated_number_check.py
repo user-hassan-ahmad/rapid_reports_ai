@@ -211,3 +211,30 @@ def test_an_exponent_reads_as_one_value(text):
 def test_exponent_notations_match_each_other():
     assert missing("ADC 0.8 × 10⁻³ mm²/s.", "ADC 0.8 x 10-3 mm2/s.") == []
     assert missing("ADC 0.9 × 10⁻³ mm²/s.", "ADC 0.8 x 10-3 mm2/s.") == ["0.8 x 10-3 mm2/s"]
+
+
+# --- Q5 (Hassan 2026-10-15): one report value may cover several dictated ones when the report says so ---
+
+@pytest.mark.parametrize("report, dictated", [
+    ("Both kidneys 11 cm.", "Right kidney 11 cm, left kidney 11 cm."),
+    ("Kidneys 11 cm each.", "Kidneys 11 cm and 11 cm."),
+    ("Two 4 mm nodules.", "4 mm and 4 mm nodules."),
+    ("2 4 mm nodules.", "4 mm and 4 mm nodules."),
+    ("Bilateral 4 mm nodules.", "4 mm and 4 mm nodules."),
+    ("Ovaries bilaterally 3 cm.", "Right ovary 3 cm, left ovary 3 cm."),
+    ("All three nodes 8 mm.", "Nodes 8 mm, 8 mm and 8 mm."),
+])
+def test_a_report_value_said_to_cover_several_satisfies_them_all(report, dictated):
+    assert missing(report, dictated) == []
+
+
+def test_a_plain_repeat_still_needs_two_occurrences():
+    assert missing("Kidney 11 cm.", "Right kidney 11 cm, left kidney 11 cm.") == ["11 cm"]
+
+
+def test_a_dimension_chain_is_not_a_count():
+    assert missing("Lesion 3 x 5 mm.", "Lesions 5 mm and 5 mm.") == ["5 mm"]
+
+
+def test_the_cover_cue_must_be_in_the_sentence_holding_the_value():
+    assert missing("Both kidneys normal. Kidney 11 cm.", "Right kidney 11 cm, left kidney 11 cm.") == ["11 cm"]

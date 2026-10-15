@@ -8,7 +8,8 @@ Number words are not dictated numbers. Identifiers (T2, L4/5, b1000), dates, clo
 as in `template_number_check`. A dictated value is present when the report holds the same value (float equality:
 0.14 = .14, 1.5 != 15) with the same normalised unit (a number word followed by that unit counts: "three minutes" holds 3 min); a bare
 report number never satisfies a dictated unit ("segment 4" does not hold "4 minutes"). Matching is one-to-one: each
-report occurrence satisfies one dictated (value, unit), so "4 mm and 4 mm" needs two. Each source is matched afresh,
+report occurrence satisfies one dictated (value, unit), so "4 mm and 4 mm" needs two, unless its report sentence
+says it covers several ("both", "each", "bilateral(ly)", "all", or a count: "two 4 mm nodules"). Each source is matched afresh,
 so a value repeated across sources (dictation and a tapped row) is one fact. A dictated value without a unit
 matches any report value or, up to twenty, its number word, and uses up nothing. No unit conversion: 5 mm reported
 as 0.5 cm is a miss. Never raises.
@@ -98,6 +99,8 @@ _YEAR = re.compile(r"(?i)\b(?:since|in|from)\s+((?:19|20)\d{2})\b(?![.,]\d)")
 _WORD_NUMS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
               "seventeen eighteen nineteen twenty").split()
 _WORD_RX = re.compile(rf"(?i)\b({'|'.join(_WORD_NUMS)})\b")
+_COVER_CUE = re.compile(r"(?i)\b(?:both|each|bilateral(?:ly)?|all)\b")
+_COUNT_BEFORE = re.compile(rf"(?i)(?:\b(?:{'|'.join(_WORD_NUMS[2:])})|(?<![\w.])\d+)\s+\Z")   # "two 4 mm nodules"
 _ORDINALS = ("first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth "
              "fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
 _ORDINAL_RX = re.compile(rf"(?i)\b({'|'.join(_ORDINALS)})\b")
@@ -222,6 +225,10 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
                 bare.add(float(_ROMAN[m.group(1)]))
         words = set()   # number words: (value, unit) when a unit follows, else (value, None)
         held: Counter = Counter((n.value, n.unit) for n in found if n.unit)   # report occurrences per (value, unit)
+        # Q5: a report value said to cover several ("both kidneys 11 cm", "11 cm each", "two 4 mm nodules") satisfies
+        # every dictated occurrence of that (value, unit). A dimension chain ("3 x 5 mm") is not a count.
+        covers = {(n.value, n.unit) for n in found if n.unit and (
+            _COVER_CUE.search(_sentence(report, n.start)) or _COUNT_BEFORE.search(report, max(0, n.start - 12), n.start))}
         for m in _WORD_RX.finditer(report or ""):
             v = float(_WORD_NUMS.index(m.group(1).lower()))
             u = _unit_at(report, m.end())[0]
@@ -241,7 +248,7 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
                     ok = n.value in bare
                 else:
                     key = (n.value, n.unit)
-                    ok = used[key] < held[key]
+                    ok = key in covers or used[key] < held[key]
                     used[key] += 1
                 c = chains.setdefault((n.start, n.text), [])
                 if not ok and n.value not in c:

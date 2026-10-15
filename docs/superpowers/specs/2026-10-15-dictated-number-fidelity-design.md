@@ -51,6 +51,13 @@ source is matched afresh against the whole report, so the same value restated ac
 row, or the finding plus the impression line) is one fact, not two. Unitless dictated values keep presence matching
 and use up nothing.
 
+**Cover exception (Hassan Q5, 2026-10-15).** One report occurrence satisfies every dictated occurrence of its (value,
+unit) when the report sentence holding it says it covers several: "both", "each", "bilateral(ly)", "all", or a count
+right before the value ("two 4 mm nodules", "2 4 mm nodules"). "Both kidneys 11 cm" holds "right kidney 11 cm, left
+kidney 11 cm". A dimension chain is not a count: "3 x 5 mm" holds one "5 mm". The cue must be in the same report
+sentence as the value; elsewhere one-to-one stands, so a plain repeat still needs two occurrences. Lab re-score with
+the exception: unchanged (4/4, 4/5).
+
 Unit spellings are normalised (millimetre/mm, ml/mL/cc, mGy·cm / mGycm / mGy.cm / mGy cm, bpm / beats per minute,
 mmHg, mcg/kg/min / micrograms/kg/min, ml/m2 / ml/m², g/m2, ms, HU, %, s, mg, ...). **No unit conversion**: dictated
 "5 mm" reported as "0.5 cm" is a miss. Why conservative: a converted or re-unitised value is a change the radiologist
