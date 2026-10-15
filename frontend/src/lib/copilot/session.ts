@@ -205,7 +205,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 				out[k] = rec;
 				continue;
 			}
-			const stale = staleOf(rec, v?.result?.preview?.draft ?? null, there);
+			const stale = staleOf(rec, v?.result?.preview ?? null, there);
 			const { stale: _old, ...cur } = rec;
 			out[k] = stale ? { ...cur, stale } : cur;
 			applied[k] = out[k];
@@ -578,14 +578,14 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	function tick(ref: string, input: string, value: string) {
 		if (!live()) return;
 		const t = targetOf(ref);
-		if (!t?.get()?.result) return;
+		if (!t?.get()?.result || t.get()?.applying) return;
 		t.set({ ticks: { ...(t.get()?.ticks ?? {}), [input]: value } });
 		publish();
 	}
 	function pickOutcome(ref: string, outcome: string | null) {
 		if (!live()) return;
 		const t = targetOf(ref);
-		if (!t?.get()?.result) return;
+		if (!t?.get()?.result || t.get()?.applying) return;
 		t.set({ pick: outcome, applyError: null });
 		publish();
 	}
@@ -607,6 +607,9 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		try {
 			const res = await api.calculate(body);
 			if (!live()) return;
+			// the card may be gone (a new case, a re-match): write nothing, or t.set would recreate a ghost view
+			const t = targetOf(ref);
+			if (!t?.get()) return;
 			if (t.get()?.result?.preview !== p || t.get()?.loading) return void t.set({ applying: false, applyError: CHANGED });
 			if (res.error || !res.calculation) return void t.set({ applying: false, applyError: `Couldn't apply: ${res.error ?? 'no result'}` });
 			const rec = buildApplied({ key: ref, card: t.card, source: v.result?.entry?.name || t.card.name, preview: p, calc: res.calculation, pick, ticks: v.ticks ?? {} });
@@ -616,6 +619,9 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			t.set({ applying: false, applyError: null });
 			log.ms[`${t.card.key}:apply`] = res.ms;
 		} catch (e) {
+			if (!live()) return;
+			const t = targetOf(ref);
+			if (!t?.get()) return;
 			t.set({ applying: false, applyError: failed(e) ? "Couldn't apply: the calculation failed" : null });
 			if (failed(e)) fail(`${t.card.key}:apply`);
 		} finally {

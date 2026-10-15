@@ -1110,4 +1110,26 @@ describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)',
 		await flush();
 		expect(state().applied?.[ref]?.outcome).toBe('ct3');
 	});
+
+	it('an outcome changed by answering a row that was asked at Apply makes the line stale and blocks the gate again', async () => {
+		const asked = [...rows(), draft({ input: 'g', label: 'G', state: 'asked' })];
+		await openedBts(ready({ draft: asked }));
+		await applied();
+		expect(state().applied?.[ref].stale).toBeUndefined();
+		s.edit(ref, 'g', 'yes');
+		api.calls.preview[0].resolve(ready({ draft: [...rows(), draft({ input: 'g', label: 'G', state: 'answered', value: 'yes' })], draft_outcome: outcome({ classification: 'BTS 2015 · Other', recommendation: 'PET-CT.', headline: 'Other', action: 'PET-CT', category: 'workup' }), trace: { outcome: 'pet' } }));
+		await flush();
+		expect(state().applied?.[ref].stale).toBe('values');
+		expect(unresolved(state(), {}, {}).map((u) => u.key)).toContain(ref);
+	});
+
+	it('a pick sent during an in-flight Apply does not change the view', async () => {
+		await openedBts();
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		s.pick(ref, 'pet');
+		expect(state().views[ref].pick).toBeUndefined();
+		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+	});
 });

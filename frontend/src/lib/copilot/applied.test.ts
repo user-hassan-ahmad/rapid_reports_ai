@@ -34,12 +34,18 @@ describe('buildApplied', () => {
 describe('staleOf', () => {
 	const rec = buildApplied(x()) as Exclude<ReturnType<typeof buildApplied>, string>;
 	it('values: a value behind the line changed; finding: the finding is gone; else current', () => {
-		const same = [draft({ input: 'size', state: 'read', value: '7 mm' }), draft({ input: 'kind', state: 'prefilled', value: 'solid' })];
+		const same = preview({ ...p, draft: [draft({ input: 'size', state: 'read', value: '7 mm' }), draft({ input: 'kind', state: 'prefilled', value: 'solid' })] });
 		expect(staleOf(rec, same, true)).toBeUndefined();
-		expect(staleOf(rec, [draft({ input: 'size', state: 'read', value: '9 mm' }), same[1]], true)).toBe('values');
+		expect(staleOf(rec, preview({ ...same, draft: [draft({ input: 'size', state: 'read', value: '9 mm' }), same.draft![1]] }), true)).toBe('values');
 		expect(staleOf(rec, null, true)).toBe('values'); // the card is no longer grouped (its finding's text changed)
 		expect(staleOf(rec, null, false)).toBe('finding');
 		expect(staleOf(rec, same, false)).toBe('finding'); // the finding went first, whatever the old card still shows
+	});
+	it('the card outcome moving makes it stale even when every recorded value is unchanged', () => {
+		const draftSame = [draft({ input: 'size', state: 'read', value: '7 mm' }), draft({ input: 'kind', state: 'prefilled', value: 'solid' })];
+		const moved = preview({ proposal: null, draft_outcome: outcome({ classification: 'BTS 2015 · Other', recommendation: 'PET-CT.', headline: 'Other', category: 'workup' }), trace: { outcome: 'pet' }, draft: draftSame });
+		expect(staleOf(rec, moved, true)).toBe('values');
+		expect(staleOf(rec, preview({ ...p, state: 'does_not_apply', draft: draftSame }), true)).toBe('values');
 	});
 	it('only with the flag on does the gate record carry them', () => {
 		expect(recommendationsForGate(false, { k: rec })).toEqual([]);
