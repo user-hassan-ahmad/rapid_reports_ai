@@ -148,7 +148,7 @@ The endpoint:
 - Rejects the confirm (409) if `sheet_rev` / `sheet_hash` differ from the stored ones, so a concurrent edit is never attested unseen.
 - Works out the group's units and their `text_hash` from the stored sheet and registry itself; never from the client.
 - Sets `user_id` from the session.
-- Confirms happen only after the template exists (Refine runs after Create). There is no creation-time confirm to carry.
+- Confirms exist only on a saved template. The creator flow refines before Create (refine, card and apply-decisions accept requests with no `template_id`), so constraint for slice 3: the confirm UI is offered only once the template is saved; there are no creation-time confirms. The endpoint returns 404 for a template that doesn't exist (tested).
 
 ```json
 {
@@ -241,4 +241,4 @@ Existing suites:
 1. No similarity threshold: exact or cosmetic equivalence only, tokenised before normalising, with hard clinical-token gates; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric.
 2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when cosmetically equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
 3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8, through a server-computed endpoint that rejects a stale sheet.
-4. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), all addressed in this revision.
+4. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
