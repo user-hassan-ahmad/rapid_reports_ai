@@ -353,3 +353,38 @@ def test_a_written_template_carries_converted_at(db_session, templates, tmp_path
     cfg = db_session.get(Template, guided.id).template_config
     assert datetime.fromisoformat(cfg["converted_at"])
     assert "converted_at" not in (db_session.get(Template, legacy.id).template_config or {})
+
+
+def test_the_upgrade_saves_through_persist_sheet_and_mints_the_registry(db_session, templates, tmp_path, no_jev,
+                                                                         monkeypatch):
+    seen = []
+    real = S.persist_sheet
+
+    async def spy(config, stored_config, origin, **kw):
+        seen.append(origin)
+        return await real(config, stored_config, origin, **kw)
+    monkeypatch.setattr(S, "persist_sheet", spy)
+    guided, _ = templates
+    summary = U.main(_manifest(tmp_path, guided.id, GOOD), apply=True, db=db_session)
+    assert _actions(summary)[str(guided.id)] == "written" and seen == ["rebuild"]
+    db_session.expire_all()
+    cfg = db_session.get(Template, guided.id).template_config
+    assert cfg["sheet_rev"] == 1 and len(cfg["line_registry"]["units"]) == 4
+
+
+def test_a_confirm_recorded_between_plan_and_write_is_kept(db_session, templates, tmp_path, no_jev, monkeypatch):
+    guided, _ = templates
+    real = U._plan_entry
+
+    async def plan_then_confirm(db, entry, analyser_version=None):
+        row = await real(db, entry, analyser_version)
+        t = db.get(Template, guided.id)
+        t.template_config = {**t.template_config, "normal_confirms": {"g": {"kept": True}}}
+        db.commit()
+        return row
+    monkeypatch.setattr(U, "_plan_entry", plan_then_confirm)
+    summary = U.main(_manifest(tmp_path, guided.id, GOOD), apply=True, db=db_session)
+    assert _actions(summary)[str(guided.id)] == "written"
+    db_session.expire_all()
+    cfg = db_session.get(Template, guided.id).template_config
+    assert cfg["normal_confirms"] == {"g": {"kept": True}} and cfg["skill_sheet"] == GOOD

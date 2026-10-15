@@ -14,7 +14,7 @@ replaces the carried one on every written sheet. Per template entry:
   skipped-mode      not a guided (skill_sheet_guided) template
   already-written   its stored sheet is already the vetted new sheet (a re-run)
   skipped-stale     its stored sheet no longer hashes to old_sheet_hash (edited since the pull); re-checked at write
-  skipped-refused   the one save function (template_sheet_save.vet_sheet, origin "rebuild") refused the new sheet
+  skipped-refused   the persisted save (template_sheet_save.persist_sheet, origin "rebuild") refused the new sheet
   skipped-unchanged the new sheet is the stored one
   written           the vetted sheet is stored the way a sheet save does it (see _write)
   error             the write raised (exception type only) or the pre-upgrade snapshot failed; the rest go on
@@ -90,18 +90,20 @@ async def _plan_entry(db, entry: dict, analyser_version: Optional[str] = None) -
         written = await _already_written(current, entry.get("new_sheet") or "", ledger)
         return {"template_id": tid, "action": "already-written" if written else "skipped-stale"}
     # The same steps as a sheet save (PUT /api/templates: _carry_structure then _vet_config's guided branch): drop
-    # the stored structure, carry analyser_version, vet the sheet, store the vetted sheet + coverage_sections.
+    # the stored structure, carry analyser_version, then the one persisted save (template_sheet_save.persist_sheet:
+    # vet, rebind the line registry against the stored one, stamp the ledger's uids, bump sheet_rev).
     new_cfg = _carry_structure({**cfg, "skill_sheet": entry.get("new_sheet") or ""}, cfg)
     if analyser_version:
         new_cfg["analyser_version"] = analyser_version
     if not new_cfg["skill_sheet"]:
         return {"template_id": tid, "action": "skipped-refused", "reason": tsave.LOST_STRUCTURE}
-    out = await tsave.vet_sheet(new_cfg["skill_sheet"], origin=ORIGIN, previous=current, ledger=ledger)
+    saved = await tsave.persist_sheet(new_cfg, cfg, ORIGIN, ledger=ledger)
+    out = saved.outcome
     if out.status == "refused":
         return {"template_id": tid, "action": "skipped-refused", "reason": out.message or "refused"}
     if out.status == "unchanged":
         return {"template_id": tid, "action": "skipped-unchanged"}
-    vetted = {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}
+    vetted = dict(saved.config)
     if ledger:   # as main._vet_config: entries the sheet could not take are cards at the next review
         vetted["ledger_unmatched"] = out.ledger_unmatched
     row = {"template_id": tid, "action": "written", "config": vetted, "old_config": cfg,
@@ -160,8 +162,13 @@ def _write(db, row: dict) -> None:
         if row["action"] == "already-written":
             _try_structure(db, row)
         return
-    # converted_at: the banner names its owner's converted templates (integration spec §10, P2c)
-    t.template_config = {**row["config"], "converted_at": datetime.now(timezone.utc).isoformat()}
+    # converted_at: the banner names its owner's converted templates (integration spec §10, P2c). The planned config
+    # owns the sheet, its registry and sheet_rev (the hash re-check above guarantees the sheet, and so the registry,
+    # did not move); the server-written keys the plan does not own (`uncertain`, reserved for slice 4, the normals
+    # confirms) are re-read here under the lock, so a confirm recorded since the plan is never overwritten.
+    stored = t.template_config or {}
+    kept = {k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored}
+    t.template_config = {**row["config"], **kept, "converted_at": datetime.now(timezone.utc).isoformat()}
     # (as crud.update_template: assign, commit (updated_at), snapshot the new state)
     db.commit()
     crud.create_template_version(db, t)
