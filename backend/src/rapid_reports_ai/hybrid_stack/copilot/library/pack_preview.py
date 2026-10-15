@@ -611,8 +611,9 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
 
 def _candidates(e: Entry, t: engine.Trace, sources: list[dict]) -> list[Candidate]:
     """The outcomes still possible, in the trace's order, each with its sentence when it renders complete (spec
-    2026-10-14 §4.4). None once an outcome is reached; never does_not_apply (an exclusion is not applied)."""
-    if t.outcome is not None:
+    2026-10-14 §4.4). None once an outcome is reached; never does_not_apply (an exclusion is not applied). None also when the trace is unbounded: an unknown
+    number feeds a formula, so `possible` over-approximates and a pick could apply an outcome the case cannot reach."""
+    if t.outcome is not None or not t.bounded:
         return []
     out = []
     for oid in t.possible:

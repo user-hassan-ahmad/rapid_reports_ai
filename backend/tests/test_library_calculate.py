@@ -594,3 +594,21 @@ def test_no_candidates_once_an_outcome_is_reached_or_excluded(toy_entry):
     s = PP.Settlement(values={"kind": R("solid", "solid"), "size": R(7.0, "7 mm")})
     assert PP.finish(toy_entry, s, {"risk": "high"}, None, []).candidates == []
     assert PP.calculate(toy_entry, s, {"kind": "solid", "size": "7 mm", "risk": "high"}, None, [], "b1").candidates == []
+
+
+def test_no_candidates_on_an_unbounded_trace():
+    e, s = _bts6()                                         # prior CT unknown: unbounded, `possible` over-approximates
+    p = PP.finish(e, s, {}, None, [])
+    assert p.bounded is False
+    assert p.candidates == []
+
+
+def test_an_exclusion_that_is_still_possible_is_never_a_candidate(toy):
+    from tests.test_library_pack_preview import _elig
+    e = _elig(toy)
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                     # noqa: E731
+    s = PP.Settlement(values={"kind": R("solid", "solid"), "size": R(7.0, "7 mm")})
+    c = PP.calculate(e, s, {"kind": "solid", "size": "7 mm"}, None, [], "b1")     # known_cancer unknown: not assumed
+    assert c.outcome is None and c.candidates
+    assert "the toy guideline does not apply" in c.possible                       # the exclusion is still possible
+    assert "does_not_apply" not in [x.outcome for x in c.candidates]
