@@ -1,0 +1,1808 @@
+{
+  "bosniak-renal-cyst/3 mm wall on unenhanced only": [
+    "mimic",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/I RMP -9 HU": [
+    "calcification",
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/I other contrast-only 15 HU": [
+    "calcification",
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/I portal venous 20 HU": [
+    "calcification",
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.2 unenhanced 70 HU": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.3 RMP 20.1 HU non-enhancing": [
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.3 RMP 30.1 HU non-enhancing": [
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.3 RMP 45 HU non-enhancing mass (thin wall may enhance)": [
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.3 RMP calcified 80 HU non-enhancing": [
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.4 unenhanced -9 HU": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.4 unenhanced 20 HU": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.5 portal venous 20.1 HU": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.5 portal venous 30 HU": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/II.6 too small, homogeneous low attenuation": [
+    "mimic",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/IIF pattern with enhancing contents on RMP (B7): not a cystic mass": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/III pattern with enhancing contents on RMP (B7): not a cystic mass": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/IV pattern with enhancing contents on RMP (B7): not a cystic mass": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/RMP 10 HU, mass enhances": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/RMP 45 HU, mass enhances": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/RMP, few thin septa, mass contents enhance": [
+    "contents_enhancement",
+    "mimic",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/RMP, septa not given": [
+    "calcification",
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/abscess: does not apply": [
+    "calcification",
+    "mimic"
+  ],
+  "bosniak-renal-cyst/calcified wall, simple fluid, no septa is II": [
+    "calcification",
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/enhancing 3 mm septum is IIF": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/few thin septa with thick calcification (as Fig 4 at MRI) is II": [
+    "contents_enhancement",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 1 bottom: five thin enhancing septa is IIF": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 1 top: two thin septa is II": [
+    "contents_enhancement",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 2: 3 mm enhancing wall is IIF": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 2: 4 mm enhancing wall is III": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 2: thin smooth wall, simple fluid is I": [
+    "calcification",
+    "contents",
+    "contents_enhancement",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/fig 3: irregular thickening is III": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/fig 3: nodule is IV": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/heterogeneous, no septa": [
+    "contents",
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/ill-defined, otherwise simple": [
+    "contents_enhancement",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/many non-enhancing thin septa is not IIF": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/mimic not stated": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/nodule on portal venous only": [
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/nodule plus thick septa is IV (highest class)": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/non-enhancing 3 mm septum is not IIF": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/non-enhancing protrusion with thin wall is not IV": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/non-enhancing thick septum is not III": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/other contrast-only 25 HU is not II.5": [
+    "hu",
+    "mimic",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/portal venous 30.1 HU undefined": [
+    "hu",
+    "mimic",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/simple on RMP 45 HU, mass enhancement not given": [
+    "contents",
+    "hu",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/simple on RMP, HU not given": [
+    "calcification",
+    "contents",
+    "contents_enhancement",
+    "margin",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small",
+    "wall"
+  ],
+  "bosniak-renal-cyst/text: few thick enhancing septa is III, not II": [
+    "contents_enhancement",
+    "mimic",
+    "protrusion",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/too small, other": [
+    "mimic",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/unenhanced -9.1 HU undefined": [
+    "hu",
+    "mimic",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bosniak-renal-cyst/unenhanced 69.9 HU undefined": [
+    "hu",
+    "mimic",
+    "septa",
+    "technique",
+    "too_small"
+  ],
+  "bts-pulmonary-nodule/1 year exactly, 10% change: stable": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/1 year, 50% growth: VDT 624 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/1 year, equal volumes: VDT infinite, stable": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/1 year, nodule smaller": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/10 mm, five nodules (count term above centre)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "sex",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/200 days, 25% growth, VDT 621 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 1 year exactly, stable diameter: CT at 2 years": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 1 year, equivocal diameter change: volumetry advised": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 2 years exactly, stable diameter: discharge": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 3 months, clear growth: work-up": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 3 months, stable diameter: CT at 1 year": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 4 mm with prior CT: discharge on size alone": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: 729 days, stable diameter: still CT at 2 years": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: clear growth, interval not stated: still work-up": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "growth",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/2D: stable diameter, interval not stated": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "growth",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/3 months, 20% growth: under the 25% threshold although VDT is 346 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/3 months, 24.9% growth": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/3 months, 50% growth: VDT 156 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/3 months, equal volumes: VDT infinite, CT at 1 year": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/3 months, exactly 25% growth": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/3 months, nodule smaller": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/30 mm edge: still a nodule (Table 1: up to 3 cm)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/30.5 mm: over 3 cm, outside the BTS nodule definition": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/364 days, 10% change: not yet 1 year": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/38 mm opacity read, prior CT and resolution unknown: excluded (live checkpoint 3)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_type",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/38 mm opacity, eligibility and prior imaging not stated: excluded, nothing asked (a measured nodule cannot be resolved)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_type",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/38 mm opacity, no previous imaging, eligibility not stated: excluded, nothing asked": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/38 mm part-solid opacity: outside the BTS nodule definition": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/38 mm solid opacity: outside the BTS nodule definition": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/4.9 mm: just under 5 mm": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/5 mm edge, no prior imaging": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/5.5 mm with prior CT at 1 year, stable": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/5.9 mm, no prior imaging": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/6 mm edge, no prior imaging": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/6 months, 30% growth, VDT 481 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/7 mm, prior imaging not stated": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "proven_malignant",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/7.9 mm, no prior imaging": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/8 mm edge, Brock 8.3%": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/8 mm, spiculation not stated: it decides the Brock band": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/9 mm, Brock 11.3%": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "sex",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/BTS worked example (p ii16): non-spiculated 4 mm upper lobe nodule, 70-year-old woman; count, family history and emphysema not stated": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_type",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/Brock just over 10%: 8.5 mm, age 67": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "sex",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/Brock just under 10%: 8.5 mm, age 66": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "family_history",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/VDT 401 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/VDT 601 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/VDT exactly 400 days (doubled over 400 days)": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/VDT exactly 600 days": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/age 17 is under 18: does not apply": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/age 18 is in scope": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/age not stated": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/benign features, large nodule": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/high-risk woman, 15 mm spiculated upper lobe nodule": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/low-risk man, 9 mm smooth lower lobe nodule": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/no prior CT: growth steps not applicable, 7 mm": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/nodule not proven malignant is in scope": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/nodule proven to be a metastasis: does not apply": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/nodule resolved, its size not stated: the size is asked (a measured opacity over 3 cm excludes)": [
+    "age",
+    "benign_features",
+    "prior_study",
+    "proven_malignant",
+    "resolved",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/part-solid nodule 12 mm (Brock part-solid term checked)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/prior CT, interval not stated": [
+    "age",
+    "benign_features",
+    "current_volume_mm3",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "growth",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "prior_volume_mm3",
+    "proven_malignant",
+    "resolved",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "bts-pulmonary-nodule/proven lung cancer, age not stated: does not apply": [
+    "age",
+    "benign_features",
+    "proven_malignant",
+    "spiculation"
+  ],
+  "bts-pulmonary-nodule/proven malignancy not stated": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/pure ground-glass nodule 12 mm (Brock nonsolid term checked)": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant"
+  ],
+  "bts-pulmonary-nodule/resolved nodule on follow-up CT (library addition), its last size given": [
+    "age",
+    "diameter_mm",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/resolved, with the earlier nodule's features given": [
+    "age",
+    "diameter_mm",
+    "nodule_count",
+    "prior_study",
+    "proven_malignant",
+    "resolved"
+  ],
+  "bts-pulmonary-nodule/volumes compared, interval not stated, volumes not given: method stated as volumetry": [
+    "age",
+    "benign_features",
+    "diameter_mm",
+    "emphysema",
+    "family_history",
+    "growth",
+    "interval_days",
+    "nodule_count",
+    "nodule_type",
+    "prior_study",
+    "proven_malignant",
+    "resolved",
+    "sex",
+    "spiculation",
+    "upper_lobe"
+  ],
+  "cac-drs/Agatston score 0.4: below 0.5 rounds to 0": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 0.5: 0.5 rounds up to 1": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 0: zero": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 100: 100": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 1: 1": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 299.4: 299.4 rounds to 299": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 299.5: 299.5 rounds up to 300": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 299: 299": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 300: 300 (text: category 3)": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 450: 450": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 99.4: 99.4 rounds to 99": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 99.5: 99.5 rounds up to 100": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score 99: 99": [
+    "agatston"
+  ],
+  "cac-drs/Agatston score given with a conflicting category: score wins and the category is not asked": [
+    "agatston"
+  ],
+  "cac-drs/Category dictated, Agatston score not yet answered: asks whether a score exists": [],
+  "cac-drs/Nothing dictated: either input can settle it": [],
+  "cac-drs/Score unavailable, category not dictated: asks for the category": [
+    "agatston"
+  ],
+  "cac-drs/Source example i: CAC 0 (A0), category dictated, no Agatston score": [
+    "agatston",
+    "cac_drs"
+  ],
+  "cac-drs/Source example ii: CAC 1-99 in 3 vessels (A1/N3), category": [
+    "agatston",
+    "cac_drs"
+  ],
+  "cac-drs/Source example iii: CAC 100-299 in 3 vessels (A2/N3), category": [
+    "agatston",
+    "cac_drs"
+  ],
+  "cac-drs/Source example iv: CAC above 300 in 4 vessels (A3/N4), category": [
+    "agatston",
+    "cac_drs"
+  ],
+  "cac-drs/Visual V2/N3, no Agatston score": [
+    "agatston",
+    "cac_drs"
+  ],
+  "cad-rads-2/Acute 3 with CTP I- for fixed infarct: fixed_defect not asked": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/Acute 4A with CT-FFR I-: Table 5 line, no deferral": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/CAD-RADS 2 without P: ask for plaque burden": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/CAD-RADS 3 with no I stated: ask about ischaemia testing": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/E not stated: ask for it": [
+    "category",
+    "presentation"
+  ],
+  "cad-rads-2/Non-diagnostic CT-FFR (not assessable) behaves as no ischaemia test": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/Other indication with CAD-RADS 3: nothing else asked": [
+    "presentation"
+  ],
+  "cad-rads-2/P edge: acute CAD-RADS 1/P2": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/P edge: acute CAD-RADS 1/P3": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/P edge: stable CAD-RADS 1/P4": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/P edge: stable CAD-RADS 2/P3": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/Presentation not stated: ask for it": [
+    "category",
+    "e_modifier"
+  ],
+  "cad-rads-2/Source Fig 4: CAD-RADS 2/P2 (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/Source Fig 5: CAD-RADS 1/P3 (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/Source example i: CAD-RADS N/P2/S (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "presentation"
+  ],
+  "cad-rads-2/Source example iv: CAD-RADS 2/P4/G (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/Source example v: CAD-RADS 4A/P3/N (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/Source example vi: CAD-RADS 3/P3/I+ (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/Source example vii: CAD-RADS 4A/P2/I- by stress CTP, no reversible ischaemia (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "fixed_defect",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/Source example viii: CAD-RADS 4A/I+/E, anomalous left main, no plaque (category, P and I from the source; presentation assumed by the library)": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/Stable 3 I- without the test named: ask which test": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 0": [
+    "category",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 1 False P1": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 1 False P3": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 1 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 2 False P1 @absent": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 2 False P1 positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 2 False P3 positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 2 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 False @absent": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 False borderline ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 False borderline ctp": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 False negative ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 False positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 3 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A False @absent": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A False borderline ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A False borderline ctp": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A False negative ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A False positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4A True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4B False": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 4B True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 5 False": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute 5 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: acute N": [
+    "category",
+    "presentation"
+  ],
+  "cad-rads-2/ours: other 0": [
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 0": [
+    "category",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 1 False P1": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 1 False P2": [
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 1 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 2 False P1 positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 2 False P3 @absent": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 2 False P3 positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "plaque_burden",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 2 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 False @absent": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 False borderline ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 False borderline ctp": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 False negative ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 False negative ctp True": [
+    "category",
+    "e_modifier",
+    "fixed_defect",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 3 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4A False borderline ct_ffr": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4A False borderline ctp": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4A False negative ctp True": [
+    "category",
+    "e_modifier",
+    "fixed_defect",
+    "ischemia",
+    "ischemia_test",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4A False positive": [
+    "category",
+    "e_modifier",
+    "ischemia",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4B False": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 4B True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 5 False": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "cad-rads-2/ours: stable 5 True": [
+    "category",
+    "e_modifier",
+    "presentation"
+  ],
+  "ese-adrenal-incidentaloma/0.9 cm nodule: below the 1 cm work-up threshold, appearance not needed": [
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/1.0 cm homogeneous 5 HU: the 1 cm edge is worked up; benign": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/1.5 cm mass, appearance not stated: appearance and attenuation needed": [
+    "age",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous 10.4 HU, age 60: over 10 HU, additional imaging": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous 10.5 HU, age 60: over 10 HU, additional imaging": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous 15 HU, age not stated: age is needed": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous 5 HU, eligibility not stated: both eligibility questions needed": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous exactly 10 HU: the 10 HU edge is benign": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous exactly 20 HU, age 60: the 20 HU edge is in the 11-20 group, additional imaging": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2 cm homogeneous mass on portal venous CT only: unenhanced CT needed": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/2.5 cm heterogeneous, age 50: indeterminate (MDT), attenuation not needed": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/3 cm heterogeneous with unenhanced 5 HU, age 60: heterogeneity wins, indeterminate (MDT)": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/3 cm homogeneous 20.5 HU, age 70: over 20 HU, indeterminate (MDT)": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/3.9 cm homogeneous 20.4 HU, age 55: over 20 HU and under 4 cm, indeterminate (MDT)": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/4.0 cm heterogeneous: relevant risk of malignancy (text edge, 4 cm or more)": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/4.0 cm homogeneous 15 HU, age 55: 4 cm or more with 11-20 HU, indeterminate (MDT)": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/4.0 cm homogeneous 25 HU: relevant risk of malignancy at the 4 cm edge": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/6 cm homogeneous -5 HU: benign whatever the size, age not needed": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/6 cm homogeneous 35 HU, age 25: high risk wins over the young route": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/8 cm myelolipoma with macroscopic fat: clear benign features": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/Age 30, 3 cm heterogeneous: young route": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/Age 39, 2 cm homogeneous 15 HU: urgent assessment, young route": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/Age 40, 2 cm homogeneous 15 HU: 40 is not under 40, additional imaging": [
+    "age",
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ],
+  "ese-adrenal-incidentaloma/CT done for suspected phaeochromocytoma: not an incidentaloma": [
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm"
+  ],
+  "ese-adrenal-incidentaloma/Known extra-adrenal malignancy: the incidentaloma pathway does not apply": [
+    "appearance",
+    "known_primary_cancer",
+    "not_incidentaloma",
+    "size_cm",
+    "unenhanced_hu"
+  ]
+}

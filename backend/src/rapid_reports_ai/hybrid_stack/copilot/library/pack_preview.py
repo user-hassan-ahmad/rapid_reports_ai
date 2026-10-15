@@ -776,28 +776,33 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
                 dv.decisive = _decisive(e, t, base, dv.input, signs.get(dv.input) or t.assumed[dv.input], ev, True)
                 assumed.append(Assumption(input=dv.input, label=dv.label, value=dv.value, decisive=dv.decisive,
                                           kind="sign" if dv.input in signs else "eligibility"))
+            elif dv.state == "prefilled" and dv.input not in doubt and dv.input in base:
+                # spec 2026-10-14 §6.1: only a decisive pre-filled value goes to the card's Check zone
+                dv.decisive = _decisive(e, t, base, dv.input, base[dv.input], ev, True)
     return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt, signs,
                   possible, likely, reason, assumed)
 
 
 def _decisive(e: Entry, t: engine.Trace, base: dict[str, InputValue], k: str, cur: InputValue, ev: "_Evals",
               assume: bool) -> bool | None:
-    """Whether flipping this one assumed value to any other answer changes the outcome (so it must be confirmed at
-    Apply; a non-decisive assumption needs no confirmation). None when not weighed: an unbounded result, or over the
-    evaluation cap."""
+    """Whether flipping this one assumed or pre-filled value to any other answer changes the outcome (so it must be
+    confirmed at Apply; a non-decisive one needs no confirmation). None when not weighed: an unbounded result, over the
+    evaluation cap, or a free number with nothing to flip to (spec 2026-10-14 §6.1: unknown errs to affirm)."""
     if not t.bounded:
         return None
     i = e.input(k)
     # an assumed band (a number that may also feed a formula) is weighed over its own bands
     cands = ([InputValue(band=b.id) for b in _all_bands(e, i)] if cur.band is not None
              else [_answer(e, i, label) for label in display_options(e, i)])
+    cands = [v for v in cands if v is not None and not _same_shown(e, i, v, cur)]
+    if not cands:
+        return None
     for v in cands:
-        if v is None or _same_shown(e, i, v, cur):
-            continue
         r = ev({**base, k: v}, assume)
         if r is None:
             return None
-        if r.outcome != t.outcome:
+        # with no outcome yet, a guess that changes which outcomes remain shapes the pick: decisive too (review I4)
+        if r.outcome != t.outcome or (t.outcome is None and set(r.possible) != set(t.possible)):
             return True
     return False
 

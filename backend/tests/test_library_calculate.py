@@ -525,3 +525,44 @@ def test_visible_signs_are_asked_when_nothing_was_read(settlement):
     states = {d.input: d.state for d in p.draft}
     assert states["benign_features"] != "assumed" and states["spiculation"] != "assumed"
     assert not {"benign_features", "spiculation"} & {a.input for a in p.assumptions}
+
+
+# Spec 2026-10-14 §6.1: a pre-filled value is weighed like an assumed one (only decisive ones go to Check)
+def test_a_prefilled_value_says_whether_it_is_decisive():
+    e, s = _bts6(prior_study=PP.Drafted(InputValue(value=False), "no previous imaging", "prefilled", [PP.WHY_KIND]))
+    p = PP.finish(e, s, {}, None, [])
+    by = {d.input: d for d in p.draft}
+    assert by["prior_study"].state == "prefilled" and by["prior_study"].decisive is not None
+    flipped = PP.finish(e, s, {"prior_study": "Yes"}, None, [])
+    moved = (flipped.trace or {}).get("outcome") != (p.trace or {}).get("outcome")
+    assert by["prior_study"].decisive == moved
+    assert by["diameter_mm"].decisive is None                                      # read: never weighed
+
+
+def test_toy_prefilled_values_flip_or_not(toy_entry):
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                     # noqa: E731
+    F = lambda v, q: PP.Drafted(InputValue(value=v), q, "prefilled", [PP.WHY_KIND])  # noqa: E731
+    p = PP.finish(toy_entry, PP.Settlement(values={"kind": F("solid", "nodule"), "size": R(7.0, "7 mm")}),
+                  {"risk": "high"}, None, [])
+    assert {d.input: d.decisive for d in p.draft}["kind"] is True                   # subsolid changes ct6
+    p = PP.finish(toy_entry, PP.Settlement(values={"kind": R("solid", "solid"), "size": R(5.0, "5 mm"),
+                                                   "risk": F("high", "smoker")}), {}, None, [])
+    assert {d.input: d.decisive for d in p.draft}["risk"] is False                  # under 6 mm risk changes nothing
+    p = PP.finish(toy_entry, PP.Settlement(values={"kind": R("solid", "solid"), "size": F(7.0, "7")}),
+                  {"risk": "high"}, None, [])
+    assert {d.input: d.decisive for d in p.draft}["size"] is True                   # a band away is PET-CT or none
+    p = PP.finish(toy_entry, PP.Settlement(values={"size": R(7.0, "7 mm"), "risk": F("high", "smoker")}), {}, None, [])
+    assert p.draft_outcome is None                                                  # kind unknown: no outcome yet
+    assert {d.input: d.decisive for d in p.draft}["risk"] is True                   # low risk offers ct12, not ct6
+
+
+def test_a_free_number_with_nothing_to_flip_to_is_not_weighed(toy):
+    import copy
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    raw = copy.deepcopy(toy)
+    raw["inputs"].append({"id": "age", "label": "Age", "type": "number", "unit": "years", "how_stated": "age in years"})
+    e = Entry.model_validate(raw)
+    base = {"kind": InputValue(value="solid"), "size": InputValue(value=5.0), "age": InputValue(value=70.0)}
+    t = E.evaluate(e, base)
+    assert t.outcome == "none"
+    assert PP._decisive(e, t, base, "age", base["age"], PP._Evals(e), False) is None

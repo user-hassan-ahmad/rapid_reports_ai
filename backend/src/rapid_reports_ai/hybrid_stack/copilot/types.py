@@ -147,8 +147,8 @@ class DraftValue(BaseModel):
     basis: str = ""                    # computed from a dated study: "from the CT of 12 Mar 2025" (spec §7.12 item 4)
     needed: bool = False               # in `needed`: can still change the outcome
     waiting: bool = False              # behind a prerequisite still unknown: not asked yet
-    decisive: bool | None = None       # assumed: flipping it alone changes the outcome (confirm at Apply); None when
-                                       # not assumed or not weighed
+    decisive: bool | None = None       # assumed or pre-filled: flipping it alone changes the
+                                       # outcome (confirm at Apply); None when read, answered or not weighed
     options: list[str] = Field(default_factory=list)  # display_options + "Not stated" (spec §7.6)
 
 
