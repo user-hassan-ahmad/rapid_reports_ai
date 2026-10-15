@@ -251,6 +251,7 @@ def _clause_log(g: GateClause) -> dict:
 
 
 _NUM = re.compile(r"\d+(?:\.\d+)?")
+_NEG = re.compile(r"\b(?:no|not|nil|none|without|never|unnecessary|declin\w*|n't)\b", re.I)
 
 
 def _rec_said(al: Alignment, c: ReportClause) -> bool:
@@ -259,15 +260,21 @@ def _rec_said(al: Alignment, c: ReportClause) -> bool:
     content word of the clause beyond the recommending words. Stricter than
     `provenance._rec_dictated` (a pair, or any one shared word): a pair or a shared modality word alone would let an
     undictated addition in the same sentence ("... and refer to MDT.") pass unflagged. Numbers count as words
-    (`content_words` drops them), so "CT in 12 months." is not cleared by a dictated "CT in 3 months"."""
+    (`content_words` drops them), so "CT in 12 months." is not cleared by a dictated "CT in 3 months". Negation words
+    are stop words to `content_words`, so a clause or line holding one is never cleared here ("no follow-up CT
+    required" must not clear "Follow-up CT is recommended."): that call is Jev's."""
     from .jev_pass import recommendation
     from .provenance import _REC_WORDS
     from .lanes import confident
+
     def toks(t: str) -> set:
         return set(content_words(t)) | set(_NUM.findall(t))
+    if _NEG.search(c.text):
+        return False
     words = {w for w in toks(c.text) if not _REC_WORDS.fullmatch(w)}
     paired = {p.line_id for p in al.pairs if p.clause_id == c.id and confident(p)}
-    return bool(words) and any((l.id in paired or recommendation(l.text)) and words <= toks(l.text) for l in al.lines)
+    return bool(words) and any((l.id in paired or recommendation(l.text)) and not _NEG.search(l.text)
+                               and words <= toks(l.text) for l in al.lines)
 
 
 async def ask_recs(inp: ReviewInput, al: Alignment, gate: List[GateClause]

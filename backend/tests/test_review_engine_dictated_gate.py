@@ -478,6 +478,39 @@ async def test_the_word_rule_decides_only_when_jev_has_no_answer(monkeypatch, an
 
 
 @pytest.mark.asyncio
+async def test_the_word_rule_never_clears_a_recommendation_the_radiologist_declined(monkeypatch):
+    # Jev down; every content word of the report's recommendation is in the dictated line, but the line declines it
+    r = ("FINDINGS:\nThere is a 4 mm solid nodule in the right upper lobe.\n\n"
+         "IMPRESSION:\n4 mm right upper lobe nodule. Follow-up CT is recommended.\n")
+    d = "4 mm solid nodule right upper lobe.\n4 mm nodule, no follow-up CT required."
+    recs, log, _, _ = await _live_rec_jev(monkeypatch, r, d, RuntimeError("jev down"))
+    assert recs == ["Follow-up CT is recommended."] and log["rec_by_backstop"] == 0
+
+
+def test_apply_lets_jev_decide_the_answered_recommendations_and_the_word_rule_the_rest():
+    r = ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+         "IMPRESSION:\n7 mm right upper lobe nodule. Follow-up CT in 12 months per guidelines.\n"
+         "Referral to the respiratory clinic is advised.\n")
+    d = "7 mm solid nodule right upper lobe.\n7 mm nodule, follow-up CT in 12 months per guidelines."
+    from rapid_reports_ai.review_engine.provenance import is_recommendation
+    i, al, texts = _unit_texts(r, d)
+    recs = [is_recommendation(t, None, "IMPRESSION") for t in texts]
+    jp = _jp(texts, [0.2 if x else 0.9 for x in recs], ["not_a_finding" if x else "abnormal" for x in recs])
+    g = dg.classify(i, r, al, jp)
+    rec = [x for x in g if x.tier == "rec"]
+    assert len(rec) == 2
+    ct = r.index("Follow-up CT in 12 months per guidelines.")
+    ref = r.index("Referral to the respiratory clinic is advised.")
+    # Jev answered only the referral (added); the CT one is unanswered, so the word rule clears it
+    rec_jev = {(ref, ref + len("Referral to the respiratory clinic is advised.")): 0.02,
+               (ct, ct + len("Follow-up CT in 12 months per guidelines.")): None}
+    prov, _, _, log = dg.apply(i, RUN, al, g, [], [], rec_jev=rec_jev)
+    assert [it.anchor.text for it in prov if it.kind == "recommendation"] == [
+        "Referral to the respiratory clinic is advised."]
+    assert (log["rec_by_jev"], log["rec_by_backstop"]) == (0, 1)
+
+
+@pytest.mark.asyncio
 async def test_ask_recs_asks_nothing_without_a_recommendation(monkeypatch):
     called = []
 

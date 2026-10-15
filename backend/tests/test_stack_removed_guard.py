@@ -70,6 +70,7 @@ async def test_guard_never_lets_a_removed_normal_blended_into_a_dictated_sentenc
                                           "Ventricles normal. The aortic and mitral valves are normal.")
     assert clause in report and edits == []
     assert len(items) == 1 and items[0]["kind"] == "removed_asserted" and items[0]["text"] == clause
+    assert items[0]["severity"] == "medium"
 
 
 @pytest.mark.asyncio
