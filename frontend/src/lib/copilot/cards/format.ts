@@ -322,3 +322,22 @@ export const categoryColor = (c: VerdictCategory) =>
 		neutral: 'var(--rv-border-strong)', // not categorised yet (no backend category): no colour claim
 		open: 'var(--rv-muted)'
 	})[c];
+
+/** The opened card's pill word (calmer card): the outcome's category, the action itself living in the verdict
+ *  beneath. null for the states that already read as words ("May not apply", "Does not apply", open, likely). */
+const PILL_WORD: Partial<Record<VerdictCategory, string>> = { none: 'No action', surveillance: 'Follow-up', workup: 'Investigate', refer: 'Refer', info: 'Info', not_applicable: 'Not applicable' };
+export function pillWord(v: Verdict | null | undefined): string | null {
+	if (!v || v.excluded || v.tentative) return null;
+	return PILL_WORD[v.category] ?? null;
+}
+
+/** The classification line only restates the headline: with the guideline prefix ("X · ") dropped, equal ignoring
+ *  case, or containing the headline while adding fewer than four words. */
+export function restates(classification: string, headline: string): boolean {
+	const strip = (s: string) => s.replace(/^.*? · /, '').trim().replace(/[.;:,]+$/, '').toLowerCase();
+	const c = strip(classification);
+	const h = headline.trim().replace(/[.;:,]+$/, '').toLowerCase();
+	if (!c || !h) return false;
+	if (c === h) return true;
+	return c.includes(h) && c.split(/\s+/).length - h.split(/\s+/).length < 4;
+}

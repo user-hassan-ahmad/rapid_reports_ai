@@ -48,7 +48,7 @@ describe('an exclusion worded by its outcome (§7.12 item 1)', () => {
 			exclusion: outcome({ headline: 'Outside the table: interval growth', recommendation: 'The table covers new findings. See the other card.', classification: 'Does not apply: grown.', category: 'not_applicable' }),
 			exclusion_reason: { input: 'prior_growth', label: 'Earlier imaging shows growth', value: 'Yes', outcome: 'outside_table_growth' }
 		});
-		render(PackBody, { result: result(bts, p) });
+		render(PackBody, { result: result(bts, p), expanded: true, onExpand: vi.fn() }); // an exclusion collapses to one row by default
 		await expect.element(page.getByText('Outside the table: interval growth')).toBeInTheDocument();
 		await expect.element(page.getByText('The table covers new findings. See the other card.')).toBeInTheDocument();
 	});

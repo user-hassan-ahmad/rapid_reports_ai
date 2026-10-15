@@ -20,6 +20,8 @@ export type ColumnView = {
 	pick?: string | null;
 	applying?: boolean;
 	applyError?: string | null;
+	/** A collapsed guideline (may not apply) shows its full body: set by the toggle or by the confirm gate. */
+	expanded?: boolean;
 };
 export type CardView = {
 	open: boolean;
@@ -40,6 +42,7 @@ export type CardView = {
 	pick?: string | null;
 	applying?: boolean;
 	applyError?: string | null;
+	expanded?: boolean;
 };
 export const closedView: CardView = { open: false, loading: false, error: null, result: null };
 

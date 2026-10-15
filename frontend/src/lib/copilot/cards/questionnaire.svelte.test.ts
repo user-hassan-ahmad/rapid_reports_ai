@@ -42,7 +42,7 @@ describe('the questionnaire card', () => {
 	});
 
 	it('a scope doubt keeps Confirm (an answer) and Change', async () => {
-		const h = show(reached({ scope_doubt: ['kind'] }));
+		const h = show(reached({ scope_doubt: ['kind'] }), { expanded: true, onExpand: vi.fn() });
 		await expect.element(page.getByTestId('cp-scope-doubt')).toHaveTextContent('would make BTS 2015 not apply');
 		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
 		expect(h.onEdit).toHaveBeenCalledWith('kind', 'solid');
@@ -116,7 +116,7 @@ describe('the questionnaire card', () => {
 
 	it('an excluded card keeps its scope-doubt banner', async () => {
 		const p = preview({ state: 'does_not_apply', proposal: null, scope_doubt: ['kind'], draft: [draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', options: ['solid', 'subsolid'] })] });
-		show(p);
+		show(p, { expanded: true, onExpand: vi.fn() });
 		await expect.element(page.getByTestId('cp-scope-doubt')).toHaveTextContent('would make');
 	});
 

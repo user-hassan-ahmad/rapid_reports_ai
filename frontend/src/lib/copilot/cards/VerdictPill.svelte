@@ -6,7 +6,7 @@
 
 	/** `text` replaces the pill's words (the quiet exam line shows the grade, its headline). */
 	/** `busy`: the card is re-previewing after an edit (the pill is about to change): subtle, and aria-busy. */
-	let { verdict, text = null, busy = false }: { verdict: Verdict; text?: string | null; busy?: boolean } = $props();
+	let { verdict, text = null, busy = false, title = null }: { verdict: Verdict; text?: string | null; busy?: boolean; /** the full words on hover (the closed head cuts them with an ellipsis) */ title?: string | null } = $props();
 	const words = $derived(text || verdict.pill);
 	// a native title only when the text is cut off: otherwise it repeats what is on screen
 	let truncated = $state(false);
@@ -35,7 +35,7 @@
 	aria-busy={busy || undefined}
 	style:--cp-cat={categoryColor(verdict.category)}
 	style:--cp-cat-text={categoryText(verdict.category)}
-	title={truncated ? words : undefined}
+	title={title ?? (truncated ? words : undefined)}
 	data-category={verdict.category}
 	onpointerenter={measure}
 	onfocusin={measure}

@@ -13,10 +13,10 @@
 	import type { ActionCategory, Card } from '../types';
 	import CardStatus from './CardStatus.svelte';
 	import AssumedChip from './AssumedChip.svelte';
-	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
+	import { assumptionsOf, categoryColor, pillWord, scopeDoubts, verdictOf } from './format';
+	import { assumedUnticked, collapsible } from './questionnaire';
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import PackBody from './PackBody.svelte';
-	import UnresolvedNote from './UnresolvedNote.svelte';
 	import type { Unresolved } from '../gate';
 	import VerdictPill from './VerdictPill.svelte';
 	import { errorOf, type CardView } from './view';
@@ -39,7 +39,8 @@
 		onSeen = null,
 		onOpen,
 		onClose,
-		onRetry
+		onRetry,
+		onExpand = null
 	}: {
 		card: Card;
 		view: CardView;
@@ -64,6 +65,8 @@
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
+		/** A card that may not apply is collapsed to one row; this opens or collapses it (view.expanded). */
+		onExpand?: ((ref: string, open: boolean) => void) | null;
 	} = $props();
 
 	const ref = $derived(cardRef(card));
@@ -71,15 +74,19 @@
 	const err = $derived(errorOf(view));
 	const assumed = $derived(assumptions ?? assumptionsOf(p));
 	const verdict = $derived(verdictOf(p, { headline, action, category }));
+	// the head's assumptions chip leaves while the open body shows them in Check (a collapsed row does not)
+	const assumedHead = $derived(assumptions ?? assumedUnticked(p, view.ticks ?? {}));
+	// (only a preview with a draft has a Check zone to duplicate)
+	const bodyShown = $derived(view.open && !!p?.draft?.length && !(collapsible(p) && !view.expanded));
 	const hint = $derived(!view.open && err && err !== 'unavailable' ? "Couldn't open · open to retry" : null);
 </script>
 
 {#snippet aside()}
 	<span class="cp-head-marks">
-		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} />{/if}
+		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} text={view.open ? pillWord(verdict) : null} title={view.open ? null : verdict.pill} />{/if}
 		{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
 		<!-- the applicability chip already says why the card is check_first: no second "check first" -->
-		<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />
+		{#if !bodyShown}<AssumedChip assumed={assumedHead} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
 	</span>
 {/snippet}
 
@@ -89,7 +96,6 @@
 
 {#snippet body()}
 	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
-	{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
 	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
 	{#if !err && view.result}
 		<PackBody
@@ -110,6 +116,10 @@
 			onTick={onTick ? (input, value) => onTick(ref, input, value) : null}
 			onPick={onPick ? (outcome) => onPick(ref, outcome) : null}
 			onApply={onApply ? () => onApply(ref) : null}
+			expanded={!!view.expanded}
+			onExpand={onExpand ? (open) => onExpand(ref, open) : null}
+			{unresolved}
+			{onSeen}
 		/>
 	{/if}
 {/snippet}

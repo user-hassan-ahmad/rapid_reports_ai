@@ -22,7 +22,10 @@
 	import NextQuestion from './NextQuestion.svelte';
 	import ValueEdit from './ValueEdit.svelte';
 	import ResultZone from './ResultZone.svelte';
-	import { answeredChips, basedOn, checkItems, nextAsk, readiness, remaining, statusLine } from './questionnaire';
+	import { answeredChips, basedOn, checkItems, collapsedReason, collapsible, nextAsk, readiness, remaining, statusLine } from './questionnaire';
+	import CollapsedRow from './CollapsedRow.svelte';
+	import UnresolvedNote from './UnresolvedNote.svelte';
+	import type { Unresolved } from '../gate';
 	import Icon, { type IconName } from './Icon.svelte';
 	import {
 		allValueRows,
@@ -32,8 +35,8 @@
 		decidingQuestion,
 		notNeededRows,
 		openQuestions,
-		recommendationBeyond,
 		scopeDoubts,
+		restates,
 		shownValue,
 		sourcesOf,
 		verdictOf,
@@ -60,7 +63,11 @@
 		applyOn = false,
 		onTick = null,
 		onPick = null,
-		onApply = null
+		onApply = null,
+		expanded = undefined,
+		onExpand = null,
+		unresolved = null,
+		onSeen = null
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -86,6 +93,12 @@
 		onTick?: ((input: string, value: string) => void) | null;
 		onPick?: ((outcome: string | null) => void) | null;
 		onApply?: (() => void) | null;
+		/** A card that may not apply is collapsed to one row; the view owns whether it is open (the gate opens it). */
+		expanded?: boolean;
+		onExpand?: ((open: boolean) => void) | null;
+		/** The gate blocks Confirm on this guideline: its one note sits above the result. */
+		unresolved?: Unresolved | null;
+		onSeen?: ((key: string) => void) | null;
 	} = $props();
 
 	const p = $derived(result.preview);
@@ -98,7 +111,8 @@
 	const decided = $derived(!!v && v.category !== 'open' && !v.tentative);
 	const longText = $derived(!!v && v.classification.length > 110);
 	// an exclusion worded by its outcome (§7.12 item 1) says what to do instead; a generic one has no action
-	const recText = $derived(v ? (v.excluded ? v.action : recommendationBeyond(v.action, v.recommendation)) : '');
+	// the opened card's pill is only the category word, so the verdict carries the whole recommendation
+	const recText = $derived(v ? (v.excluded ? v.action : v.recommendation || v.action) : '');
 	// asked inputs that cannot change the outcome wait behind "N not needed on this branch" (§7.12 item 3)
 	// (a card that does not apply keeps them in its values list: nothing there can change the outcome)
 	const notNeededIds = $derived(new Set(v?.excluded ? [] : notNeededRows(p).map((r) => r.input)));
@@ -133,6 +147,13 @@
 	const based = $derived(basedOn(p, check).map((d) => `${d.label} ${shownValue(d.value)}`).join(' · '));
 	let editingChip = $state<string | null>(null);
 	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
+	let localOpen = $state(false); // without a view (onExpand), the body keeps its own open state
+	const canCollapse = $derived(collapsible(p));
+	const isOpen = $derived(onExpand ? !!expanded : !!expanded || localOpen);
+	const collapsed = $derived(canCollapse && !isOpen);
+	const toggle = () => (onExpand ? onExpand(!isOpen) : (localOpen = !localOpen));
+	const reason = $derived(p && canCollapse ? collapsedReason(p, guideline, v?.headline ?? '') : null);
+	const statusShown = $derived(!!status && (blocker === 'question' || (applyOn && !!onTick)));
 </script>
 
 <div class="cp-pack-body" class:cp-compact={compact}>
@@ -140,6 +161,10 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
+		{#if collapsed && reason}
+			<CollapsedRow reason={reason.text} more={reason.more} confirm={reason.confirm} unresolved={!!unresolved} onConfirm={onEdit} onToggle={toggle} />
+		{:else}
+		{#if canCollapse}<button type="button" class="cp-link cp-aux-toggle cp-hide-details" aria-expanded="true" onclick={toggle}>Hide details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>{/if}
 		{#if p.state === 'does_not_apply'}
 			{#each doubts as d (d.input)}
 				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
@@ -171,8 +196,8 @@
 			{/each}
 		{/if}
 		{#if p.state !== 'does_not_apply'}
-			{#if status && (blocker === 'question' || (applyOn && onTick))}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
-			<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
+			{#if statusShown}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
+			<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} showLabel={!statusShown} />
 		{/if}
 		<!-- 2. the values -->
 		{#if rows.length}
@@ -247,7 +272,7 @@
 						>{showMore ? 'hide full reason' : 'full reason'}</button
 					>
 					<p class="cp-p cp-classification" id="{uid}-cls" hidden={!showMore}>{v.classification}</p>
-				{:else if v.classification && v.classification !== v.headline}
+				{:else if v.classification && v.classification !== v.headline && !restates(v.classification, v.headline)}
 					<p class="cp-p cp-classification" class:cp-clamp={longText && !showMore && !compact} id="{uid}-cls">{v.classification}</p>
 					{#if longText && !compact}
 						<button type="button" class="cp-link cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
@@ -255,7 +280,7 @@
 						>
 					{/if}
 				{/if}
-				<p class="cp-p cp-onvalues" aria-live="polite">{busy ? 'Updating on the new values…' : 'On these values'}</p>
+				<p class="cp-p cp-onvalues" aria-live="polite">{#if busy}Updating on the new values…{/if}</p>
 			</section>
 		{/if}
 		{#if v?.ifApplies}
@@ -297,7 +322,6 @@
 			</section>
 		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length === 1}
 			<section>
-				<div class="cp-label">Possible</div>
 				<p class="cp-p">{p.possible[0]}</p>
 			</section>
 		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length > 1}
@@ -311,6 +335,7 @@
 			</section>
 		{/if}
 
+		{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
 		{#if p.state !== 'does_not_apply'}
 			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError}
 				onPick={applyOn ? onPick : null} {onApply} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
@@ -351,8 +376,9 @@
 		{#if p.degraded}
 			<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
 		{/if}
+		{/if}
 	{/if}
-	{#if !compact && result.reference}
+	{#if !compact && result.reference && !collapsed}
 		<Reference reference={result.reference} />
 	{/if}
 </div>
@@ -426,6 +452,9 @@
 	.cp-more {
 		align-self: flex-start;
 		font-size: 0.75rem;
+	}
+	.cp-onvalues:empty {
+		display: none;
 	}
 	.cp-onvalues {
 		font-size: 0.6875rem;

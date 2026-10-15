@@ -3,6 +3,7 @@
 // answers (`edits`, "Not stated" = "Not known") and its ticks (input → the exact value affirmed; never sent).
 import { NOT_STATED } from '../state';
 import type { Ask, DraftValue, Preview, Proposal } from '../types';
+import { assumptionsOf, scopeDoubts, shownValue } from './format';
 
 export interface CheckItem { input: string; label: string; value: string; options: string[]; kind: 'prefilled' | 'assumed' | 'doubt'; basis: string; byExam: boolean; affirmed: boolean }
 export interface Chip { input: string; label: string; value: string; options: string[] }
@@ -92,4 +93,28 @@ export function sentenceOf(pr: Proposal, source: string): string {
 	const rec = tidy(pr.recommendation || pr.action || '');
 	const body = head && rec ? `${head}: ${rec}` : head || rec;
 	return `${body.charAt(0).toUpperCase()}${body.slice(1)} (${source}).`;
+}
+
+/** A guideline that may not apply collapses to one row: it does not apply, or a pre-filled value would make it not. */
+export const collapsible = (p: Preview | null | undefined): boolean => !!p && (p.state === 'does_not_apply' || (p.scope_doubt?.length ?? 0) > 0);
+
+/** The collapsed row's reason: the first scope doubt ("+N more"), with its Confirm when it has a value; for an
+ *  exclusion, the card's specific reason (the verdict headline, given). */
+export function collapsedReason(p: Preview, guideline: string, excludedHeadline: string): { text: string; more: number; confirm: { input: string; label: string; value: string } | null } {
+	if (p.state === 'does_not_apply') return { text: excludedHeadline, more: 0, confirm: null };
+	const ds = scopeDoubts(p);
+	const d = ds[0];
+	if (!d) return { text: '', more: 0, confirm: null };
+	const what = d.value ? `${d.label}: ${shownValue(d.value)}` : d.label;
+	return { text: `${what} would make ${guideline || 'this guideline'} not apply`, more: ds.length - 1, confirm: d.value ? { input: d.input, label: d.label, value: d.value } : null };
+}
+
+/** The head's assumed values: the decisive assumed values not yet ticked (what Check still shows), as "Label: value".
+ *  A pre-draft preview keeps the older derivation. */
+export function assumedUnticked(p: Preview | null | undefined, ticks: Record<string, string> = {}): string[] {
+	if (!p) return [];
+	if (!p.draft?.length) return assumptionsOf(p);
+	return checkItems(p, ticks)
+		.filter((c) => c.kind === 'assumed' && !c.affirmed)
+		.map((c) => `${c.label}: ${shownValue(c.value)}`);
 }

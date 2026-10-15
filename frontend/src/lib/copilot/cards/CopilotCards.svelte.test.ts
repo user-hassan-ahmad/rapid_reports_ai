@@ -113,7 +113,7 @@ describe('CopilotCards', () => {
 	it('does_not_apply dims the card and shows the reason with its citation', async () => {
 		const c = card({ finding: finding.text });
 		const pv = preview({ state: 'does_not_apply', proposal: null, exclusion: outcome({ classification: 'Not for patients under 35', citations: [{ title: 'Guideline', page: 2 }] }) });
-		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		render(CopilotCards, single(c, v(result(c, pv), { open: true, expanded: true })));
 		await expect.element(page.getByTestId('cp-exclusion')).toHaveTextContent('Not for patients under 35');
 		expect(document.querySelector('.gl-card')!.classList.contains('gl-card--dim')).toBe(true);
 		expect(document.querySelector('.gl-card')!.hasAttribute('aria-disabled')).toBe(false); // its buttons stay usable
@@ -178,7 +178,9 @@ describe('CopilotCards', () => {
 			assumed_eligible: true
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await expect.element(page.getByText('⚠ assumes: Known cancer No')).toBeInTheDocument(); // one assumption, named
+		// the open card names the assumed value in Check, so the head's chip steps aside
+		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('Known cancer: No');
+		expect(document.querySelector('.cp-assumed-chip')).toBeNull();
 		const labels = [...document.querySelectorAll('.cp-val .cp-val-label')].map((e) => e.textContent);
 		expect(labels).toEqual(['Known cancer', 'Unenhanced HU', 'Size', 'Growth on prior imaging']);
 		const badges = [...document.querySelectorAll('.cp-val')].map((e) => [...e.querySelectorAll('.cp-chip')].map((c) => c.textContent).join(','));
@@ -366,10 +368,11 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByText('Updating on the new values…')).toBeInTheDocument();
 		await r.rerender({ views: { [cardRef(c)]: v(result(c, pv), { open: true, editError: "Couldn't apply that change; it was undone" }) } });
 		await expect.element(page.getByRole('alert')).toHaveTextContent('it was undone');
-		await expect.element(page.getByText('On these values')).toBeInTheDocument();
+		await expect.element(page.getByText('Updating on the new values…')).not.toBeInTheDocument(); // idle: nothing to say
+		expect(document.body.textContent).not.toContain('On these values');
 	});
 
-	it('the action is in the pill; the recommendation shows in full when it says more (here its later steps)', async () => {
+	it('the pill is the category word; the verdict carries the full recommendation (here its later steps) the recommendation shows in full when it says more (here its later steps)', async () => {
 		const c = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', finding: finding.text });
 		const pv = preview({
 			proposal: null,
@@ -383,16 +386,16 @@ describe('CopilotCards', () => {
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Bosniak IIF');
-		expect(document.querySelector('.cp-pill')!.textContent).toContain('CT or MRI at 6 months');
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Follow-up'); // the category word; the action lives in the verdict
 		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('Follow-up CT or MRI at 6 months and 12 months, then yearly for 5 years.');
 	});
 
-	it('when the recommendation starts with the action, only the rest shows', async () => {
+	it('when the recommendation starts with the action, the whole recommendation still shows (the pill is only a category word)', async () => {
 		const c = card({ finding: finding.text });
 		const pv = preview({ proposal: null, draft_outcome: outcome({ classification: 'Solid 6–8 mm', recommendation: 'CT at 6–12 months, then consider CT at 18–24 months.', action: 'CT at 6–12 months', category: 'surveillance' }) });
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toBeInTheDocument();
-		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('then consider CT at 18–24 months.');
+		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('CT at 6–12 months, then consider CT at 18–24 months.');
 	});
 
 	it('an outcome whose category is not_applicable (e.g. manage as solid) is a full verdict: not dimmed, no "Does not apply"', async () => {
@@ -403,7 +406,8 @@ describe('CopilotCards', () => {
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Not cystic');
-		expect(document.querySelector('.cp-pill')!.textContent).toContain('Manage as solid renal mass');
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Not applicable'); // the category word
+		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Manage as a solid renal mass');
 		expect(document.querySelector('.gl-card')!.classList.contains('gl-card--dim')).toBe(false);
 		expect(document.body.textContent).not.toContain('Does not apply');
 		expect(document.querySelector('.cp-pill')!.classList.contains('cp-pill--excluded')).toBe(false);
@@ -420,7 +424,7 @@ describe('CopilotCards', () => {
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await page.getByRole('button', { name: /^Based on/ }).click();
 		await expect.element(page.getByText('2.2 cm', { exact: true })).toBeInTheDocument();
-		expect(document.querySelector('.cp-recommendation')).toBeNull(); // the pill already says it
+		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('No further imaging required.'); // the pill is only 'No action'
 		expect(document.body.textContent).not.toContain('Solid component');
 		await page.getByRole('button', { name: '+1 not applicable' }).click();
 		await expect.element(page.getByText('Solid component')).toBeInTheDocument();
@@ -435,7 +439,7 @@ describe('CopilotCards', () => {
 			exclusion_reason: { input: 'age', label: 'Age', value: '28' },
 			draft: [draft({ input: 'age', label: 'Age', state: 'read', value: '28' })]
 		});
-		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		render(CopilotCards, single(c, v(result(c, pv), { open: true, expanded: true })));
 		const verdict = page.getByRole('region', { name: 'Verdict' }).element();
 		await expect.element(page.getByText('Age 28').first()).toBeInTheDocument();
 		expect(verdict.querySelector('.cp-headline')!.textContent).toBe('Age 28');
@@ -488,7 +492,7 @@ describe('CopilotCards', () => {
 				draft({ input: 'diameter_mm', label: 'Maximum diameter', state: 'prefilled', value: '35 mm', why: ['x'], options: [] })
 			]
 		});
-		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
+		const p = { ...single(c, v(result(c, pv), { open: true, expanded: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
 		await expect.element(page.getByTestId('cp-scope-doubt-chip')).toHaveTextContent('⚠ check applicability');
 		expect(document.querySelector('.gl-title-row')!.textContent).not.toContain('check first'); // said once
@@ -496,7 +500,8 @@ describe('CopilotCards', () => {
 		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm');
 		await expect.element(note).toHaveTextContent('pre-filled · would make NHS AAA surveillance not apply');
 		// first in the body: the Check zone holds it
-		const first = document.querySelector('.gl-body .cp-pack-body')!.firstElementChild!;
+		// (after the "Hide details" toggle a doubtful card carries)
+		const first = [...document.querySelector('.gl-body .cp-pack-body')!.children].find((e) => !e.classList.contains('cp-hide-details'))!;
 		expect(first.getAttribute('data-testid')).toBe('cp-check');
 		expect(first.contains(note.element())).toBe(true);
 		await page.getByRole('button', { name: /^Based on/ }).click();
@@ -519,7 +524,7 @@ describe('CopilotCards', () => {
 			scope_doubt: ['growth'],
 			draft: [draft({ input: 'growth', label: 'Growth', state: 'prefilled', value: 'diameter_clear_growth', why: ['x'], options: ['diameter_stable', 'diameter_clear_growth'] })]
 		});
-		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
+		const p = { ...single(c, v(result(c, pv), { open: true, expanded: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
 		const note = page.getByTestId('cp-scope-doubt');
 		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth');

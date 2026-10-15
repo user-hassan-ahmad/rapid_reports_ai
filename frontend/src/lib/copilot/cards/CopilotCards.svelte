@@ -38,6 +38,7 @@
 		onTick = undefined,
 		onPick = undefined,
 		onApply = undefined,
+		onExpand = undefined,
 		unresolved = [],
 		onSeen = undefined
 	}: {
@@ -62,6 +63,8 @@
 		onTick?: (ref: string, input: string, value: string) => void;
 		onPick?: (ref: string, outcome: string | null) => void;
 		onApply?: (ref: string) => void;
+		/** Opens or collapses a guideline that may not apply (session.expand). */
+		onExpand?: (ref: string, open: boolean) => void;
 		/** The cards blocking Confirm (gate.unresolved, §7.12 item 5), keyed by card ref or column ref. */
 		unresolved?: Unresolved[];
 		/** "Seen, leave as is" (session.seen). */
@@ -82,9 +85,9 @@
 		<QuietLine card={c} result={v.result} busy={v.loading} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
-			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {applyOn} {applied} {onTick} {onPick} {onApply} unresolved={blocking} onSeen={onSeen ?? null} {...handlers} />
+			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {applyOn} {applied} {onTick} {onPick} {onApply} {onExpand} unresolved={blocking} onSeen={onSeen ?? null} {...handlers} />
 		{:else}
-			<PackCard card={c} view={v} {other} {onEdit} {applyOn} applied={applied[cardRef(c)] ?? null} {onTick} {onPick} {onApply} unresolved={blocking[cardRef(c)] ?? null} onSeen={onSeen ?? null} {...handlers} />
+			<PackCard card={c} view={v} {other} {onEdit} {applyOn} applied={applied[cardRef(c)] ?? null} {onTick} {onPick} {onApply} {onExpand} unresolved={blocking[cardRef(c)] ?? null} onSeen={onSeen ?? null} {...handlers} />
 		{/if}
 	{:else}
 		<ReadOnlyCard card={c} {kind} view={v} {other} {...handlers} />

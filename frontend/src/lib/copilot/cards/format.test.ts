@@ -188,3 +188,22 @@ describe('shownValue: a stored option id shown as words', () => {
 		expect(verdictOf(p)?.headline).toBe('Check: Growth — Diameter clear growth');
 	});
 });
+
+import { pillWord, restates } from './format';
+describe('calmer card helpers', () => {
+	it('restates: equal after the guideline prefix, or the headline plus fewer than four words', () => {
+		expect(restates('BTS 2015 · Solid nodule', 'solid nodule')).toBe(true);
+		expect(restates('Solid nodule 6-8 mm', 'Solid nodule')).toBe(true);
+		expect(restates('Solid nodule 6-8 mm in a current smoker', 'Solid nodule')).toBe(false);
+		expect(restates('', 'x')).toBe(false);
+	});
+	it('pillWord: the category word for a decided outcome; none for the states that already read as words', () => {
+		const v = (category: string, over = {}) => ({ category, pill: 'x', recommendation: '', headline: '', action: '', classification: '', caveats: [], citations: [], ...over }) as never;
+		expect(pillWord(v('none'))).toBe('No action');
+		expect(pillWord(v('surveillance'))).toBe('Follow-up');
+		expect(pillWord(v('workup'))).toBe('Investigate');
+		expect(pillWord(v('not_applicable', { excluded: true }))).toBeNull();
+		expect(pillWord(v('workup', { tentative: true }))).toBeNull();
+		expect(pillWord(v('open'))).toBeNull();
+	});
+});

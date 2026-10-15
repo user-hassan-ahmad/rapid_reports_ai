@@ -425,6 +425,7 @@
 			document.querySelector('[data-testid="recommendations"]')?.scrollIntoView({ block: 'nearest' });
 			return;
 		}
+		copilot?.expand(key); // a guideline collapsed as "may not apply" opens before it is revealed
 		const ref = guidelinesUnresolved.find((u) => u.key === key)?.card ?? key;
 		void copilotRail?.reveal(ref);
 	}
@@ -2931,6 +2932,7 @@
 		onTick={copilot.tick}
 		onPick={copilot.pick}
 		onApply={copilot.apply}
+		onExpand={copilot.expand}
 		bind:this={copilotRail}
 	/>
 {/if}

@@ -8,10 +8,10 @@
 
 <div class="cp-unresolved" role="note" data-testid="cp-unresolved">
 	<p class="cp-unresolved-text">
-		{item.reason ?? (item.checked === 'failed' ? "Not covered by the conclusion yet: add a recommendation, or tap Seen to continue" : 'Blocks Confirm until the conclusion covers it')}
+		Not in your conclusion yet: apply it, add it to the conclusion, or mark it seen.{#if item.reason}<span class="cp-unresolved-why"> {item.reason}</span>{/if}
 	</p>
 	{#if onSeen}
-		<button type="button" class="rv-btn" onclick={(e) => (e.stopPropagation(), onSeen?.(item.key))}>Seen, leave as is</button>
+		<button type="button" class="cp-link cp-seen" onclick={(e) => (e.stopPropagation(), onSeen?.(item.key))}>Seen, leave as is</button>
 	{/if}
 </div>
 
@@ -27,6 +27,12 @@
 		border-radius: 6px;
 		border-left: 3px solid var(--rv-amber-line);
 		background: var(--rv-surface-hover);
+		font-size: 0.8125rem;
+	}
+	.cp-unresolved-why {
+		color: var(--rv-muted);
+	}
+	.cp-seen {
 		font-size: 0.8125rem;
 	}
 	.cp-unresolved-text {
