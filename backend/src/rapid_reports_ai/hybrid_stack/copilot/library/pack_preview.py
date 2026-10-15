@@ -58,7 +58,7 @@ STATED_MIN = 0.9
 STATED = {"stated_yes": True, "stated_no": False}
 NOT_STATED = "Not stated"   # always offered (spec §7.6): clears a value to unknown
 # why a drafted value is pre-filled rather than read (spec §7.5); shown with the value
-WHY_KIND = "absent values are never read"
+WHY_KIND = "absent or not-assessable values are never read"
 WHY_SCOPE_KIND = "a yes/no about the guideline's scope is always confirmed"   # eligibility: reading it could exclude
 WHY_NOT_IN_WORDS = "not said in words: implied or not mentioned"              # the four-way choice (STATED_MIN)
 WHY_NOT_OPTION_WORD = "the quote does not use the option's own words"
@@ -429,14 +429,23 @@ def _date_question(cands: list[dict]) -> dict:
         "is not the comparison.")}
 
 
-async def _comparison_date(cands: list[dict], findings: str, history: str) -> date | None:
-    """The date Jev picks as the comparison study's, at DATE_MIN; None for none, low confidence or a failed call."""
+class DateCheckFailed(Exception):
+    """The comparison-date pick did not run (timeout, HTTP error, malformed or off-menu answer): an outage, never
+    "none" (review I-1). The interval is asked and the settlement is marked failed."""
+
+
+async def _comparison_date(cands: list[dict], findings: str, history: str, finding: str) -> date | None:
+    """The date Jev picks as the comparison study's, at DATE_MIN; None for "none" or low confidence. A failed call
+    raises DateCheckFailed. The state is the patient batch's, plus the finding when it is not part of the dictation
+    (its dates are options too)."""
     state = f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"
+    if finding and finding not in findings:
+        state += f"\n\nFINDING:\n{finding}"
     try:
         _, picks = await _jev({"date": _date_question(cands)}, state)
     except Exception as ex:
-        logger.info("[library.preview] comparison date pick failed (%s); interval asked", type(ex).__name__)
-        return None
+        logger.warning("[library.preview] comparison date pick failed (%s); interval asked", type(ex).__name__)
+        raise DateCheckFailed from ex
     key, conf = picks["date"]
     return next((c["day"] for c in cands if c["key"] == key), None) if conf >= DATE_MIN else None
 
@@ -446,7 +455,7 @@ async def _since(i: InputDef, quote: str, finding: str, findings: str, history: 
     future date or an interval of zero or less, a value outside the input's range, an impossible date or a written
     date code cannot read beside it (which study is meant is not stated), or a date that is not the one Jev picks as
     the comparison study's from every dated sentence (even when it is the only date: a referral date is not a
-    comparison)."""
+    comparison). A failed pick raises DateCheckFailed."""
     p = DT.parse(quote)
     if p is None:
         return None
@@ -458,7 +467,7 @@ async def _since(i: InputDef, quote: str, finding: str, findings: str, history: 
     if DT._scan(texts) is None or (DT.several_dates(texts) and len({c["day"] for c in cands}) < 2):
         logger.info("[library.preview] %s: a date code cannot read beside it; interval asked", i.id)
         return None
-    if await _comparison_date(cands, findings, history) != p.day:
+    if await _comparison_date(cands, findings, history, finding) != p.day:
         logger.info("[library.preview] %s: not the comparison date Jev picks; interval asked", i.id)
         return None
     return InputValue(value=float(days)), Dated(p.exact, DT.basis(quote, p, [finding, findings, history]))
@@ -466,8 +475,8 @@ async def _since(i: InputDef, quote: str, finding: str, findings: str, history: 
 
 async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
                   history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool, dict[str, Dated]]:
-    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed, the
-    since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call or a date pick
+    failed, the since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
     ids = [i.id for i in e.inputs if i.id not in given and (finding or i.scope != "lesion")]
     if not ids:
         return {}, False, {}
@@ -478,13 +487,18 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         return {}, True, {}
     out: dict[str, tuple[InputValue, Settled]] = {}
     dated: dict[str, Dated] = {}
+    check_failed = False        # a date pick that did not run: the interval is asked and the settlement failed
     for item in raw.settled:
         i = e.input(item.input)
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         if i.since_study and DT.parse(q) is not None:      # a date: code converts it, or it is asked
-            got = await _since(i, q, finding, findings, history)
+            try:
+                got = await _since(i, q, finding, findings, history)
+            except DateCheckFailed:
+                check_failed = True
+                continue
             if got is not None:
                 out[i.id] = (got[0], Settled(input=i.id, value=_show(e, i, got[0]), quote=q))
                 dated[i.id] = got[1]
@@ -492,7 +506,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         v = _value(i, item, _texts(i, finding, findings, history))
         if v is not None:            # a suspected cancer is kept: _read_reasons marks it, so it is a scope doubt
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
-    return out, False, dated
+    return out, check_failed, dated
 
 
 def _texts(i: InputDef, finding: str, findings: str, history: str) -> list[str]:
@@ -545,7 +559,11 @@ async def _jev(qs: dict[str, dict], state: str) -> tuple[dict[str, float], dict[
     r.raise_for_status()
     body = r.json()
     nouls = J.scores(body, [k for k, q in qs.items() if q["type"] == "noul"])
-    return nouls, {k: J.choice(body, k) for k, q in qs.items() if q["type"] == "choice"}
+    picks = {k: J.choice(body, k) for k, q in qs.items() if q["type"] == "choice"}
+    for k, (c, conf) in picks.items():        # off the menu or out of range: malformed (review M-2)
+        if c not in qs[k]["criteria"] or not 0.0 <= conf <= 1.0:
+            raise ValueError(f"jev choice {k!r} is off the menu or out of range")
+    return nouls, picks
 
 
 _WHERE = {"lesion": "the FINDING", "patient": "the CLINICAL HISTORY or DICTATION"}
@@ -629,7 +647,7 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
                 pick, conf = picks[f"v{n}"]
                 if pick not in STATED:
                     add(k, WHY_NOT_IN_WORDS)
-                elif STATED[pick] is not pending[k][0].value or conf < STATED_MIN:
+                elif STATED[pick] != pending[k][0].value or conf < STATED_MIN:
                     add(k, WHY_UNCONFIRMED)
             elif nouls[f"v{n}"] < (P.SETTLED_MIN if e.input(k).type == "number" else CHOICE_MIN):
                 add(k, WHY_UNCONFIRMED)

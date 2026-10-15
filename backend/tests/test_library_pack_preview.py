@@ -27,7 +27,7 @@ def _ids(assumptions) -> list[str]:
 @pytest.fixture
 def jev(monkeypatch):
     st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "scores": {}, "calls": 0, "payloads": [],
-          "stated": {}, "stated_default": ("not_mentioned", 0.95)}
+          "stated": {}, "stated_default": ("not_mentioned", 0.95), "fail_q": None}
 
     def score(text):
         if any(d in text for d in st["deny"]):
@@ -37,7 +37,9 @@ def jev(monkeypatch):
     async def post(payload, key, timeout, transport=None):
         st["calls"] += 1
         st["payloads"].append(payload)
-        if st["fail"] or (st["fail_if"] and st["fail_if"] in payload["state"]):
+        asked = " ".join(q["instructions"] for q in payload["questions"].values())
+        if st["fail"] or (st["fail_if"] and st["fail_if"] in payload["state"]) or (
+                st["fail_q"] and st["fail_q"] in asked):
             raise TimeoutError("jev slow")
         def answer(q):
             if q["type"] == "choice":      # a yes/no's four-way question: by a label fragment, else the default
@@ -1179,7 +1181,7 @@ async def test_an_ex_smoker_history_prefills_fleischner_risk_high(monkeypatch, j
 
 # reading lab 2026-10-15 (Hassan approved): a yes/no is read when Jev's four-way choice says the text states it in words,
 # in the drafted direction, at STATED_MIN; implied, not mentioned, the other direction or a lower confidence pre-fill it
-RLL = "7 mm solid nodule in the right upper lobe."
+RUL_NODULE = "7 mm solid nodule in the right upper lobe."
 
 
 @pytest.mark.parametrize("pick,conf,state,why", [
@@ -1193,7 +1195,7 @@ async def test_a_yes_no_is_read_only_when_jev_says_it_is_stated_in_words(monkeyp
     jev["scores"] = {ONE_CLAIM: 0.95}
     jev["stated"] = {"Upper lobe location": (pick, conf)}
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "right upper lobe"})
-    out = await PP.preview_pack(_bts(), RLL, "", {}, finding=RLL)
+    out = await PP.preview_pack(_bts(), RUL_NODULE, "", {}, finding=RUL_NODULE)
     d = next(x for x in out.draft if x.input == "upper_lobe")
     assert d.state == state and PP.WHY_KIND not in d.why
     assert (why is None and d.why == []) or getattr(PP, why) in d.why
@@ -1224,6 +1226,16 @@ async def test_a_malformed_four_way_answer_is_an_outage_never_a_read(monkeypatch
     jev["scores"] = {ONE_CLAIM: 0.95}
     jev["stated"] = {"Upper lobe location": (None, 0.99)}
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "right upper lobe"})
-    out = await PP.preview_pack(_bts(), RLL, "", {}, finding=RLL)
+    out = await PP.preview_pack(_bts(), RUL_NODULE, "", {}, finding=RUL_NODULE)
     d = next(x for x in out.draft if x.input == "upper_lobe")
     assert d.state == "prefilled" and PP.WHY_NO_CHECK in d.why
+
+
+async def test_an_off_menu_four_way_answer_is_an_outage_never_a_read(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    jev["stated"] = {"Upper lobe location": ("stated", 0.99)}         # not one of the four options
+    _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "right upper lobe"})
+    out = await PP.preview_pack(_bts(), RUL_NODULE, "", {}, finding=RUL_NODULE)
+    d = next(x for x in out.draft if x.input == "upper_lobe")
+    assert d.state == "prefilled" and PP.WHY_NO_CHECK in d.why and out.degraded

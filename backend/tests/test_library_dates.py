@@ -132,10 +132,31 @@ async def test_a_single_date_that_is_not_the_comparison_is_asked(monkeypatch, je
     assert q["type"] == "choice" and "none" in q["criteria"] and len(q["criteria"]) == 2
 
 
-async def test_a_failed_date_pick_asks(monkeypatch, jev, today):
-    jev["fail_if"] = "Referred"
-    s = await _settle(monkeypatch, NODULE, "12/03/2025", history="Referred for follow-up of the CT 12/03/2025.")
-    assert "interval_days" not in s.values
+async def test_a_failed_date_pick_alone_asks_and_marks_the_settlement_failed(monkeypatch, jev, today):
+    """Review I-1: the scope batches succeed, the date pick's own call fails: an outage, never "none"."""
+    jev["fail_q"] = PICK
+    s = await _settle(monkeypatch, DICTATION, "12 March 2025")
+    assert "interval_days" not in s.values and s.failed
+    assert s.values["prior_study"].why != [PP.WHY_NO_CHECK]  # the patient batch itself ran
+
+
+@pytest.mark.parametrize("answer", [("d9", 0.95), ("12 March 2025", 0.95), ("d0", 1.5)])
+async def test_an_off_menu_or_out_of_range_date_answer_is_an_outage(monkeypatch, jev, today, answer):
+    """Review M-2: a key that is not an option, or a confidence outside 0..1, is malformed: asked and failed."""
+    jev["stated"][PICK] = answer
+    s = await _settle(monkeypatch, DICTATION, "12 March 2025")
+    assert "interval_days" not in s.values and s.failed
+
+
+async def test_a_date_only_in_a_finding_outside_the_dictation_reaches_jev_with_it(monkeypatch, jev, today):
+    """Review M-4: the date pick's state carries a finding that is not part of the dictation."""
+    jev["stated"][PICK] = pick("12/03/2025")
+    finding = "Nodule 9 mm, 6 mm on the CT of 12/03/2025."
+    _model(monkeypatch, {"input": "interval_days", "value": "12/03/2025", "quote": "12/03/2025"})
+    s = await PP.settle_pack(_bts(), "Lungs: see below.", "", finding=finding)
+    assert s.values["interval_days"].tier == "prefilled"
+    state = next(p["state"] for p in jev["payloads"] for q in p["questions"].values() if PICK in q["instructions"])
+    assert state.endswith(f"FINDING:\n{finding}")
 
 
 async def test_approx_date_prefilled(monkeypatch, jev, today):
@@ -147,8 +168,10 @@ async def test_approx_date_prefilled(monkeypatch, jev, today):
 
 
 async def test_future_date_dropped(monkeypatch, jev, today):
+    jev["stated"][PICK] = pick("20 November 2026")          # Jev would fill it: only the guard asks (review M-3)
     s = await _settle(monkeypatch, f"Compared with the CT of 20 November 2026.\n{NODULE}", "20 November 2026")
     assert "interval_days" not in s.values
+    jev["stated"][PICK] = pick("14 October 2026")
     s = await _settle(monkeypatch, f"Compared with the CT of 14 October 2026.\n{NODULE}", "14 October 2026")
     assert "interval_days" not in s.values                 # a zero interval
 
@@ -180,6 +203,7 @@ async def test_a_date_in_the_history_counts(monkeypatch, jev, today):
 @pytest.mark.parametrize("second", ["CT 01/06/24", "CT 1 June", "CT of the 1st of June", "CT June 24", "CT Jun-24"])
 async def test_two_dates_asks_when_the_second_is_not_parseable(monkeypatch, jev, today, second):
     """I-1: a second comparison with a two-digit year or no year still counts: the interval is asked, never read."""
+    jev["stated"][PICK] = pick("12 March 2025")             # Jev would fill it: only the guard asks (review M-3)
     s = await _settle(monkeypatch, f"{DICTATION}\nAlso compared with {second}.", "12 March 2025")
     assert "interval_days" not in s.values
 
