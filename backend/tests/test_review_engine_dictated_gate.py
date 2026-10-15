@@ -422,6 +422,10 @@ def test_live_still_flags_a_recommendation_the_radiologist_did_not_dictate():
     ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
      "IMPRESSION:\n7 mm right upper lobe nodule. CT abdomen is recommended.\n",
      "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT chest in 12 months.", "CT abdomen is recommended."),
+    # the same study at a different, undictated interval
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT in 12 months is recommended.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months.", "CT in 12 months is recommended."),
 ])
 def test_live_flags_a_recommendation_that_only_shares_a_word_with_a_dictated_one(report, dictation, flagged):
     recs, log = _live_rec(report, dictation, 0.1)

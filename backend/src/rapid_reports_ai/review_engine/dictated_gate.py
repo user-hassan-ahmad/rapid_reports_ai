@@ -250,18 +250,23 @@ def _clause_log(g: GateClause) -> dict:
             "tier": g.tier, "runs": [list(r) for r in g.runs], "reworded": g.reworded}
 
 
+_NUM = re.compile(r"\d+(?:\.\d+)?")
+
+
 def _rec_said(al: Alignment, c: ReportClause) -> bool:
     """A recommendation clause the radiologist dictated: one dictated line, confidently paired with the clause or a
     recommendation itself, holds every content word of the clause beyond the recommending words. Stricter than
     `provenance._rec_dictated` (a pair, or any one shared word): a pair or a shared modality word alone would let an
-    undictated addition in the same sentence ("... and refer to MDT.") pass unflagged."""
+    undictated addition in the same sentence ("... and refer to MDT.") pass unflagged. Numbers count as words
+    (`content_words` drops them), so "CT in 12 months." is not cleared by a dictated "CT in 3 months"."""
     from .jev_pass import recommendation
     from .provenance import _REC_WORDS
     from .lanes import confident
-    words = {w for w in content_words(c.text) if not _REC_WORDS.fullmatch(w)}
+    def toks(t: str) -> set:
+        return set(content_words(t)) | set(_NUM.findall(t))
+    words = {w for w in toks(c.text) if not _REC_WORDS.fullmatch(w)}
     paired = {p.line_id for p in al.pairs if p.clause_id == c.id and confident(p)}
-    return bool(words) and any((l.id in paired or recommendation(l.text)) and words <= set(content_words(l.text))
-                               for l in al.lines)
+    return bool(words) and any((l.id in paired or recommendation(l.text)) and words <= toks(l.text) for l in al.lines)
 
 
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
