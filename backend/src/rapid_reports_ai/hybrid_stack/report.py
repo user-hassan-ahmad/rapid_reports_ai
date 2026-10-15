@@ -80,7 +80,7 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
         if req.gate.values is not None:
             stack["values_na"] = [c.item for c in req.gate.values if c.state == "na"]
             stack["values_filled"] = [c.item for c in req.gate.values if c.state in ("filled", "picked")]
-            stack["values_quotes"] = filled_value_quotes(req.units, req.gate)   # a dropped value is written back
+            stack["values_quotes"] = filled_value_quotes(req.units, req.gate, removed)   # a dropped value is written back
         out = await generate_template_report_lean(
             sheet=cfg.get("skill_sheet", ""), scan_type=req.scan_type, findings=st.block, history=req.history,
             case=None, signature=None, declined=removed, stack=stack, check_findings=plain)

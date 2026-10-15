@@ -259,5 +259,6 @@ def test_template_generate_hands_the_writer_each_filled_values_sentence_and_regi
     assert events[0][0] == "candidate"
     assert seen["stack"]["values_na"] == ["CBD"]
     assert seen["stack"]["values_filled"] == ["Liver span", "Spleen length", "Portal vein"]
-    assert seen["stack"]["values_quotes"] == {"Liver span": {"quote": "Liver span 17 cm.", "region": "Liver"},
-                                              "Spleen length": {"quote": "Spleen 11 cm", "region": ""}}
+    # a quote no dictated unit holds is dropped (flag only); a chip without one has no entry
+    assert seen["stack"]["values_quotes"] == {"Liver span": {"quote": "Liver span 17 cm.",
+                                                             "sentence": "Liver span 17 cm.", "region": "Liver"}}

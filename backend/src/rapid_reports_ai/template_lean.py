@@ -560,8 +560,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     if bs_t is not None:
         # The N/A line, by code, at its section's TOP / END (never sent through the check's repair)
         lists, flags, vrec["backstop"] = await bs_t
-        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
         if gate_filled and vrec["backstop"]["missing"]:
+            # before the line is written, so a written-back sentence never sits on (or is stripped with) that line
             before = final
             final, edits, vrec["restored"] = restore_values(final, sheet, vrec["backstop"]["missing"],
                                                             (stack or {}).get("values_quotes") or {})
@@ -571,6 +571,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
                 quality = {**(quality or {"enabled": False})}
                 quality.setdefault("pre_edit_report", before)
                 quality["applied_edits"] = [*(quality.get("applied_edits") or []), *edits]
+        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
         if flags:
             quality = {**(quality or {"enabled": False})}
             quality["review"] = [*(quality.get("review") or []), *flags]

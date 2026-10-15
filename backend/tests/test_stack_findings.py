@@ -82,3 +82,55 @@ def test_an_applied_line_counts_as_stated_for_the_number_check_and_the_post_gen_
     without = findings_block(_units(c), c["groups"], GateRecord.model_validate(c["gate"]))
     assert flagged(without.all_texts())            # control: with no applied line the 3 is undictated
     assert not flagged(st.all_texts())             # the applied line supplies it
+
+
+# ── filled_value_quotes: what Generate may write back for a value the writer dropped (P3 2026-10-15) ──
+# SYNTHETIC units; the gate's quote is a comma-split clause of a dictated sentence.
+
+def _vunit(i, text, group, parts=None):
+    return StackUnit(id=i, text=text, group=group, parts=parts)
+
+
+def _vgate(*chips, removed=()):
+    return GateRecord.model_validate({"values": [dict(c) for c in chips], "removed": list(removed)})
+
+
+def test_a_filled_values_write_back_is_its_whole_dictated_sentence_not_the_clause():
+    from rapid_reports_ai.hybrid_stack.findings import filled_value_quotes
+    units = [_vunit(1, "Aortic root measuring 3.4 cm at the sinuses, ascending aorta 3.0 cm.", "Aorta"),
+             _vunit(2, "Kidneys: right 11 cm, left 10.5 cm.", "Kidneys")]
+    gate = _vgate({"item": "Aortic root", "state": "filled", "value": "3.4 cm", "quote": "measuring 3.4 cm at the sinuses"},
+                  {"item": "Right kidney", "state": "picked", "value": "11 cm", "quote": "right 11 cm"})
+    out = filled_value_quotes(units, gate)
+    assert out["Aortic root"]["sentence"] == "Aortic root measuring 3.4 cm at the sinuses, ascending aorta 3.0 cm."
+    assert out["Aortic root"]["region"] == "Aorta"
+    assert out["Right kidney"]["sentence"] == "Kidneys: right 11 cm, left 10.5 cm."
+    assert out["Right kidney"]["region"] == "Kidneys"
+
+
+def test_a_quote_no_dictated_unit_holds_is_dropped_and_a_chip_without_a_quote_has_no_entry():
+    from rapid_reports_ai.hybrid_stack.findings import filled_value_quotes
+    units = [_vunit(1, "LVEF 55%.", "Left ventricle")]
+    gate = _vgate({"item": "RVEF", "state": "filled", "value": "50%", "quote": "RVEF 50%"},   # not dictated
+                  {"item": "LV mass", "state": "filled", "value": None, "quote": None, "kept": True},
+                  {"item": "LVEF", "state": "filled", "value": "55%", "quote": "LVEF 55%"})
+    assert set(filled_value_quotes(units, gate)) == {"LVEF"}
+
+
+def test_a_sentence_holding_removed_text_is_never_written_back():
+    from rapid_reports_ai.hybrid_stack.findings import filled_value_quotes
+    units = [_vunit(1, "Spleen 11 cm, small accessory spleen.", "Spleen")]
+    gate = _vgate({"item": "Spleen length", "state": "filled", "value": "11 cm", "quote": "Spleen 11 cm"})
+    assert "Spleen length" in filled_value_quotes(units, gate)
+    assert filled_value_quotes(units, gate, removed=["small accessory spleen"]) == {}
+
+
+def test_the_region_comes_from_the_part_holding_the_quote_before_a_part_inside_it():
+    from rapid_reports_ai.hybrid_stack.findings import filled_value_quotes
+    from rapid_reports_ai.hybrid_stack.units import PartOut
+    unit = _vunit(1, "Spleen, spleen 11 cm in length.", "Other",
+                  parts=[PartOut(text="Spleen", group="Other"), PartOut(text="spleen 11 cm in length.", group="Spleen")])
+    gate = _vgate({"item": "Spleen length", "state": "filled", "value": "11 cm", "quote": "spleen 11 cm"})
+    out = filled_value_quotes([unit], gate)
+    assert out["Spleen length"]["region"] == "Spleen"            # not "Other", whose text sits inside the quote
+    assert out["Spleen length"]["sentence"] == "spleen 11 cm in length."

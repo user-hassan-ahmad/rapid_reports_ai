@@ -641,7 +641,8 @@ async def test_a_filled_value_the_report_lacks_is_never_listed_and_is_written_ba
     out = await tl.generate_template_report_lean(
         sheet=VALUES, scan_type="CMR", findings="Ejection fraction 47%. RVEF 50%.", history="", case=None,
         signature=None, stack={"conclusion": "", "declined": [], "values_na": [], "values_filled": ["LVEF", "RVEF"],
-                               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%.", "region": "Findings"}}})
+                               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%", "sentence": "Ejection fraction 47%.",
+                                                          "region": "Findings"}}})
     assert seen["items"] == ["LVEF", "RVEF"] and seen["report"].startswith("Findings:\nNormal LV.")
     assert "Values not provided" not in out["report_content"]
     assert "Findings:\nNormal LV. Ejection fraction 47%.\n\nConclusion:" in out["report_content"]
@@ -652,6 +653,31 @@ async def test_a_filled_value_the_report_lacks_is_never_listed_and_is_written_ba
     assert out["quality_check"]["pre_edit_report"] == "Findings:\nNormal LV.\n\nConclusion:\nNormal.\nCHECKED"
     assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF", "RVEF"], "error": None}
     assert out["required_values"]["restored"] == ["LVEF"]
+
+
+async def test_a_written_back_value_is_never_glued_onto_an_at_end_list_line(monkeypatch):
+    """Review 2026-10-15 (SYNTHETIC): with the list AT END, the write-back went onto the "Values not provided" line,
+    where a later pass would delete it. It runs before the line is written, and never joins that line."""
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def ask(report, items):
+        return [0.1]
+
+    async def check(report, findings, scan, options, **kw):   # no "CHECKED" line: Findings is the last section
+        return report, options, {"enabled": True}
+    monkeypatch.setattr(trv, "ask_report_values", ask)
+    monkeypatch.setattr(tl, "run_quality_check", check)
+    out = await tl.generate_template_report_lean(
+        sheet=VALUES.replace("AT TOP", "AT END"), scan_type="CMR", findings="Ejection fraction 47%.", history="",
+        case=None, signature=None,
+        stack={"conclusion": "", "declined": [], "values_na": ["RVEF"], "values_filled": ["LVEF"],
+               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%", "sentence": "Ejection fraction 47%.",
+                                          "region": "Findings"}}})
+    assert "Findings:\nNormal LV. Ejection fraction 47%.\n\nValues not provided: RVEF.\n\nConclusion:" \
+        in out["report_content"]
 
 
 async def test_a_backstop_failure_leaves_the_report_and_flags_only_that_it_could_not_check(monkeypatch):

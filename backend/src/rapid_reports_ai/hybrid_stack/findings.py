@@ -96,22 +96,38 @@ def _value_statements(gate: GateRecord) -> list[str]:
     return [f"{c.item} {c.value}" for c in (gate.values or []) if c.state == "entered" and c.value]
 
 
-def filled_value_quotes(units: list[StackUnit], gate: GateRecord) -> dict[str, dict[str, str]]:
-    """Each value the gate filled from the dictation: {item: {"quote": the sentence it was read from, "region": the
-    scratchpad region of the unit holding that sentence, "" when none does}}. Generate writes a sentence back when
-    the writer dropped it (template_required_values.restore_values); a chip without a sentence has no entry."""
+def filled_value_quotes(units: list[StackUnit], gate: GateRecord,
+                        removed: list[str] | None = None) -> dict[str, dict[str, str]]:
+    """Each value the gate filled from the dictation that Generate may write back: {item: {"quote": the clause the
+    value was read from, "sentence": the dictated unit (or a split unit's part) holding that clause, "region": its
+    scratchpad region}}. Generate writes the sentence back when the writer dropped it
+    (template_required_values.restore_values). No entry, so a value_missing flag only, when: the chip has no quote
+    (stated?, kept); no dictated unit holds the quote (the client's quote is never trusted); or the sentence holds
+    text the radiologist removed."""
     def flat(s: str) -> str:
         return " ".join(s.split()).rstrip(".").lower()
-    placed = [(flat(i.text), i.group) for i in _items(units)]
-    placed += [(flat(u.text), u.group) for u in units if not u.heading and u.group is not None]
+    spoken = [u for u in units if not u.heading and u.group is not None]
+    placed = [(i.text, i.group) for i in _items(units)]
+    gone = [flat(r) for r in (removed or []) if flat(r)]
     out: dict[str, dict[str, str]] = {}
     for c in gate.values or []:
         q = (c.quote or "").strip()
         if c.state not in ("filled", "picked") or not q:
             continue
         fq = flat(q)
-        region = next((g for t, g in placed if t and (fq in t or t in fq)), "")
-        out[c.item] = {"quote": q, "region": region}
+        whole = next((u for u in spoken if fq in flat(u.text)), None)
+        if whole is None:
+            continue
+        # the part holding the quote; else a part inside it (a quote across a split), whose unit is the sentence
+        hit = (next(((t, g) for t, g in placed if fq in flat(t)), None)
+               or next(((whole.text, g) for t, g in placed if flat(t) and flat(t) in fq and flat(t) in flat(whole.text)),
+                    None)
+               or (whole.text, whole.group))
+        sentence = " ".join(hit[0].split())
+        fs = flat(sentence)
+        if any(r in fs or fs in r for r in gone):
+            continue
+        out[c.item] = {"quote": q, "sentence": sentence, "region": hit[1] or ""}
     return out
 
 
