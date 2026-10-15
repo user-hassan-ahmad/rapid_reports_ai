@@ -111,3 +111,9 @@ def test_flag_defaults_off(monkeypatch):
     assert enabled() is False
     monkeypatch.setenv("RR_DICTATED_NUMBERS", "1")
     assert enabled() is True
+
+
+def test_lab_spellings_match():   # lab 2026-10-15: both were false flags on a faithful report
+    assert missing("Adenosine 140 micrograms per kilogram per minute.", "Adenosine 140 mcg/kg/min.") == []
+    assert missing("Escalated at three minutes.", "Escalated after 3 minutes.") == []
+    assert missing("Escalated at three mm.", "Escalated after 3 minutes.") == ["3 minutes"]

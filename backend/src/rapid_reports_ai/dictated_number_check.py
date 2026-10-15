@@ -7,7 +7,7 @@ the report. Code only, both stack paths, review flags only (no repair). A number
 Number words are not dictated numbers. Identifiers (T2, L4/5, b1000), dates, clock times and list markers are masked
 as in `template_number_check`. A dictated value is present when the report holds the same value (float equality:
 0.14 = .14, 1.5 != 15) with the same normalised unit or no unit; a dictated value without a unit matches any unit
-or, up to twenty, its number word. No unit conversion: 5 mm reported as 0.5 cm is a miss. Never raises.
+or, up to twenty, its number word ("three minutes" holds 3 min). No unit conversion: 5 mm reported as 0.5 cm is a miss. Never raises.
 """
 from __future__ import annotations
 
@@ -28,13 +28,14 @@ def enabled() -> bool:
 
 
 _PER = r"\s*(?:/|per)\s*"
+_KG = r"(?:kg|kilograms?)"
 _SQ = r"(?:2|²|\^2)"
 # (pattern, normalised unit), most specific first; matched case-insensitively right after a number or chain
 _UNITS = [
-    (rf"(?:mcg|µg|μg|ug|micrograms?){_PER}kg{_PER}min(?:ute)?s?", "mcg/kg/min"),
-    (rf"(?:mg|milligrams?){_PER}kg", "mg/kg"),
-    (rf"mmol{_PER}kg", "mmol/kg"),
-    (rf"(?:ml|millilit(?:re|er)s?){_PER}kg", "ml/kg"),
+    (rf"(?:mcg|µg|μg|ug|micrograms?){_PER}{_KG}{_PER}min(?:ute)?s?", "mcg/kg/min"),
+    (rf"(?:mg|milligrams?){_PER}{_KG}", "mg/kg"),
+    (rf"mmol{_PER}{_KG}", "mmol/kg"),
+    (rf"(?:ml|millilit(?:re|er)s?){_PER}{_KG}", "ml/kg"),
     (rf"(?:ml|millilit(?:re|er)s?){_PER}m{_SQ}", "ml/m2"),
     (rf"(?:g|grams?){_PER}m{_SQ}", "g/m2"),
     (rf"(?:ml|millilit(?:re|er)s?){_PER}s(?:ec(?:ond)?)?", "ml/s"),
@@ -130,7 +131,10 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
         with_unit = {(n.value, n.unit) for n in found}
         any_unit = {n.value for n in found}
         bare = {n.value for n in found if n.unit is None}
-        words = {float(_WORD_NUMS.index(w.lower())) for w in _WORD_RX.findall(report or "")}
+        words = set()   # number words: (value, unit) when a unit follows, else (value, None)
+        for m in _WORD_RX.finditer(report or ""):
+            v = float(_WORD_NUMS.index(m.group(1).lower()))
+            words.add((v, _unit_at(report, m.end())[0]))
         out: List[dict] = []
         seen: set = set()
         for src in sources:
@@ -138,8 +142,8 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
                 continue
             chains: dict = {}
             for n in extract(src):
-                ok = (n.value in any_unit or n.value in words) if n.unit is None \
-                    else ((n.value, n.unit) in with_unit or n.value in bare)
+                ok = (n.value in any_unit or any(v == n.value for v, _ in words)) if n.unit is None \
+                    else bool({(n.value, n.unit), (n.value, None)} & (with_unit | words)) or n.value in bare
                 c = chains.setdefault((n.start, n.text), [])
                 if not ok and n.value not in c:
                     c.append(n.value)
