@@ -524,13 +524,8 @@ def verdicts(e: Entry, s, label: dict, presets: dict[str, str] | None = None) ->
             for i in e.inputs}
 
 
-def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
-         presets: dict[str, str] | None = None) -> tuple[int, str | None]:
-    """Taps to an outcome (spec §12): one per asked input the engine needs (truth, else assumed), one per wrong
-    drafted value (corrected to truth), one per eligibility value the card assumed in scope that the truth
-    contradicts (corrected to truth), one per scope doubt the truth agrees with (confirmed at Apply), one for the
-    lesion pick if shown. Calculate is not counted. A wrong draft is
-    dropped from a copy of the settlement, so the engine never sees it; the original is untouched."""
+def _walk(e: Entry, s, label: dict, patient: dict, picked: bool = False, presets: dict[str, str] | None = None):
+    """The shared tap walk: (n, final preview, settlement minus wrong drafts, answered, confirmed scope doubts, presets)."""
     truth, d = _truth(label), drafts(s, e, presets)
     wrong = [k for k, (v, _, t) in d.items() if not _right(e, k, v, t, label)]
     s = dataclasses.replace(s, values={k: v for k, v in s.values.items() if k not in wrong})
@@ -553,7 +548,28 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
     shown = {d.input: d.value for d in p.draft if d.value}
     confirm = {k: shown[k] for k in p.scope_doubt if k not in answered and k in shown}
     n += len(confirm)
+    return n, p, s, answered, confirm, presets
+
+
+def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
+         presets: dict[str, str] | None = None) -> tuple[int, str | None]:
+    """Taps to an outcome (spec §12): one per asked input the engine needs (truth, else assumed), one per wrong
+    drafted value (corrected to truth), one per eligibility value the card assumed in scope that the truth
+    contradicts (corrected to truth), one per scope doubt the truth agrees with (confirmed at Apply), one for the
+    lesion pick if shown. Calculate is not counted. A wrong draft is
+    dropped from a copy of the settlement, so the engine never sees it; the original is untouched."""
+    n, p, s, answered, confirm, presets = _walk(e, s, label, patient, picked, presets)
+    shown = {d.input: d.value for d in p.draft if d.value}
     return n, calculate(e, s, shown, patient, [], "", presets=presets, answered={**answered, **confirm}).outcome
+
+
+def taps_to_ready(e: Entry, s, label: dict, patient: dict, picked: bool = False,
+                  presets: dict[str, str] | None = None) -> int:
+    """Taps to a ready questionnaire card (spec 2026-10-14 §6.3): taps() plus one ✓ per decisive (or unweighed)
+    pre-filled or assumed value the final card still shows; never a read or answered value, never a scope doubt."""
+    n, p, _, answered, _, _ = _walk(e, s, label, patient, picked, presets)
+    return n + sum(1 for d in p.draft if d.state in ("prefilled", "assumed") and d.value and d.decisive is not False
+                   and d.input not in p.scope_doubt and d.input not in answered)
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:
@@ -585,9 +601,12 @@ def metrics(rows: list[dict]) -> dict:
                 key = f"{r['pack']}.{k}"
                 pf[key]["prefilled"] += 1
                 pf[key]["wrong"] += r["verdicts"][k] == "wrong"
+    ready_rows = [r for r in rows if "taps_ready" in r]
     return {"cards": len(rows), "wrong_read": wrong_read,
             "median_taps": statistics.median(r["taps"] for r in rows) if rows else None,
             "taps_distribution": dict(sorted(Counter(r["taps"] for r in rows).items())),
+            "median_taps_ready": statistics.median(r["taps_ready"] for r in ready_rows) if ready_rows else None,
+            "taps_ready_distribution": dict(sorted(Counter(r["taps_ready"] for r in ready_rows).items())),
             "prefill_error": {k: {**v, "rate": v["wrong"] / v["prefilled"]} for k, v in sorted(pf.items())},
             "degraded": [r["card"] for r in rows if r.get("degraded")]}
 
@@ -750,12 +769,13 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         e, s, lab = lib.lookup(c["pack"]), _settlement(st[c["id"]]), labels[c["id"]]
         pre = card_presets(e, c)
         n, outcome = taps(e, s, lab, {}, presets=pre)
+        ready = taps_to_ready(e, s, lab, {}, presets=pre)
         d = drafts(s, e, pre)
         ver = verdicts(e, s, lab, pre)
         by_band = [k for k, (val, _, tier) in d.items() if ver[k] == "ok" and _agrees_by_band(
             e, k, val, _truth(lab)[k] if tier == "prefilled" else lab["inputs"][k]["value"])]
         rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
-                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": ver, "agrees_by_band": by_band,
+                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "taps_ready": ready, "verdicts": ver, "agrees_by_band": by_band,
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
                      "outcome": outcome, "draft_outcome": _draft_now(e, s, pre),
                      "draft_outcome_stored": st[c["id"]].get("draft_outcome_id")})
@@ -770,6 +790,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
               "wrong_prefill_total": wrong_prefill_total(head), "by_source": by_source(rows),
               "agrees_by_band": [f"{r['card']}:{k}" for r in head for k in r["agrees_by_band"]],
               "notes": ["taps outcome = the Calculate result over every value the card shows",
+                        "taps_ready = taps + one ✓ per decisive guess left on the card",
                         "outcome agreement uses the draft outcome recomputed under today's card rules over the stored "
                         "settlement (draft_outcome); the settler-time one is draft_outcome_stored per row"],
               "rows": rows,
@@ -789,6 +810,8 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         print(f"| wrong values shown as read | {len(result['wrong_read'])} | 0 |")
         print(f"| median taps to Calculate | {result['median_taps']} | <= 2 |")
         print(f"| taps distribution | {result['taps_distribution']} | |")
+        print(f"| median taps to ready (questionnaire) | {result['median_taps_ready']} | <= 2 |")
+        print(f"| taps to ready distribution | {result['taps_ready_distribution']} | |")
         print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
         print(f"| numbers right only by band (reported apart) | {len(result['agrees_by_band'])} | |")
         print(f"| outcome agreement | {result['outcome_agreement']} | |")
@@ -802,6 +825,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         print(f"\n### source: {src}\n| metric | measured |\n|---|---|")
         print(f"| cards scored | {m['cards']} |\n| wrong values shown as read | {len(m['wrong_read'])} |")
         print(f"| median taps to Calculate | {m['median_taps']} |\n| taps distribution | {m['taps_distribution']} |")
+        print(f"| median taps to ready (questionnaire) | {m['median_taps_ready']} |\n| taps to ready distribution | {m['taps_ready_distribution']} |")
         print(f"| wrong pre-filled values | {m['wrong_prefill_total']} |\n| outcome agreement | {m['outcome_agreement']} |")
     return path
 
