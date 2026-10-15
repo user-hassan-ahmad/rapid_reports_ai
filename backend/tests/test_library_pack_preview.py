@@ -1055,7 +1055,8 @@ def test_a_dictated_value_or_an_answer_overrides_the_preset():
     e = _aaa()
     female = _exam_finish(e, {**_DIAMETER, "sex": PP.Drafted(PP.InputValue(value="female"), "female", "read")})
     sex = next(x for x in female.settled if x.input == "sex")
-    assert (sex.value, sex.quote, sex.by) == ("female", "female", "") and female.state == "does_not_apply"
+    assert (sex.value, sex.quote, sex.by) == ("female", "female", "") and female.state == "check_first"
+    assert female.scope_doubt == ["sex"]                       # a read value never excludes unconfirmed (2026-10-15)
     for p in (_exam_finish(e, _DIAMETER, patient={"sex": "female"}),
               _exam_finish(e, _DIAMETER, answered={"screening_programme": "No"})):
         assert p.state == "does_not_apply" and p.draft_outcome is None

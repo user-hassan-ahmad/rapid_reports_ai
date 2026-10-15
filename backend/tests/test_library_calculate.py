@@ -214,13 +214,36 @@ async def test_a_suspicion_about_another_lesion_is_a_scope_doubt_never_a_known_c
     assert p.scope_doubt == ["known_primary_cancer"] and p.state == "check_first" and p.exclusion is None
 
 
-def test_a_read_excluding_eligibility_value_still_excludes():
+# Hassan 2026-10-15: no value excludes a guideline unconfirmed, whatever its type or tier. A read value behind an
+# exclusion is a scope doubt like a pre-filled one: shown pre-filled with WHY_WOULD_EXCLUDE; only an answer excludes
+def _fleischner_age(v: float) -> tuple:
     e = next(x for x in _tier1() if x.id == "fleischner-pulmonary-nodule")
-    s = PP.Settlement(values={"age": PP.Drafted(InputValue(value=30.0), "30-year-old", "read")})
+    return e, PP.Settlement(values={"age": PP.Drafted(InputValue(value=v), f"{v:g}-year-old", "read")})
+
+
+def test_a_read_excluding_value_is_a_scope_doubt_not_an_exclusion():
+    e, s = _fleischner_age(30.0)
     p = PP.finish(e, s, {}, None, [])
-    assert p.state == "does_not_apply" and p.exclusion is not None and p.scope_doubt == []
-    p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes"}, None, [])                # answered: excludes too
-    assert p.state == "does_not_apply"
+    assert p.state == "check_first" and p.exclusion is None and p.scope_doubt == ["age"]
+    row = next(d for d in p.draft if d.input == "age")
+    assert row.state == "prefilled" and PP.WHY_WOULD_EXCLUDE in row.why          # shown to confirm, never read
+    assert PP.finish(e, s, {"age": "30"}, None, []).state == "does_not_apply"    # confirmed (answered): excludes
+    assert PP.finish(e, PP.Settlement(), {"exclusion": "Yes"}, None, []).state == "does_not_apply"
+
+
+def test_a_read_value_that_keeps_the_guideline_stays_read():
+    e, s = _fleischner_age(64.0)
+    p = PP.finish(e, s, {}, None, [])
+    assert p.scope_doubt == [] and next(d for d in p.draft if d.input == "age").state == "read"
+
+
+def test_calculate_leaves_an_unconfirmed_read_doubt_out_and_a_confirmed_one_excludes():
+    e, s = _fleischner_age(30.0)
+    c = PP.calculate(e, s, {"age": "30"}, None, [], "b1")
+    assert c.outcome != "does_not_apply" and c.scope_doubt == ["age"]
+    assert next(v for v in c.values if v.input == "age").state == "prefilled"
+    c = PP.calculate(e, s, {"age": "30"}, None, [], "b1", answered={"age": "30"})
+    assert c.outcome == "does_not_apply"
 
 
 def test_only_the_doubtful_value_leaves_the_draft_other_prefilled_values_stay():
@@ -242,19 +265,18 @@ def test_only_the_doubtful_value_leaves_the_draft_other_prefilled_values_stay():
                               "benign_features": "No"}),
     ("fleischner-pulmonary-nodule", {"age": "64", "exclusion": "No", "nodule_type": "solid", "count": "single",
                                      "risk": "low"})])
-def test_a_prefilled_clinical_value_never_excludes_but_a_read_one_does(pack, extra):
-    """Review I-c: a pre-filled diameter over 3 cm is a scope doubt, never an exclusion; read, it excludes."""
+def test_a_drafted_clinical_value_never_excludes_but_an_answered_one_does(pack, extra):
+    """Review I-c: a pre-filled diameter over 3 cm is a scope doubt, never an exclusion; since Hassan 2026-10-15 a
+    read one is too. Answered (confirmed), it excludes."""
     e = next(x for x in _tier1() if x.id == pack)
-    for tier, want in (("prefilled", "check_first"), ("read", "does_not_apply")):
+    for tier in ("prefilled", "read"):
         s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=35.0), "35 mm", tier,
                                                             [PP.WHY_OTHER_NUMBER] if tier == "prefilled" else [])})
         p = PP.finish(e, s, extra, None, [])
-        assert p.state == want, (pack, tier)
-        assert (p.scope_doubt == ["diameter_mm"]) is (tier == "prefilled") and (p.exclusion is None) is (
-            tier == "prefilled")
-        if tier == "prefilled":
-            d = next(x for x in p.draft if x.input == "diameter_mm")
-            assert d.value == "35 mm" and PP.WHY_WOULD_EXCLUDE in d.why
+        assert p.state == "check_first" and p.scope_doubt == ["diameter_mm"] and p.exclusion is None, (pack, tier)
+        d = next(x for x in p.draft if x.input == "diameter_mm")
+        assert d.value == "35 mm" and d.state == "prefilled" and PP.WHY_WOULD_EXCLUDE in d.why
+        assert PP.finish(e, s, {**extra, "diameter_mm": "35"}, None, []).state == "does_not_apply"
 
 
 def test_the_hedge_backstop_reads_the_sentence_around_a_short_quote():
@@ -408,10 +430,11 @@ def test_a_visible_sign_is_a_yes_no_or_a_choice_naming_its_absent_option():
 def test_a_bts_mass_says_its_diameter_is_the_reason():
     e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
     s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=38.0), "3.8 cm", "read")})
-    p = PP.finish(e, s, {}, None, [])
+    assert PP.finish(e, s, {}, None, []).scope_doubt == ["diameter_mm"]           # read: confirmed first
+    p = PP.finish(e, s, {"diameter_mm": "38"}, None, [])
     assert p.state == "does_not_apply" and p.exclusion_reason.model_dump() == {
         "input": "diameter_mm", "label": e.input("diameter_mm").label, "value": "38 mm", "outcome": None}
-    c = PP.calculate(e, s, {"diameter_mm": "38 mm"}, None, [], "b1")
+    c = PP.calculate(e, s, {"diameter_mm": "38 mm"}, None, [], "b1", answered={"diameter_mm": "38 mm"})
     assert c.exclusion is not None and c.exclusion_reason.input == "diameter_mm"
 
 
@@ -419,8 +442,7 @@ def test_fleischner_screening_and_age_exclusions_say_which():
     e = next(x for x in _tier1() if x.id == "fleischner-pulmonary-nodule")
     p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes", "age": "60"}, None, [])
     assert p.state == "does_not_apply" and (p.exclusion_reason.input, p.exclusion_reason.value) == ("exclusion", "Yes")
-    s = PP.Settlement(values={"age": PP.Drafted(InputValue(value=30.0), "30-year-old", "read")})
-    p = PP.finish(e, s, {}, None, [])
+    p = PP.finish(e, PP.Settlement(), {"age": "30"}, None, [])                    # answered: a read one is a doubt
     assert (p.exclusion_reason.input, p.exclusion_reason.value) == ("age", "30 years")
     p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes", "age": "30"}, None, [])   # two reasons: none attributable
     assert p.state == "does_not_apply" and p.exclusion_reason is None
