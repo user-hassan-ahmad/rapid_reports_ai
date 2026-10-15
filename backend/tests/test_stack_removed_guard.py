@@ -114,3 +114,12 @@ async def test_guard_short_jev_reply_is_a_failure(monkeypatch):
     monkeypatch.setattr(RG, "ask_rows", short)
     report, edits, items = await RG.guard("Liver normal. No ascites.", ["No ascites."], "Liver normal.")
     assert edits == [] and items[0]["kind"] == "removed_unverified"
+
+
+@pytest.mark.asyncio
+async def test_guard_flags_high_an_exact_unstated_removed_sentence_that_appears_twice(monkeypatch):
+    # cut only when it appears once; twice it can't be cut safely, so it stays and gets the high item
+    monkeypatch.setattr(RG, "ask_rows", _rows({"No ascites.": (0.0, 0.0, 0.9)}))
+    report, edits, items = await RG.guard("No ascites. Liver normal. No ascites.", ["No ascites."], "Liver normal.")
+    assert report == "No ascites. Liver normal. No ascites." and edits == []
+    assert items and {(i["kind"], i["severity"]) for i in items} == {("removed_asserted", "high")}

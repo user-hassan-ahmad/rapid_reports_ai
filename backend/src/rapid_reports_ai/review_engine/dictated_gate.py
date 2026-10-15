@@ -250,6 +250,20 @@ def _clause_log(g: GateClause) -> dict:
             "tier": g.tier, "runs": [list(r) for r in g.runs], "reworded": g.reworded}
 
 
+def _rec_said(al: Alignment, c: ReportClause) -> bool:
+    """A recommendation clause the radiologist dictated: one dictated line, confidently paired with the clause or a
+    recommendation itself, holds every content word of the clause beyond the recommending words. Stricter than
+    `provenance._rec_dictated` (a pair, or any one shared word): a pair or a shared modality word alone would let an
+    undictated addition in the same sentence ("... and refer to MDT.") pass unflagged."""
+    from .jev_pass import recommendation
+    from .provenance import _REC_WORDS
+    from .lanes import confident
+    words = {w for w in content_words(c.text) if not _REC_WORDS.fullmatch(w)}
+    paired = {p.line_id for p in al.pairs if p.clause_id == c.id and confident(p)}
+    return bool(words) and any((l.id in paired or recommendation(l.text)) and words <= set(content_words(l.text))
+                               for l in al.lines)
+
+
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
           rec_dictated_spans=()):
     """Live (spec §4.4): (provenance items, negatives items, brief items, log). Inputs are not mutated.
@@ -262,12 +276,13 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
       the radiologist dictated it in other words. The gate cannot say so: `tier_of` makes every added recommendation
       clause "rec", and a writer's rewording of a dictated recommendation (integration spec D22: "suggest non-urgent
       ultrasound" → "Non-urgent thyroid ultrasound is recommended.") scores below GATE_MIN. So today's two rules
-      decide: `provenance._rec_dictated` (a confident pair, or a dictated recommendation line sharing a content
-      word) and `rec_dictated_spans`, the anchors `provenance.confirm`'s Jev question called dictated. A
+      decide: `_rec_said` (a confident pair, or one dictated recommendation line holding every content word of the
+      clause; one shared word is not enough, so "CT in 3 months and refer to MDT." for "suggest CT in 3 months" keeps
+      its item) and `rec_dictated_spans`, the anchors `provenance.confirm`'s Jev question called dictated. A
       recommendation neither rule finds dictated keeps its item."""
     from .items import text_hash
-    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_dictated, _rec_target,
-                             template_spans, untemplated)
+    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target, template_spans,
+                             untemplated)
     jev_dictated = {tuple(sp) for sp in rec_dictated_spans or ()}
     rec_dictated = 0
     report = inp.artifacts.report or ""
@@ -321,7 +336,7 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
             rec_seen.add(c.sentence_start)
             sentence = report[c.sentence_start:c.sentence_end]
             s, e, edit = _rec_target(report, c, sentence, names)
-            if _rec_dictated(al, c) or (s, e) in jev_dictated:
+            if _rec_said(al, c) or (s, e) in jev_dictated:
                 rec_dictated += 1
                 continue
             ok = edit is not None

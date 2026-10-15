@@ -413,6 +413,21 @@ def test_live_still_flags_a_recommendation_the_radiologist_did_not_dictate():
         assert recs == ["MDT discussion is recommended."] and log["rec_dictated"] == 0
 
 
+@pytest.mark.parametrize("report,dictation,flagged", [
+    # an undictated referral carried in the same sentence as a dictated follow-up (one shared word, "CT")
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT in 3 months and refer to MDT.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months.", "CT in 3 months and refer to MDT."),
+    # a different, undictated study sharing only the modality word with the dictated one
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT abdomen is recommended.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT chest in 12 months.", "CT abdomen is recommended."),
+])
+def test_live_flags_a_recommendation_that_only_shares_a_word_with_a_dictated_one(report, dictation, flagged):
+    recs, log = _live_rec(report, dictation, 0.1)
+    assert recs == [flagged] and log["rec_dictated"] == 0
+
+
 def test_live_drops_a_recommendation_the_confirm_question_called_dictated():
     # no confident pair and no shared recommendation line: only provenance.confirm's Jev question knows it is dictated
     r = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team.\n"
