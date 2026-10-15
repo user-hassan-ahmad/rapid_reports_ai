@@ -797,6 +797,34 @@ def test_a_removal_whose_line_is_genuinely_absent_is_satisfied():
     assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG] and res.sheet == absent
 
 
+def test_a_removal_is_a_card_when_a_new_line_of_its_kind_stands_elsewhere_in_its_section():   # second review M2
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    # the paragraph's negative is gone and a reworded one stands at section level (Report-wide, no paragraph)
+    to_section = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No focal hepatic lesion."\n')
+    assert ("", "S:FINDINGS") in [(u.paragraph, u.section) for u in tlr.units(_clean(to_section)) if u.kind == "negative"]
+    res = tla.apply_ledger(to_section, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_section_level_line_is_not_shown_absent_while_a_new_line_of_its_kind_stands_in_a_paragraph_of_its_section():
+    sheet = LEDGER_SHEET.replace('TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No ascites."\n')
+    reg = _reg(sheet)
+    ref = next(u.ref for u in tlr.units(_clean(sheet)) if u.kind == "negative" and not u.paragraph)
+    uid = _uid(sheet, reg, ref)
+    known = tlr.load(reg)["units"]
+
+    def absent(edited):
+        st = _clean(edited)
+        return tla._shown_absent(uid, st, tla._uid_map(st, reg, {}), known)
+    gone = sheet.replace('NEGATIVE "No ascites."\n', '')
+    assert absent(gone)                                            # genuinely gone: absent
+    to_para = gone.replace('NEGATIVE "No focal liver lesion."\n',
+                           'NEGATIVE "No focal liver lesion."\nNEGATIVE "No free fluid."\n')
+    assert not absent(to_para)                                     # a new negative in a paragraph of its section
+
+
 def test_an_orphaned_removal_uid_never_satisfies_on_a_later_save():
     reg = _reg(LEDGER_SHEET)
     removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
