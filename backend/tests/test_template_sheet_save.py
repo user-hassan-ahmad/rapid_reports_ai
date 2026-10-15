@@ -464,3 +464,17 @@ async def test_a_registry_error_starts_a_fresh_registry_and_never_fails_the_save
     p = await S.persist_sheet(_cfg(edited), first, "chat", now="T")
     assert p.outcome.status == "saved" and p.config["sheet_rev"] == 2
     assert len(p.config["line_registry"]["units"]) == 9 and len(p.report["new"]) == 9
+
+
+async def test_persist_prunes_gone_units_but_keeps_those_the_ledger_or_confirms_name(no_jev, monkeypatch):
+    monkeypatch.setattr(tlr, "MAX_GONE", 1)
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    uids = _uids(LEDGER_SHEET, first["line_registry"])
+    gone_fixed, gone_neg = uids["f1"], uids["n0"]
+    edited = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n', "").replace(
+        'NEGATIVE "No focal liver lesion."\n', "").replace('FIXED "Axial images were acquired."\n', "")
+    stored = {**first, "normal_confirms": {"g": {"units": {gone_neg: "sha256:x"}}}}
+    p = await S.persist_sheet(_cfg(edited), stored, "chat", now="T")
+    units = p.config["line_registry"]["units"]
+    assert len(p.report["gone"]) == 3 and gone_neg in units
+    assert len([u for u, e in units.items() if e["status"] == "gone"]) == 2   # the cap (1) + the referenced one

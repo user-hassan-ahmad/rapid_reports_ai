@@ -315,6 +315,38 @@ def _bind(registry, st, carried, now):
     return reg, report, assigned
 
 
+MAX_GONE = 200   # gone units kept per registry (end review M3)
+
+
+def referenced_uids(ledger, confirms) -> set:
+    """Every uid a ledger entry or a normals confirm record names (a record's group id, chunk suffix dropped, and its
+    units): prune never drops these."""
+    out = {e["uid"] for e in ledger or [] if isinstance(e, dict) and isinstance(e.get("uid"), str)}
+    for gid, rec in (confirms if isinstance(confirms, dict) else {}).items():
+        if not isinstance(rec, dict):
+            continue
+        if isinstance(gid, str):
+            out.add(gid.split("#", 1)[0])
+        if isinstance(rec.get("units"), dict):
+            out.update(u for u in rec["units"] if isinstance(u, str))
+    return out
+
+
+def prune(registry, keep: set, cap: Optional[int] = None) -> dict:
+    """The registry with at most `cap` (MAX_GONE) gone units: the most recently minted kept (ties in stored order),
+    older ones dropped, except any uid in `keep` (a ledger entry or confirm still names it: it stays visibly
+    orphaned). Live units are never touched. Never mutates its input."""
+    reg = load(registry)
+    cap = MAX_GONE if cap is None else cap
+    gone = [u for u, e in reg["units"].items() if e.get("status") != "live" and u not in keep]
+    if len(gone) <= cap:
+        return reg
+    order = sorted(range(len(gone)), key=lambda i: (str(reg["units"][gone[i]].get("minted") or ""), i))
+    drop = {gone[i] for i in order[:len(gone) - cap]}
+    reg["units"] = {u: e for u, e in reg["units"].items() if u not in drop}
+    return reg
+
+
 def summary(report: dict) -> str:
     """The rebind report as one log fragment: "exact=9 carried=1 …"."""
     return " ".join(f"{k}={len(v)}" for k, v in report.items())

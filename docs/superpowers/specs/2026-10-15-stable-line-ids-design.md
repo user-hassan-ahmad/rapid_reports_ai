@@ -86,6 +86,7 @@ Why (Hassan, 2026-10-15): the measured gain of the earlier cosmetic layer (fille
 - `uid` = kind prefix (`s_ p_ n_ g_ f_ r_`) + 6 random base32 characters; minted once.
 - `text_hash` = sha256 of the exact line text (no normalisation).
 - `status`: `live` or `gone`. Gone units are kept, so a ledger entry pointing at one is visibly orphaned rather than silently rebound. A gone unit may be **revived only by an exact identity match** (restore, or a rebuild that brings the identical line back); never by any other match.
+- Gone units are capped (end review M3): after each persisted save, `tlr.prune` keeps the 200 most recently minted gone units (`MAX_GONE`) and drops older ones, except any uid a ledger entry or a `normal_confirms` record (its group id or a unit) still names: those stay, visibly orphaned. Live units are never pruned. A pruned uid's identical line, if it returns, gets a new uid.
 - `minted` is written once. No per-save timestamps (they would churn the config).
 
 ## Rebind (pure code, no model)

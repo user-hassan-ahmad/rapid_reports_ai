@@ -363,9 +363,12 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
             logger.error("[line-registry] rebind failed, starting a fresh registry: %s: %s", type(e).__name__,
                          str(e)[:200])
             registry, report = tlr.rebind(None, st, None, now=now)
-        cfg["line_registry"] = registry
         if ledger is not None:
             cfg["decisions"] = tla.stamp_uids(out.ledger, st, registry)
+        # gone units capped (end review M3); a uid a ledger entry or confirm still names is never pruned
+        keep = tlr.referenced_uids([*(cfg.get("decisions") or []), *(stored.get("decisions") or [])],
+                                   cfg.get("normal_confirms"))
+        cfg["line_registry"] = registry = tlr.prune(registry, keep)
         logger.info("[line-registry] origin=%s %s drift=%d", origin, tlr.summary(report), out.ledger_drift)
     rev = stored_rev(stored.get("sheet_rev"))
     cfg["sheet_rev"] = rev + 1 if out.sheet != previous else rev

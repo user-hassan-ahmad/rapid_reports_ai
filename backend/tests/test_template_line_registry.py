@@ -464,3 +464,40 @@ def test_load_drops_a_unit_with_malformed_identity_values_or_no_text_hash(unit):
 def test_load_keeps_a_well_formed_unit():
     reg = tlr.rebind(None, _st(LEDGER_SHEET), now="T")[0]
     assert tlr.load(reg)["units"] == reg["units"]
+
+
+# ── gone units are capped (end review M3) ─────────────────────────────────────────────────────────────────────────
+
+def _gone_registry(n):
+    units = {f"f_{i:06d}": {"kind": "fixed", "identity": {"section": "", "paragraph": "", "text": f"Line {i}."},
+                            "text": f"Line {i}.", "text_hash": tlr.text_hash(f"Line {i}."), "status": "gone",
+                            "minted": f"2026-10-01T{i // 3600:02d}:{i // 60 % 60:02d}:{i % 60:02d}"} for i in range(n)}
+    units["f_live00"] = {"kind": "fixed", "identity": {"section": "", "paragraph": "", "text": "Live."}, "text": "Live.",
+                         "text_hash": tlr.text_hash("Live."), "status": "live", "minted": "2026-01-01T00:00:00"}
+    return {"v": 1, "salt": "0a1b2c3d", "units": units}
+
+
+def test_prune_keeps_the_most_recent_gone_units_and_every_live_one():
+    reg = _gone_registry(250)
+    out = tlr.prune(reg, keep=set())
+    gone = [u for u, e in out["units"].items() if e["status"] == "gone"]
+    assert len(gone) == tlr.MAX_GONE == 200 and "f_live00" in out["units"]
+    assert sorted(gone) == [f"f_{i:06d}" for i in range(50, 250)]          # the 50 oldest pruned
+    assert len(reg["units"]) == 251                                         # never mutated
+
+
+def test_prune_never_drops_a_referenced_gone_uid():
+    out = tlr.prune(_gone_registry(250), keep={"f_000000", "f_000001"})
+    assert {"f_000000", "f_000001"} <= set(out["units"])
+    assert len([e for e in out["units"].values() if e["status"] == "gone"]) == 202
+
+
+def test_prune_under_the_cap_changes_nothing():
+    reg = _gone_registry(10)
+    assert tlr.prune(reg, keep=set()) == tlr.load(reg)
+
+
+def test_referenced_uids_reads_the_ledger_and_the_confirms():
+    led = [{"kind": "normal", "key": "k", "uid": "n_aaaaaa"}, {"kind": "value", "key": "v"}]
+    confirms = {"p_bbbbbb#2": {"units": {"n_cccccc": "sha256:x"}}, "bad": "x"}
+    assert tlr.referenced_uids(led, confirms) == {"n_aaaaaa", "p_bbbbbb", "n_cccccc"}
