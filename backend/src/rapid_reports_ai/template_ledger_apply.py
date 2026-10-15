@@ -727,7 +727,7 @@ def _by_uid(entry: dict, st: tss.SheetStructure, uid_map: Dict[str, str], res: L
 
 def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
     """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
-    is none or more than one (never guessed). The backfill uses it as-is."""
+    is none or more than one (never guessed)."""
     kind = entry.get("kind")
     try:
         if kind == "normal":

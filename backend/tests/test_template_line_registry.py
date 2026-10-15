@@ -43,7 +43,7 @@ ADVERSARIAL = [
 def test_adversarial_texts_are_never_the_same_line(a, b):
     """Near misses: once guarded by the cosmetic layer's gates, now non-matching by construction. They stay as a
     tripwire against fuzzy matching being re-added."""
-    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
+    assert tlm.rep_key(a) != tlm.rep_key(b)
 
 
 @pytest.mark.parametrize("a,b", [
@@ -57,7 +57,7 @@ def test_adversarial_texts_are_never_the_same_line(a, b):
     ("Well-defined margin.", "Well defined margin."),                  # a hyphen is punctuation
 ])
 def test_rewordings_case_punctuation_and_spelling_are_other_lines(a, b):
-    assert not tlm.same_text(a, b) and not tlm.same_text(b, a)
+    assert tlm.rep_key(a) != tlm.rep_key(b)
 
 
 @pytest.mark.parametrize("a,b", [
@@ -71,7 +71,7 @@ def test_rewordings_case_punctuation_and_spelling_are_other_lines(a, b):
     ("  No   effusion. ", "No effusion."),
 ])
 def test_typography_only_differences_are_the_same_line(a, b):
-    assert tlm.same_text(a, b) and tlm.rep_key(a) == tlm.rep_key(b)
+    assert tlm.rep_key(a) == tlm.rep_key(b)
 
 
 @pytest.mark.parametrize("a,b", [
@@ -83,7 +83,7 @@ def test_typography_only_differences_are_the_same_line(a, b):
     ("No\u200beffusion.", "No effusion."),            # a zero-width space is not a space
 ])
 def test_lookalikes_never_collide_with_a_different_character(a, b):
-    assert not tlm.same_text(a, b)
+    assert tlm.rep_key(a) != tlm.rep_key(b)
 
 
 def test_lookalike_map_merges_only_into_ascii_forms():

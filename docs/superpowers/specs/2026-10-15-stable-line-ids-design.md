@@ -63,7 +63,7 @@ Carrying an answer to the wrong line is a clinical error; losing one costs a rep
 
 Everything else stays significant: case, punctuation (a final full stop included), spelling ("Oedema" ≠ "Edema"), filler words ("There is no mass." ≠ "No mass."), hyphens. A rewording, however small, is a new uid and its answer is asked again.
 
-Why (Hassan, 2026-10-15): the measured gain of the earlier cosmetic layer (filler list, UK/US spelling table, tokeniser, negation / hedge / laterality / severity gates) was about one carried answer per rebuild, and every false match the reviewers found lived in that layer. Exact matching makes the adversarial pairs non-matching by construction; they stay in the tests as a tripwire against fuzzy matching coming back. The lookalike map is a versioned constant (`MATCH_VERSION`) with a collision test.
+Why (Hassan, 2026-10-15): the measured gain of the earlier cosmetic layer (filler list, UK/US spelling table, tokeniser, negation / hedge / laterality / severity gates) was about one carried answer per rebuild, and every false match the reviewers found lived in that layer. Exact matching makes the adversarial pairs non-matching by construction; they stay in the tests as a tripwire against fuzzy matching coming back. The lookalike map is a constant (`LOOKALIKES`) with a collision test; changing it changes which lines keep their uid.
 
 ## The registry
 

@@ -10,11 +10,8 @@ Case, punctuation (a final full stop included), spelling and filler words all st
 "No effusion", "Oedema" and "Edema", "There is no mass." and "No mass." are different lines. No similarity, no
 tokeniser, no clinical gates.
 
-Versioned constant: changing LOOKALIKES changes which lines keep their uid, so bump MATCH_VERSION and keep the
-constant tests green."""
+Changing LOOKALIKES changes which lines keep their uid: keep the constant tests green."""
 from __future__ import annotations
-
-MATCH_VERSION = 2
 
 # Lookalike characters -> one form. The only merging step.
 LOOKALIKES = {
@@ -31,7 +28,3 @@ def rep_key(text: str) -> str:
     """The text with its representation normalised (lookalikes unified, whitespace collapsed); nothing else changed."""
     return " ".join((text or "").translate(_LOOKALIKE).split())
 
-
-def same_text(a: str, b: str) -> bool:
-    """True when the two texts are the same line: equal after rep_key."""
-    return rep_key(a) == rep_key(b)
