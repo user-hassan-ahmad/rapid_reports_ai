@@ -14,6 +14,12 @@ export type ColumnView = {
 	calc?: CalcView;
 	/** A re-preview after an edit failed: the edit was reverted and the last preview kept. */
 	editError?: string | null;
+	/** Ticks (spec 2026-10-14 §6.2): input → the exact value the radiologist affirmed; never sent. */
+	ticks?: Record<string, string>;
+	/** The outcome picked from those still possible (spec §4.4). */
+	pick?: string | null;
+	applying?: boolean;
+	applyError?: string | null;
 };
 export type CardView = {
 	open: boolean;
@@ -28,6 +34,12 @@ export type CardView = {
 	edits?: Record<string, string>;
 	calc?: CalcView;
 	editError?: string | null;
+	/** Ticks (spec 2026-10-14 §6.2): input → the exact value the radiologist affirmed; never sent. */
+	ticks?: Record<string, string>;
+	/** The outcome picked from those still possible (spec §4.4). */
+	pick?: string | null;
+	applying?: boolean;
+	applyError?: string | null;
 };
 export const closedView: CardView = { open: false, loading: false, error: null, result: null };
 
