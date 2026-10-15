@@ -6,7 +6,7 @@ import type { Ask, DraftValue, Preview, Proposal } from '../types';
 import { assumptionsOf, scopeDoubts, shownValue } from './format';
 
 export interface CheckItem { input: string; label: string; value: string; options: string[]; kind: 'prefilled' | 'assumed' | 'doubt'; basis: string; byExam: boolean; affirmed: boolean }
-export interface Chip { input: string; label: string; value: string; options: string[] }
+export interface Chip { input: string; label: string; value: string; options: string[]; basis: string }
 export type Blocker = 'excluded' | 'question' | 'check' | 'pick' | 'incomplete' | null;
 
 const GUESSED = new Set(['prefilled', 'assumed']);
@@ -56,7 +56,7 @@ export function answeredChips(p: Preview | null | undefined, edits: Record<strin
 	const rows = new Map((p?.draft ?? []).map((d) => [d.input, d]));
 	return Object.entries(edits)
 		.filter(([k]) => rows.has(k))
-		.map(([input, value]) => ({ input, label: rows.get(input)!.label, value, options: rows.get(input)!.options }));
+		.map(([input, value]) => ({ input, label: rows.get(input)!.label, value, options: rows.get(input)!.options, basis: rows.get(input)!.basis ?? '' }));
 }
 
 /** What stops Apply, or null when ready (spec §6.3): one outcome (reached, or a picked candidate with a complete
@@ -98,15 +98,58 @@ export function sentenceOf(pr: Proposal, source: string): string {
 /** A guideline that may not apply collapses to one row: it does not apply, or a pre-filled value would make it not. */
 export const collapsible = (p: Preview | null | undefined): boolean => !!p && (p.state === 'does_not_apply' || (p.scope_doubt?.length ?? 0) > 0);
 
-/** The collapsed row's reason: the first scope doubt ("+N more"), with its Confirm when it has a value; for an
- *  exclusion, the card's specific reason (the verdict headline, given). */
-export function collapsedReason(p: Preview, guideline: string, excludedHeadline: string): { text: string; more: number; confirm: { input: string; label: string; value: string } | null } {
-	if (p.state === 'does_not_apply') return { text: excludedHeadline, more: 0, confirm: null };
+export interface CollapsedReason {
+	kind: 'doubt' | 'excluded';
+	input: string;
+	label: string;
+	value: string;
+	options: string[];
+	/** The fact in plain words (a boolean Yes reads as the statement; No as "label: No"). */
+	fact: string;
+	/** Where the value came from: from your dictation / from the exam / the basis / inferred. */
+	source: string;
+	quote: string;
+	/** The second answer: a boolean's other value, an enum's one other option, or a choice from the options. */
+	other: { kind: 'boolean' | 'option'; value: string; label: string } | { kind: 'choose' } | null;
+	more: number;
+}
+
+const isBoolean = (options: string[]) => options.includes('Yes') && options.includes('No');
+const factOf = (label: string, value: string, options: string[]) => (!value ? label : isBoolean(options) && value === 'Yes' ? label : `${label}: ${shownValue(value)}`);
+
+/** The collapsed row's content (spec: Hassan 2026-10-15): the first scope doubt, or the exclusion's specific reason,
+ *  as a fact with its source, and the second answer named by what it does. */
+export function collapsedReason(p: Preview, excludedHeadline: string): CollapsedReason | null {
+	const rows = new Map((p.draft ?? []).map((d) => [d.input, d]));
+	const sourceOf = (input: string) => {
+		const r = rows.get(input);
+		return r?.by === 'exam' ? 'from the exam' : r?.basis ? r.basis : r?.quote ? 'from your dictation' : 'inferred';
+	};
+	if (p.state === 'does_not_apply') {
+		const x = p.exclusion_reason;
+		const r = x ? rows.get(x.input) : undefined;
+		const options = r?.options ?? [];
+		return {
+			kind: 'excluded',
+			input: x?.input ?? '',
+			label: x?.label ?? '',
+			value: x?.value ?? '',
+			options,
+			fact: x ? factOf(x.label, x.value ?? '', options) : excludedHeadline,
+			source: x ? sourceOf(x.input) : '',
+			quote: r?.quote ?? '',
+			other: null,
+			more: 0
+		};
+	}
 	const ds = scopeDoubts(p);
 	const d = ds[0];
-	if (!d) return { text: '', more: 0, confirm: null };
-	const what = d.value ? `${d.label}: ${shownValue(d.value)}` : d.label;
-	return { text: `${what} would make ${guideline || 'this guideline'} not apply`, more: ds.length - 1, confirm: d.value ? { input: d.input, label: d.label, value: d.value } : null };
+	if (!d) return null;
+	const others = d.options.filter((o) => o !== NOT_STATED && o !== d.value);
+	const other: CollapsedReason['other'] = isBoolean(d.options)
+		? d.value === 'Yes' || d.value === 'No' ? { kind: 'boolean', value: d.value === 'Yes' ? 'No' : 'Yes', label: '' } : { kind: 'choose' }
+		: others.length === 1 ? { kind: 'option', value: others[0], label: shownValue(others[0]) } : { kind: 'choose' };
+	return { kind: 'doubt', input: d.input, label: d.label, value: d.value, options: d.options, fact: factOf(d.label, d.value, d.options), source: sourceOf(d.input), quote: rows.get(d.input)?.quote ?? '', other, more: ds.length - 1 };
 }
 
 /** The head's assumed values: the decisive assumed values not yet ticked (what Check still shows), as "Label: value".

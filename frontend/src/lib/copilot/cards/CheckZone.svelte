@@ -1,10 +1,10 @@
 <script lang="ts">
 	/**
-	 * Check (spec 2026-10-14 §4.2, §6): only the values the radiologist must affirm before Apply. A decisive pre-filled
+	 * Check (spec 2026-10-14 §4.2, §6; named by the card's "What this rests on" section): only the values the radiologist must affirm before Apply. A decisive pre-filled
 	 * or assumed value: ✓ records the tick on the card (nothing is sent). A scope doubt: Confirm sends the value as the
 	 * radiologist's answer (it may then exclude). Change opens the input's own options. Read-only without handlers.
 	 */
-	import { shownValue } from './format';
+	import { displayValue, shownValue } from './format';
 	import type { CheckItem } from './questionnaire';
 	import Icon from './Icon.svelte';
 	import ValueEdit from './ValueEdit.svelte';
@@ -13,28 +13,24 @@
 		items,
 		guideline = '',
 		onTick = null,
-		onEdit = null,
-		showLabel = true
+		onEdit = null
 	}: {
 		items: CheckItem[];
 		guideline?: string;
 		onTick?: ((input: string, value: string) => void) | null;
 		onEdit?: ((input: string, value: string) => void) | null;
-		/** The status line above already says "Check N values to apply": the zone is named only when it does not. */
-		showLabel?: boolean;
 	} = $props();
 	let editing = $state<string | null>(null);
 	const from = (c: CheckItem) =>
-		c.affirmed ? 'confirmed by you' : c.kind === 'doubt' ? `pre-filled · would make ${guideline || 'this guideline'} not apply` : c.kind === 'assumed' ? 'assumed' : c.basis || (c.byExam ? 'set by the exam' : 'pre-filled');
+		c.affirmed ? 'confirmed by you' : c.kind === 'doubt' ? `probably from your dictation · would make ${guideline || 'this guideline'} not apply` : c.kind === 'assumed' ? 'not dictated' : c.basis ? `Check: worked out — ${c.basis}` : c.byExam ? 'set by the exam' : 'Check: probably from your dictation';
 </script>
 
 {#if items.length}
 	<section class="cp-check" aria-label="Check" data-testid="cp-check">
-		{#if showLabel}<div class="cp-label" data-testid="cp-check-label">Check</div>{/if}
 		<ul class="cp-check-list">
 			{#each items as c (c.input)}
 				<li class="cp-check-item" class:cp-check-doubt={c.kind === 'doubt'} data-testid={c.kind === 'doubt' ? 'cp-scope-doubt' : 'cp-check-item'}>
-					<span class="cp-check-text"><b>{c.label}: {shownValue(c.value)}</b> <span class="cp-muted">{from(c)}</span></span>
+					<span class="cp-check-text"><b>{c.label}: {displayValue(c.value, c.basis)}</b> <span class="cp-muted">{from(c)}</span></span>
 					{#if editing === c.input && onEdit}
 						<ValueEdit label={c.label} value={c.value} options={c.options} onSave={(v) => { editing = null; onEdit?.(c.input, v); }} onCancel={() => (editing = null)} />
 					{:else if onEdit}

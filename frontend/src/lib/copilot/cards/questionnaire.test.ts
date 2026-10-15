@@ -45,7 +45,7 @@ describe('the next question and the answers so far', () => {
 		expect(nextAsk(preview({ state: 'does_not_apply', asks: [ask('x')] }))).toBeNull();
 	});
 	it('chips list every answer with the row options, "Not known" included', () => {
-		expect(answeredChips(open, { growth: NOT_STATED, gone: 'x' })).toEqual([{ input: 'growth', label: 'Growth', value: NOT_STATED, options: ['Yes', 'No', NOT_STATED] }]);
+		expect(answeredChips(open, { growth: NOT_STATED, gone: 'x' })).toEqual([{ input: 'growth', label: 'Growth', value: NOT_STATED, options: ['Yes', 'No', NOT_STATED], basis: '' }]);
 	});
 	it('"Based on" holds the shown values that are not in Check', () => {
 		const p = reached();

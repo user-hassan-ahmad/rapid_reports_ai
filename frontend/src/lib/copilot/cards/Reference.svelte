@@ -17,7 +17,7 @@
 
 {#if !empty}
 	<div class="cp-ref">
-		<button type="button" class="cp-link cp-ref-toggle" aria-expanded={shown} onclick={() => (shown = !shown)}
+		<button type="button" class="rv-btn rv-btn-ghost cp-ref-toggle" aria-expanded={shown} onclick={() => (shown = !shown)}
 			>Reference</button
 		>
 		{#if shown}

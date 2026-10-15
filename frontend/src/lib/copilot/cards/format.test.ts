@@ -211,3 +211,13 @@ describe('calmer card helpers', () => {
 		expect(pillWord(v('not_applicable'))).toBeNull(); // an outcome's own not_applicable keeps its action text
 	});
 });
+
+import { displayValue } from './format';
+describe('displayValue: durations as months', () => {
+	it('60 days or more is months, with the date when the basis names one; under 60 stays', () => {
+		expect(displayValue('120 days', 'from the CT of 12 Mar 2025')).toBe('4 months (since Mar 2025)');
+		expect(displayValue('90 days')).toBe('3 months');
+		expect(displayValue('59 days', 'from the CT of 12 Mar 2025')).toBe('59 days');
+		expect(displayValue('7 mm')).toBe('7 mm');
+	});
+});

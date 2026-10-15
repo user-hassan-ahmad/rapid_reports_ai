@@ -30,6 +30,43 @@
 	opacity: 0.5;
 	cursor: default;
 }
+.cp-cards .rv-btn-ghost {
+	background: transparent;
+	border-color: var(--rv-border-strong);
+	color: var(--rv-text);
+	text-decoration: none;
+	align-self: flex-start;
+	text-align: left;
+}
+.cp-cards .rv-btn-primary {
+	background: var(--rv-accent);
+	border-color: var(--rv-accent);
+	color: #fff;
+	font-weight: 600;
+}
+.cp-cards .rv-btn-primary:hover:not(:disabled) {
+	background: var(--rv-accent-hover);
+	border-color: var(--rv-accent-hover);
+}
+/* the card's sections (spec: recommendation first): a small uppercase label and a hairline between them */
+.cp-cards .cp-sect {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-top: 10px;
+	border-top: 1px solid var(--rv-border);
+}
+.cp-cards .cp-body-inner > .cp-sect:first-child {
+	padding-top: 0;
+	border-top: 0;
+}
+.cp-cards .cp-sect-label {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--rv-muted);
+}
 .cp-cards .cp-link {
 	font: inherit;
 	background: none;

@@ -14,7 +14,7 @@
 	 * A row with a quote or reasons is focusable (keyboard, or a tap) and shows them in a bubble; screen readers get
 	 * them as its description.
 	 */
-	import { WHY_EXAM, shownValue, type ValueRow } from './format';
+	import { WHY_EXAM, displayValue, type ValueRow } from './format';
 	import ValueEdit from './ValueEdit.svelte';
 
 	/** `onEdit` (Slice B2) makes the value changeable: a "Change" button opens ValueEdit in place. N/A never is. */
@@ -61,11 +61,11 @@
 		{:else if row.state === 'asked'}
 			<span class="cp-muted">not stated</span>
 		{:else if row.state === 'assumed'}
-			<b class="cp-assumed-val">{shownValue(row.value)}</b>
+			<b class="cp-assumed-val">{displayValue(row.value, row.basis)}</b>
 		{:else if prefilled}
-			<b class="cp-prefill">{shownValue(row.value)}</b>
+			<b class="cp-prefill">{displayValue(row.value, row.basis)}</b>
 		{:else if row.value}
-			<b>{shownValue(row.value)}</b>
+			<b>{displayValue(row.value, row.basis)}</b>
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}
@@ -89,7 +89,7 @@
 		{#if editable && !editing}
 			<button
 				type="button"
-				class="cp-link cp-val-change"
+				class="rv-btn rv-btn-ghost cp-val-change"
 				aria-label={`${row.state === 'asked' ? 'Answer' : 'Change'} ${row.label}`}
 				onclick={(e) => (e.stopPropagation(), (editing = true))}>{row.state === 'asked' ? 'Answer' : 'Change'}</button
 			>

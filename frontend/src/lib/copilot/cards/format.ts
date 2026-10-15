@@ -124,6 +124,17 @@ export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
 /** A value as the card shows it: a stored option id ("diameter_clear_growth") as words, anything else as it is. */
 export const shownValue = (v: string) => (/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(v) ? humanise(v) : v);
+/** A value as the card displays it: a duration of 60 days or more as months, with "(since Mar 2025)" when the basis names
+ *  a date; under 60 days as it is. Display only: edits and Calculate send the raw value. */
+const MONTHS = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b/i;
+export function displayValue(v: string, basis = ''): string {
+	const m = /^\s*(\d+(?:\.\d+)?)\s*days?\s*$/i.exec(v);
+	if (!m || Number(m[1]) < 60) return shownValue(v);
+	const months = Math.round(Number(m[1]) / 30.44);
+	const d = MONTHS.exec(basis);
+	const since = d ? ` (since ${d[1].charAt(0).toUpperCase()}${d[1].slice(1).toLowerCase()} ${d[2]})` : '';
+	return `${months} ${months === 1 ? 'month' : 'months'}${since}`;
+}
 /** "Not stated" is the wire value that clears an input; the radiologist answering reads "Not known" (spec 2026-10-14 §4.3). */
 export const NOT_KNOWN = 'Not known';
 export const optionLabel = (o: string) => (o === NOT_STATED ? NOT_KNOWN : shownValue(o));

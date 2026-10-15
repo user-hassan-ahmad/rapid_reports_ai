@@ -44,7 +44,7 @@
 		<input bind:this={el} class="cp-edit-field" type="text" aria-label={`Answer for ${label}`} bind:value={draft} size="10" />
 		<button type="button" class="rv-btn cp-edit-save" disabled={!draft.trim()} onclick={() => onSave(draft.trim())}>Save</button>
 	{/if}
-	<button type="button" class="cp-link cp-edit-cancel" onclick={onCancel}>Cancel</button>
+	<button type="button" class="rv-btn rv-btn-ghost cp-edit-cancel" onclick={onCancel}>Cancel</button>
 </span>
 
 <style>

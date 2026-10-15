@@ -149,10 +149,11 @@ describe('CopilotCards', () => {
 		expect(text()).not.toContain('Some eligibility questions');
 		const body = document.querySelector('.gl-body')!.textContent!;
 		const at = (x: string) => body.indexOf(x);
-		expect(at('2.2 cm')).toBeLessThan(at('Growth on prior imaging'));
+		// still open leads, then the recommendation, then the values it rests on
 		expect(at('Growth on prior imaging')).toBeLessThan(at('Benign adenoma'));
+		expect(at('Benign adenoma')).toBeLessThan(at('2.2 cm'));
 		await expect.element(page.getByText('set by the exam').first()).toBeInTheDocument();
-		await page.getByRole('button', { name: /^Based on/ }).click(); // the values wait behind "Based on"
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click(); // the values wait behind "Based on"
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
 		const row = document.querySelector('.cp-val[tabindex]') as HTMLElement;
@@ -186,7 +187,7 @@ describe('CopilotCards', () => {
 		const badges = [...document.querySelectorAll('.cp-val')].map((e) => [...e.querySelectorAll('.cp-chip')].map((c) => c.textContent).join(','));
 		expect(badges).toEqual(['assumed', 'pre-filled', 'read', '']);
 		const body = document.querySelector('.gl-body')!.textContent!;
-		expect(body.indexOf('Growth on prior imaging')).toBeLessThan(body.indexOf('Benign adenoma'));
+		expect(body.indexOf('Benign adenoma')).toBeLessThan(body.indexOf('Growth on prior imaging')); // the recommendation now leads
 		expect(body).not.toContain('Growth rate'); // waiting: hidden
 		expect(document.querySelector('.cp-prefill')!.textContent).toBe('8 HU');
 		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
@@ -346,7 +347,7 @@ describe('CopilotCards', () => {
 		});
 		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
-		await page.getByRole('button', { name: /^Based on/ }).click();
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
 		await page.getByRole('button', { name: 'Answer Brock risk' }).click();
 		await page.getByRole('combobox', { name: 'Answer for Brock risk' }).selectOptions('Under 10%');
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'brock', 'Under 10%');
@@ -422,7 +423,7 @@ describe('CopilotCards', () => {
 			draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' }), draft({ input: 'side', label: 'Solid component', state: 'not_applicable' })]
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await page.getByRole('button', { name: /^Based on/ }).click();
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
 		await expect.element(page.getByText('2.2 cm', { exact: true })).toBeInTheDocument();
 		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('No further imaging required.'); // the pill is only 'No action'
 		expect(document.body.textContent).not.toContain('Solid component');
@@ -498,13 +499,12 @@ describe('CopilotCards', () => {
 		expect(document.querySelector('.gl-title-row')!.textContent).not.toContain('check first'); // said once
 		const note = page.getByTestId('cp-scope-doubt');
 		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm');
-		await expect.element(note).toHaveTextContent('pre-filled · would make NHS AAA surveillance not apply');
-		// first in the body: the Check zone holds it
-		// (inside the body the "Hide details" toggle controls)
-		const first = document.querySelector('.gl-body .cp-body-inner')!.firstElementChild!;
-		expect(first.getAttribute('data-testid')).toBe('cp-check');
-		expect(first.contains(note.element())).toBe(true);
-		await page.getByRole('button', { name: /^Based on/ }).click();
+		await expect.element(note).toHaveTextContent('probably from your dictation · would make NHS AAA surveillance not apply');
+		// the Check zone holds it, under "What this rests on" (the recommendation leads the body now)
+		const zone = document.querySelector('[data-testid="cp-check"]')!;
+		expect(zone.contains(note.element())).toBe(true);
+		expect(zone.closest('[data-testid="cp-section"]')!.querySelector('[data-testid="cp-section-label"]')!.textContent).toBe('WHAT THIS RESTS ON');
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
 		const row = [...document.querySelectorAll('.cp-val')].find((e) => e.textContent!.includes('Maximum diameter'))!;
 		expect(row.classList.contains('cp-val--doubt')).toBe(true);
 		await page.getByRole('button', { name: 'Confirm Maximum diameter 35 mm' }).click();
@@ -528,7 +528,7 @@ describe('CopilotCards', () => {
 		render(CopilotCards, p);
 		const note = page.getByTestId('cp-scope-doubt');
 		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth');
-		await expect.element(note).toHaveTextContent('pre-filled');
+		await expect.element(note).toHaveTextContent('probably from your dictation');
 		expect(note.element().textContent).not.toContain('diameter_clear_growth');
 		await page.getByRole('button', { name: 'Confirm Growth Diameter clear growth' }).click();
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'growth', 'diameter_clear_growth');

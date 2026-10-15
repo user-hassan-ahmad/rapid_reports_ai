@@ -27,7 +27,7 @@ function show(p: Preview, props: Record<string, unknown> = {}) {
 describe('the questionnaire card', () => {
 	it('Check holds the decisive pre-filled value; ✓ ticks it; Apply waits for it', async () => {
 		const h = show(reached());
-		await expect.element(page.getByTestId('cp-status')).toHaveTextContent('Check 1 value to apply');
+		await expect.element(page.getByTestId('cp-provisional')).toHaveTextContent('Provisional — confirm the 1 value below to use it');
 		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Type: solid');
 		await expect.element(page.getByRole('button', { name: 'Apply' })).toBeDisabled();
 		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
@@ -54,7 +54,7 @@ describe('the questionnaire card', () => {
 		const h = show(p);
 		await expect.element(page.getByTestId('cp-question')).toHaveTextContent('Growth');
 		await expect.element(page.getByTestId('cp-question')).toHaveTextContent('Decides between: CT at 3 months · PET-CT');
-		await expect.element(page.getByTestId('cp-status')).toHaveTextContent('2 questions to a recommendation');
+		expect(document.querySelector('[data-testid="cp-section-label"]')!.textContent).toBe('QUESTION 1 OF 2');
 		await page.getByRole('button', { name: 'Not known' }).click();
 		expect(h.onEdit).toHaveBeenCalledWith('g', 'Not stated');
 		await page.getByRole('button', { name: 'Yes' }).click();
@@ -84,7 +84,7 @@ describe('the questionnaire card', () => {
 
 	it('the values wait behind "Based on"', async () => {
 		show(reached());
-		const t = page.getByRole('button', { name: /^Based on: Size 7 mm/ });
+		const t = page.getByRole('button', { name: /^Read from your dictation: Size 7 mm/ });
 		await expect.element(t).toHaveAttribute('aria-expanded', 'false');
 		await t.click();
 		await expect.element(t).toHaveAttribute('aria-expanded', 'true');

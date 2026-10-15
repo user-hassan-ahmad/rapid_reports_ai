@@ -30,7 +30,7 @@ describe('the count tells the truth (§7.12 item 3)', () => {
 		});
 		render(PackCard, { card: bts, view: { ...closedView, open: true, result: result(bts, p) }, ...handlers() });
 		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
-		await page.getByRole('button', { name: /^Based on/ }).click(); // the not-needed line lives in the "Based on" region
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click(); // the not-needed line lives in the "Based on" region
 		const toggle = page.getByRole('button', { name: '4 not needed on this branch' });
 		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
 		await expect.element(page.getByText('Smoking history')).not.toBeVisible();
@@ -66,14 +66,14 @@ describe('"Seen, leave as is" (§7.12 item 5)', () => {
 			...handlers()
 		});
 		await expect.element(page.getByText('Conclusion gives follow-up imaging; BTS 2015 says further tests')).toBeInTheDocument();
-		await page.getByRole('button', { name: 'Seen, leave as is' }).click();
+		await page.getByRole('button', { name: 'Not in this report' }).click();
 		expect(onSeen).toHaveBeenCalledWith(key);
 	});
 
 	it('a resolved card offers no "Seen"', async () => {
 		render(PackCard, { card: bts, view: { ...closedView, open: true, result: result(bts, workup) }, onSeen: vi.fn(), ...handlers() });
 		await expect.element(page.getByText('Consider PET-CT')).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Seen, leave as is' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Not in this report' })).not.toBeInTheDocument();
 	});
 
 	it('a sibling column that is unresolved carries its own "Seen", keyed by its column ref', async () => {
@@ -92,7 +92,7 @@ describe('"Seen, leave as is" (§7.12 item 5)', () => {
 			onSeen,
 			...handlers()
 		});
-		const seen = page.getByRole('button', { name: 'Seen, leave as is' });
+		const seen = page.getByRole('button', { name: 'Not in this report' });
 		await expect.element(seen).toBeInTheDocument();
 		expect(seen.elements()).toHaveLength(1);
 		await seen.click();

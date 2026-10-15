@@ -35,7 +35,7 @@ const handlers = () => ({ onOpen: vi.fn(), onClose: vi.fn(), onRetry: vi.fn() })
 describe('collapsing guidelines that may not apply', () => {
 	it('an excluded card is one row with its reason; Show details opens today\'s body', async () => {
 		body(excluded());
-		await expect.element(page.getByTestId('cp-collapsed')).toHaveTextContent('Outside the table: interval growth');
+		await expect.element(page.getByTestId('cp-collapsed')).toHaveTextContent('Earlier imaging shows growth: Yes');
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).not.toBeInTheDocument();
 		await page.getByRole('button', { name: /Show details/ }).click();
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toBeInTheDocument();
@@ -47,16 +47,16 @@ describe('collapsing guidelines that may not apply', () => {
 	it('a scope doubt is one row: the reason and Confirm (an answer); +N more when several', async () => {
 		const onEdit = vi.fn();
 		body(doubtful({ scope_doubt: ['kind', 'size'] }), { onEdit });
-		await expect.element(page.getByTestId('cp-collapsed')).toHaveTextContent('Type: solid would make BTS 2015 not apply');
-		await expect.element(page.getByTestId('cp-collapsed')).toHaveTextContent('+1 more');
-		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
+		await expect.element(page.getByTestId('cp-collapsed')).toHaveTextContent('Type: solid');
+		await expect.element(page.getByRole('button', { name: '+1 more' })).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Correct' }).click();
 		expect(onEdit).toHaveBeenCalledWith('kind', 'solid');
 	});
 
 	it('the doubt has no Confirm without a value or without onEdit', async () => {
 		body(doubtful(), {});
 		await expect.element(page.getByTestId('cp-collapsed')).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Confirm Type solid' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Correct' })).not.toBeInTheDocument();
 	});
 
 	it('the view owns the state: expanded shows the body; the toggle asks through onExpand', async () => {
@@ -77,10 +77,11 @@ describe('collapsing guidelines that may not apply', () => {
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toBeInTheDocument();
 	});
 
-	it('a collapsed row marks an unresolved guideline', async () => {
+	it('a collapsed row carries no unresolved marker (answering is seeing)', async () => {
 		const key = cardRef(bts);
 		body(doubtful(), { unresolved: { key, card: key, name: 'BTS 2015' } });
-		await expect.element(page.getByTestId('cp-collapsed-unresolved')).toBeInTheDocument();
+		await expect.element(page.getByTestId('cp-collapsed')).toBeInTheDocument();
+		await expect.element(page.getByTestId('cp-collapsed-unresolved')).not.toBeInTheDocument();
 	});
 
 	it('siblings: the applicable column shows in full, the doubtful one is a row; its toggle uses the column ref', async () => {
@@ -123,21 +124,21 @@ describe('the calmer card', () => {
 		const key = cardRef(bts);
 		render(PackCard, { card: bts, view: { ...closedView, open: true, result: result(bts, decided()) }, unresolved: { key, card: key, name: 'BTS 2015' }, onSeen, ...handlers() });
 		const note = page.getByTestId('cp-unresolved');
-		await expect.element(note).toHaveTextContent('Not in your conclusion yet: add it to the conclusion, or mark it seen.'); // Apply off
+		await expect.element(note).toHaveTextContent('Not in your conclusion yet. Add it to your conclusion, or choose Not in this report.'); // Apply off
 		const verdict = document.querySelector('[aria-label="Verdict"]')!;
 		expect(verdict.compareDocumentPosition(note.element()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		await page.getByRole('button', { name: 'Seen, leave as is' }).click();
+		await page.getByRole('button', { name: 'Not in this report' }).click();
 		expect(onSeen).toHaveBeenCalledWith(key);
 	});
 
-	it('Check has no label while the status line names it; with Apply off the label returns', async () => {
+	it('Check carries no label of its own and there is no status line, on or off', async () => {
 		const p = decided({ draft: [draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', decisive: true, options: ['solid', 'subsolid'] })] });
 		body(p, { applyOn: true, onEdit: vi.fn(), onTick: vi.fn() });
-		await expect.element(page.getByTestId('cp-status')).toBeInTheDocument();
+		await expect.element(page.getByTestId('cp-status')).not.toBeInTheDocument();
 		await expect.element(page.getByTestId('cp-check-label')).not.toBeInTheDocument();
 		cleanup();
 		body(p, { applyOn: false, onEdit: vi.fn() });
-		await expect.element(page.getByTestId('cp-check-label')).toHaveTextContent('Check');
+		await expect.element(page.getByTestId('cp-check-label')).not.toBeInTheDocument();
 	});
 
 	it('Check rows are a two-column grid; Change is an icon button that keeps its name', async () => {
@@ -180,18 +181,10 @@ describe('the calmer card', () => {
 		expect(pill.querySelector('.cp-pill-text')).not.toBeNull();
 	});
 
-	it('the gate note offers "apply it" only when Apply is on', async () => {
+	it('Apply on: the gate note is the one short line (the buttons carry the rest)', async () => {
 		const key = cardRef(bts);
 		body(decided(), { unresolved: { key, card: key, name: 'BTS 2015' }, applyOn: true });
-		await expect.element(page.getByTestId('cp-unresolved')).toHaveTextContent('Not in your conclusion yet: apply it, add it to the conclusion, or mark it seen.');
-	});
-
-	it('the collapsed row carries Seen, leave as is beside the marker', async () => {
-		const onSeen = vi.fn();
-		const key = cardRef(bts);
-		body(doubtful(), { unresolved: { key, card: key, name: 'BTS 2015' }, onSeen });
-		await page.getByRole('button', { name: 'Seen, leave as is' }).click();
-		expect(onSeen).toHaveBeenCalledWith(key);
+		await expect.element(page.getByTestId('cp-unresolved')).toHaveTextContent('Not in your conclusion yet.');
 	});
 
 	it('the Show details and Hide details toggles name the body they control', async () => {

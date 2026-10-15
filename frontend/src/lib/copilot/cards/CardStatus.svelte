@@ -12,7 +12,7 @@
 {:else if error}
 	<div class="cp-card-error cp-muted" role="status">
 		{error === 'loading' ? 'Still loading' : "Couldn't open"} ·
-		<button type="button" class="cp-link" onclick={(e) => (e.stopPropagation(), onRetry())}>Retry</button>
+		<button type="button" class="rv-btn rv-btn-ghost" onclick={(e) => (e.stopPropagation(), onRetry())}>Retry</button>
 	</div>
 {/if}
 

@@ -100,7 +100,7 @@
 			<RailSkeleton count={2} label="Checking guidelines" testid="cp-skeleton" />
 		{:else if matchFailed}
 			<p class="cp-muted cp-empty" role="status">
-				Couldn't check guidelines · <button type="button" class="cp-link" onclick={onRetryMatch}>Retry</button>
+				Couldn't check guidelines · <button type="button" class="rv-btn rv-btn-ghost" onclick={onRetryMatch}>Retry</button>
 			</p>
 		{:else}
 			<p class="cp-muted cp-empty" role="status">No guideline applies yet</p>
@@ -123,7 +123,7 @@
 		<div class="cp-foot">
 			{#if otherState === 'failed'}
 				<span class="cp-muted">Couldn't fetch other guidelines ·</span>
-				<button type="button" class="cp-link" onclick={onOther}>Retry</button>
+				<button type="button" class="rv-btn rv-btn-ghost" onclick={onOther}>Retry</button>
 			{:else if otherState === 'done'}
 				<span class="cp-muted cp-other-done">Other guidelines checked</span>
 			{:else}

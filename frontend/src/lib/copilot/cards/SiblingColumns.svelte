@@ -87,13 +87,14 @@
 		{#if stacked}
 			{@const p = cv.result?.preview ?? null}
 			{@const assumed = assumedUnticked(p, cv.ticks ?? {})}
-			{@const bodyShown = !!p?.draft?.length && !(collapsible(p) && !cv.expanded)}
+			{@const collapsedCol = collapsible(p) && !cv.expanded}
+			{@const bodyShown = !!p?.draft?.length && !collapsedCol}
 			<div class="cp-col-line">
 				<span class="cp-col-name">{c.title}</span>
 				<span class="cp-col-marks">
-					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} text={pillWord(verdictOf(p))} />{/if}
-					{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
-					{#if !bodyShown}<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
+					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} text={collapsedCol ? (p?.state === 'does_not_apply' ? "Doesn't apply" : 'Not applied') : pillWord(verdictOf(p))} />{/if}
+					{#if scopeDoubts(p).length && !collapsedCol}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
+					{#if !bodyShown && !collapsedCol}<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
 				</span>
 			</div>
 		{:else}

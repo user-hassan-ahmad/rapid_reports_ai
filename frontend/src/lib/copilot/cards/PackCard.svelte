@@ -78,15 +78,17 @@
 	const assumedHead = $derived(assumptions ?? assumedUnticked(p, view.ticks ?? {}));
 	// (only a preview with a draft has a Check zone to duplicate)
 	const bodyShown = $derived(view.open && !!p?.draft?.length && !(collapsible(p) && !view.expanded));
+	// an open card collapsed to its "does this apply?" row says it once there, not in chips on the head
+	const collapsedOpen = $derived(view.open && collapsible(p) && !view.expanded);
 	const hint = $derived(!view.open && err && err !== 'unavailable' ? "Couldn't open · open to retry" : null);
 </script>
 
 {#snippet aside()}
 	<span class="cp-head-marks">
-		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} text={view.open ? pillWord(verdict) : null} title={view.open ? null : verdict.pill} />{/if}
-		{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
+		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} text={collapsedOpen ? (p?.state === 'does_not_apply' ? "Doesn't apply" : 'Not applied') : view.open ? pillWord(verdict) : null} title={view.open ? null : verdict.pill} />{/if}
+		{#if scopeDoubts(p).length && !collapsedOpen}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
 		<!-- the applicability chip already says why the card is check_first: no second "check first" -->
-		{#if !bodyShown}<AssumedChip assumed={assumedHead} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
+		{#if !bodyShown && !collapsedOpen}<AssumedChip assumed={assumedHead} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
 	</span>
 {/snippet}
 

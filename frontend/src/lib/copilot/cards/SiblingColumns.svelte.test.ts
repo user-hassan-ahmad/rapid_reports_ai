@@ -81,8 +81,8 @@ describe('SiblingColumns', () => {
 		const v = view({ columns: { [c.key]: { loading: false, error: null, result: withDraft(c.key) }, [bts.key]: { loading: false, error: null, result: withDraft(bts.key) } } });
 		const onEdit = vi.fn();
 		render(SiblingColumns, { ...base({ view: v }), layout: 'stacked', onEdit });
-		await page.getByRole('button', { name: /^Based on/ }).first().click(); // the values wait behind "Based on"
-		await page.getByRole('button', { name: /^Based on/ }).nth(1).click();
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).first().click(); // the values wait behind "Based on"
+		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).nth(1).click();
 		await expect.element(page.getByRole('button', { name: 'Change Size' }).first()).toBeInTheDocument();
 		expect(page.getByRole('button', { name: 'Change Size' }).elements()).toHaveLength(2);
 		expect(document.body.textContent).not.toContain('Calculate');
