@@ -17,8 +17,8 @@
 Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts.
 
 1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS) or a cosmetically reworded negative therefore has no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact and cosmetic tiers against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping, `uncertain`). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_a_normal_entry_survives_a_paragraph_rename_and_a_writer_rewording`.
-2. **"Removal decisions … never become cards" and "`registry=None` behaves exactly as today" conflict.** Today a negative removal whose paragraph negative was reworded is returned as unmatched (`test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept`). The plan applies "removal is satisfied" only when a registry is passed, which means only on persisted saves. Stateless callers keep today's behaviour and that test stays unchanged.
-3. **"Deterministic: same inputs, same result" vs "6 random base32 characters".** Uids are minted from `sha256(kind | identity | n)`, base32-encoded, with the first 6 characters kept. They look random, and rebind is fully deterministic, including the uids it mints.
+2. **"Removal decisions … never become cards" is narrowed (plan review H1).** A removal counts as satisfied only when its line is *shown* absent: the entry carries a uid the registry knows, and no unit of the current parse holds that uid. Without that evidence (no uid, a paragraph not found or ambiguous, a reworded negative) it stays a card, as today. It applies only on the registry path (persisted saves), so `registry=None` stays exactly as today and `test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept` is unchanged.
+3. **"Deterministic: same inputs, same result" vs "6 random base32 characters".** Each registry gets a random 8-hex `salt` when it is first minted; uids are `sha256(salt | kind | identity | n)`, base32, first 6 characters. Given the stored registry, rebind is fully deterministic, and two templates never share uids.
 4. **Writer questions only reach Create if the client sends them back.** The real creator (`frontend/src/routes/components/SkillSheetCreator.svelte`) ignores `questions` today, and the spec puts all UI out of scope. This plan adds `questions` to `TemplateCreate` and `SkillSheetSaveRequest` and resolves them. Until slice 3 echoes them, `uncertain` stays empty in production. Two dev-only pages (`/skill-sheet-proto`, `/skill-sheet-test`) show `questions` in the old `{question, suggestions}` shape and will display the new `{line, why}` items oddly. They are not production routes.
 5. **Confirm endpoint, an unknown group:** returns **422** (the spec names only 404 and 409). **Storage:** `normal_confirms` is `{group id: latest record}`. "Each confirm recorded" is read as one current record per group, which keeps the config size bounded.
 6. **Line identity includes the section uid as well as the paragraph uid** (the spec lists the paragraph uid for normals and negatives). This matters only for units outside any paragraph (Report-wide units that name a section). A paragraph uid already implies its section, so nothing else changes.
@@ -28,7 +28,9 @@ Each of these is either a place where the spec's wording cannot be met literally
 10. **Registry `text` per kind:** normal, negative and fixed store the quoted text, rule stores its raw line stripped, and section and paragraph store their name. `text_hash = "sha256:" + sha256(text)`.
 11. **A legacy template saved without a sheet change keeps `sheet_rev` 0** (no stored value means 0). The first change makes it 1, and the backfill sets it to 1.
 12. **The per-rebuild metric** ("share resolved by uid against today's text matching") is computed by `tla.uid_share` on the incoming sheet and logged by `persist_sheet` when `origin == "rebuild"`. The rebuild fixture test prints the same numbers.
-13. **Baseline:** the suite on this branch has one failure that predates this work: `tests/test_provider_key_routing.py::test_every_provider_client_carries_its_key_explicitly[claude-sonnet-5-5-anthropic-key]`. It is not ours; leave it.
+13. **Carried lines never move (plan review M2).** A carried uid pairs only with a line in the same section and paragraph (by uid) as its previous identity, both in `rebind` and in `apply_ledger`'s per-step map. A rewritten line deleted later in the run therefore cannot hand its uid to an identical line elsewhere.
+14. **The upgrade script writes its planned config later, under the lock (plan review L3).** The sheet hash re-check guarantees the sheet, and so the registry and `sheet_rev` the plan computed, did not move. The server-written keys the plan does not own (`uncertain`, `normal_confirms`) are re-read under the lock and kept, so a confirm recorded between plan and write survives.
+15. **Baseline:** the suite on this branch has one failure that predates this work: `tests/test_provider_key_routing.py::test_every_provider_client_carries_its_key_explicitly[claude-sonnet-5-5-anthropic-key]`. It is not ours; leave it.
 
 ---
 
@@ -47,7 +49,7 @@ Each of these is either a place where the spec's wording cannot be met literally
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
   ```
-- Each task ends green: run the task's tests, then the regression set `PYTEST tests/test_template_ledger_apply.py tests/test_template_decisions.py tests/test_template_sheet_save.py tests/test_template_ledger_save.py tests/test_template_sheet_save_routes.py tests/test_template_ledger_routes.py tests/test_template_upgrade_apply.py tests/test_template_writer.py tests/test_template_sheet_lab_prompts.py tests/test_chat_router.py tests/test_template_refine.py tests/test_rules_step_lab.py` (281+ tests, about 3 s) before committing.
+- Each task ends green: run the task's tests, then the regression set `PYTEST tests/test_template_ledger_apply.py tests/test_template_decisions.py tests/test_template_sheet_save.py tests/test_template_ledger_save.py tests/test_template_sheet_save_routes.py tests/test_template_ledger_routes.py tests/test_template_upgrade_apply.py tests/test_template_writer.py tests/test_template_sheet_lab_prompts.py tests/test_chat_router.py tests/test_chat_router_routes.py tests/test_template_refine.py tests/test_rules_step_lab.py tests/test_template_generate_endpoint.py` (about 5 s) before committing.
 
 ## File map
 
@@ -298,8 +300,9 @@ def test_units_lists_every_line_bound_unit_parents_first():
 def test_load_drops_malformed_units_and_never_raises():
     assert tlr.load(None) == tlr.empty() and tlr.load("x") == tlr.empty()
     raw = {"v": 1, "units": {"n_aaaaaa": {"kind": "normal", "identity": {}}, "bad": {"kind": "normal", "identity": {}},
-                             "g_bbbbbb": {"kind": "nope", "identity": {}}, "f_cccccc": "x"}}
-    assert list(tlr.load(raw)["units"]) == ["n_aaaaaa"]
+                             "g_bbbbbb": {"kind": "nope", "identity": {}}, "f_cccccc": "x"}, "salt": "0a1b2c3d"}
+    assert list(tlr.load(raw)["units"]) == ["n_aaaaaa"] and tlr.load(raw)["salt"] == "0a1b2c3d"
+    assert "salt" not in tlr.load({**raw, "salt": "not hex!"})
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -342,6 +345,8 @@ import copy
 import hashlib
 import json
 import logging
+import re
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -431,14 +436,20 @@ def empty() -> dict:
     return {"v": REGISTRY_VERSION, "units": {}}
 
 
+_SALT = re.compile(r"[0-9a-f]{8}")
+
+
 def load(raw) -> dict:
-    """A stored registry (a deep copy), or an empty one when absent or unreadable (never raises)."""
+    """A stored registry (a deep copy, its salt kept), or an empty one when absent or unreadable (never raises)."""
     if not isinstance(raw, dict) or not isinstance(raw.get("units"), dict):
         return empty()
     good = {u: e for u, e in raw["units"].items()
             if isinstance(u, str) and isinstance(e, dict) and e.get("kind") in KINDS
             and isinstance(e.get("identity"), dict) and u.startswith(PREFIX[e["kind"]])}
-    return {"v": REGISTRY_VERSION, "units": copy.deepcopy(good)}
+    out = {"v": REGISTRY_VERSION, "units": copy.deepcopy(good)}
+    if isinstance(raw.get("salt"), str) and _SALT.fullmatch(raw["salt"]):
+        out["salt"] = raw["salt"]
+    return out
 
 
 def _identity(u: Unit, parents: Dict[str, str]) -> dict:
@@ -650,6 +661,23 @@ def test_identical_fixed_lines_in_two_paragraphs_are_two_units():
     assert fixed in rep["gone"] and _live(reg2, "Same line.") != fixed
 
 
+def test_identical_fixed_lines_in_two_paragraphs_each_keep_their_own_uid():
+    sheet = _sheet('## Paragraph: Upper (FINDINGS)\nCOVERS ["upper"]\nFIXED "Same line."',
+                   '## Paragraph: Lower (FINDINGS)\nCOVERS ["lower"]\nFIXED "Same line."')
+    reg, rep = _bind(sheet)
+    uids = [u for u, e in reg["units"].items() if e["text"] == "Same line."]
+    assert len(set(uids)) == 2 and not rep["ambiguous"]
+    reg2, rep2 = _bind(sheet, reg)
+    assert set(uids) <= set(rep2["exact"]) and reg2 == reg
+
+
+def test_each_registry_has_its_own_salt_and_keeps_it():
+    a, _ = _bind(LEDGER_SHEET)
+    b, _ = _bind(LEDGER_SHEET)
+    assert a["salt"] != b["salt"] and set(a["units"]).isdisjoint(b["units"])
+    assert _bind(LEDGER_SHEET, a)[0]["salt"] == a["salt"]
+
+
 def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers_and_passing_gates():
     a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\nNORMAL [liver] "The liver is normal."')
     reg, _ = _bind(a)
@@ -722,15 +750,23 @@ Expected: FAIL with `AttributeError: module 'rapid_reports_ai.template_line_regi
 Append to `backend/src/rapid_reports_ai/template_line_registry.py`:
 
 ```python
-def _mint(kind: str, ident: dict, taken: set) -> str:
-    """A new uid: kind prefix + 6 base32 characters of sha256(kind | identity | n), deterministic (spec gap 3)."""
+def _mint(kind: str, ident: dict, taken: set, salt: str = "") -> str:
+    """A new uid: kind prefix + 6 base32 characters of sha256(salt | kind | identity | n), deterministic given the
+    registry's salt (spec gap 3)."""
     n = 0
     while True:
-        digest = hashlib.sha256(f"{kind}|{json.dumps(ident, sort_keys=True)}|{n}".encode()).digest()
+        digest = hashlib.sha256(f"{salt}|{kind}|{json.dumps(ident, sort_keys=True)}|{n}".encode()).digest()
         uid = PREFIX[kind] + base64.b32encode(digest).decode().lower()[:6]
         if uid not in taken:
             return uid
         n += 1
+
+
+def _parents_match(u: Unit, assigned: Dict[str, str], prev_identity: dict) -> bool:
+    """A carried line keeps its uid only in the same section and paragraph it had: never moved to an identical line
+    elsewhere (spec gap 13)."""
+    ident = _identity(u, assigned)
+    return all(ident.get(p, "") == prev_identity.get(p, "") for p in _PARENTS[u.kind])
 
 
 def _pair(new: List[Tuple[Unit, dict]], pool: Dict[str, dict], keyfn) -> Tuple[Dict[str, str], List[str], set]:
@@ -771,6 +807,7 @@ def rebind(registry, st, carried: Optional[Dict[str, str]] = None, *,
 
 def _bind(registry, st, carried, now):
     reg = load(registry)
+    reg.setdefault("salt", secrets.token_hex(4))   # minted once per registry; uids differ across templates
     prev = reg["units"]
     now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
     report = {k: [] for k in ("exact", "cosmetic", "carried", "revived", "new", "gone", "ambiguous")}
@@ -793,7 +830,8 @@ def _bind(registry, st, carried, now):
             for uid, raw in sorted((carried or {}).items()):
                 if uid not in live or uid in used or not uid.startswith(PREFIX[kind]):
                     continue
-                hits = [u for u in todo if u.ref not in assigned and u.raw == raw]
+                hits = [u for u in todo if u.ref not in assigned and u.raw == raw
+                        and _parents_match(u, assigned, prev[uid]["identity"])]
                 if len(hits) == 1:
                     take(hits[0], uid, _identity(hits[0], assigned), "carried")
         excluded: set = set()
@@ -811,7 +849,7 @@ def _bind(registry, st, carried, now):
             if u.ref in assigned:
                 continue
             ident = _identity(u, assigned)
-            uid = _mint(kind, ident, set(prev) | used)
+            uid = _mint(kind, ident, set(prev) | used, reg["salt"])
             prev[uid] = {"kind": kind, "identity": ident, "text": u.text, "text_hash": text_hash(u.text),
                          "status": "live", "minted": now}
             assigned[u.ref] = uid
@@ -832,7 +870,7 @@ def summary(report: dict) -> str:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `45 passed` (17 before + 28 new, 12 of them adversarial).
+Expected: `47 passed` (17 before + 30 new, 12 of them adversarial).
 
 - [ ] **Step 5: Commit**
 
@@ -915,7 +953,7 @@ def match(st, registry) -> Dict[str, str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `47 passed`.
+Expected: `49 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -1136,6 +1174,31 @@ def test_a_line_edited_by_two_steps_carries_its_final_text(monkeypatch):
                ("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}))
     res = tla.apply_ledger(LEDGER_SHEET, led, registry=reg)
     assert res.carried == {uid: second}
+
+
+def test_a_carried_line_deleted_later_never_moves_its_uid_to_an_identical_line_elsewhere(monkeypatch):
+    other, mine = 'NEGATIVE "No hepatic lesion."', 'NEGATIVE "No focal liver lesion."'
+    sheet = HABIT_SHEET.replace('NORMAL [delta] "Delta is normal."', f'NORMAL [delta] "Delta is normal."\n{other}')
+    reg = _reg(sheet)
+    liver, lower = _uid(sheet, reg, "n0"), _uid(sheet, reg, "n1")
+
+    def rewrite(lines, st, entry):      # step 1: the Liver negative takes the Lower negative's exact text
+        out = list(lines)
+        out[out.index(mine)] = other
+        return out, [{"kind": entry["kind"], "key": entry["key"], "action": "rewritten"}], [], [], [(mine, other)]
+
+    def delete(lines, st, entry):       # step 2: the first copy (the Liver one) is removed
+        i = lines.index(other)
+        return lines[:i] + lines[i + 1:], [{"kind": entry["kind"], "key": entry["key"], "action": "removed"}], [], []
+    monkeypatch.setattr(tla, "_OPS", [("fixed", rewrite), ("normal", delete)])
+    led = _led(("fixed", "Axial images were acquired.", {"keep": "always"}),
+               ("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}))
+    res = tla.apply_ledger(sheet, led, registry=reg)
+    assert res.carried == {liver: other}
+    st = _clean(res.sheet)
+    assert tla._uid_map(st, reg, res.carried)["n0"] == lower        # the Lower line keeps its own uid
+    _, rep = tlr.rebind(reg, st, res.carried, now="T")
+    assert liver in rep["gone"] and lower in rep["exact"] and not rep["carried"]
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1145,7 +1208,7 @@ Expected: FAIL with `TypeError: apply_ledger() got an unexpected keyword argumen
 
 - [ ] **Step 3: Implement**
 
-3a. Imports: change `from typing import Callable, List, Optional, Set, Tuple` to `from typing import Callable, Dict, List, Optional, Set, Tuple`.
+3a. Imports: change `from typing import Callable, List, Optional, Set, Tuple` to `from typing import Callable, Dict, List, Optional, Set, Tuple`, and after `from . import template_decisions as td` add `from . import template_line_registry as tlr` (no cycle: the registry imports neither module).
 
 3b. `LedgerResult`: after the `pending` field add:
 
@@ -1318,14 +1381,20 @@ and replace the loop head
             new = "\n".join(lines)
 ```
 
-with
+with (the uid map is built outside the step's `try`, so a failure there only drops the entry to key matching; plan review L1)
 
 ```python
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
+        st = _parse(res.sheet)
+        uid_map: Dict[str, str] = {}
+        mapped = False
+        if registry is not None:
+            try:
+                uid_map, mapped = _uid_map(st, registry, res.carried), True
+            except Exception as e:  # never blocks the edit: the entry falls back to key matching
+                logger.error("[ledger] uid map failed: %s: %s", type(e).__name__, str(e)[:200])
         try:
-            st = _parse(res.sheet)
-            uid_map = _uid_map(st, registry, res.carried) if registry is not None else {}
             if uid_map and isinstance(arg, dict) and arg.get("uid"):
                 arg = _by_uid(arg, st, uid_map, res)
             out = op(res.sheet.split("\n"), st, arg)
@@ -1357,13 +1426,17 @@ with
 
 def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str, str]) -> Dict[str, str]:
     """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact or
-    cosmetic identity; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text."""
-    from . import template_line_registry as tlr
+    cosmetic identity; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
+    the same section and paragraph only (spec gap 13)."""
     out = tlr.match(st, registry)
     if carried:
         units = tlr.units(st)
+        known = tlr.load(registry)["units"]
         for uid, raw in carried.items():
-            hits = [u.ref for u in units if u.raw == raw and uid.startswith(tlr.PREFIX[u.kind])]
+            prev = (known.get(uid) or {}).get("identity") or {}
+            hits = [u.ref for u in units if u.raw == raw and uid.startswith(tlr.PREFIX[u.kind])
+                    and (out.get(u.section, ""), out.get(u.paragraph, "") if u.paragraph else "")
+                    == (prev.get("section", ""), prev.get("paragraph", ""))]
             if len(hits) == 1:
                 out = {r: x for r, x in out.items() if x != uid}
                 out[hits[0]] = uid
@@ -1373,7 +1446,6 @@ def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str
 def _carry(rewrites: List[Tuple[str, str]], st: tss.SheetStructure, uid_map: Dict[str, str],
            carried: Dict[str, str]) -> None:
     """Record each rewritten line's final text under its uid (a second edit of the same line overwrites the first)."""
-    from . import template_line_registry as tlr
     units = tlr.units(st)
     for old, new in rewrites:
         hits = [u.ref for u in units if u.raw == old]
@@ -1434,7 +1506,7 @@ Also add to the module docstring's last paragraph: `With a registry (persisted s
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_ledger_apply.py`
-Expected: all pass (49 existing + 6 new = 55). Then run the regression set. Expected: all pass. The existing `test_an_edit_that_would_break_the_sheet_is_not_applied` patches `_OPS` with an op that returns 4 values, so this also checks that the loop still accepts 4-value ops.
+Expected: all pass (49 existing + 7 new = 56). Then run the regression set. Expected: all pass. The existing `test_an_edit_that_would_break_the_sheet_is_not_applied` patches `_OPS` with an op that returns 4 values, so this also checks that the loop still accepts 4-value ops.
 
 - [ ] **Step 5: Commit**
 
@@ -1448,23 +1520,33 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 7: Removal decisions with an absent line are satisfied (registry path)
+### Task 7: A removal whose line is shown absent is satisfied (registry path)
+
+Plan review H1: satisfied only with evidence the line is gone, meaning the entry's uid is known to the registry and no unit of the current parse holds it. Every other unmatched removal (no uid, a paragraph not found or ambiguous, a reworded negative) stays a card, as today. (A removal whose paragraph resolves and holds no matching line is already `kept` today; that path is unchanged.)
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_ledger_apply.py`
 - Modify: `backend/tests/test_template_ledger_apply.py` (append)
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-def test_a_removal_whose_line_is_absent_is_satisfied_with_a_registry():
-    sheet = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
-    led = _led(("normal", NEG, {"text": ""}), ("fixed", "A line the sheet lacks.", {"keep": "remove"}))
-    assert [e["key"] for e in tla.apply_ledger(sheet, led).unmatched] == [NEG]    # today (registry None): a card
-    res = tla.apply_ledger(sheet, led, registry=_reg(LEDGER_SHEET))
-    assert res.sheet == sheet and res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG]
-    gone = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Abdomen (FINDINGS)")
-    assert tla.apply_ledger(gone, led, registry=_reg(gone)).unmatched == []      # paragraph gone too
+def test_a_removal_is_satisfied_only_when_its_line_is_shown_absent():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    removal = _led(("normal", NEG, {"text": ""}))[0]
+    reworded = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    # no uid: nothing shows the line is gone (a reworded negative) -> a card, as today
+    assert [e["key"] for e in tla.apply_ledger(reworded, [removal], registry=reg).unmatched] == [NEG]
+    # its uid names no unit of this sheet: the line is gone -> satisfied, never a card
+    res = tla.apply_ledger(reworded, [_with_uid(removal, uid)], registry=reg)
+    assert res.sheet == reworded and res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG]
+    # paragraph renamed with the negative still there, no uid: a card (never silently satisfied)
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Abdomen (FINDINGS)")
+    assert [e["key"] for e in tla.apply_ledger(renamed, [removal], registry=_reg(renamed)).unmatched] == [NEG]
+    # the same rename with the uid: the line is found through it and removed
+    out = tla.apply_ledger(renamed, [_with_uid(removal, uid)], registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' not in out.sheet and out.unmatched == []
 
 
 def test_is_removal():
@@ -1476,8 +1558,8 @@ def test_is_removal():
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `PYTEST tests/test_template_ledger_apply.py -k "satisfied or is_removal"`
-Expected: FAIL: `AttributeError: … has no attribute 'is_removal'`, and `res.unmatched` is non-empty.
+Run: `PYTEST tests/test_template_ledger_apply.py -k "shown_absent or is_removal"`
+Expected: FAIL: `AttributeError: … has no attribute 'is_removal'`, and the uid-carrying removal is still in `res.unmatched`.
 
 - [ ] **Step 3: Implement**
 
@@ -1487,14 +1569,18 @@ In `apply_ledger`, extend the block added in Task 6:
         res.sheet = new
         if registry is not None:
             _carry(rewrites, st, uid_map, res.carried)
-            done = [x for x in unmatched if is_removal(x)]   # spec: a removal whose line is absent is satisfied
-            unmatched = [x for x in unmatched if not is_removal(x)]
+            # a removal is satisfied only when its line is shown absent: its uid is in the registry and no unit of this
+            # parse holds it; without that evidence (no uid, paragraph not found or ambiguous, a reworded negative) it
+            # stays a card, as today (plan review H1)
+            known = set(tlr.load(registry)["units"]) if mapped else set()
+            done = [x for x in unmatched if is_removal(x) and x.get("uid") in known and x["uid"] not in uid_map.values()]
+            unmatched = [x for x in unmatched if x not in done]
             res.satisfied += done
             applied = applied + [{"kind": x["kind"], "key": x["key"], "action": "kept"} for x in done]
         res.applied += applied
 ```
 
-Add before the `# ── stable line IDs` header:
+(`mapped` is False when the uid map failed; then nothing is treated as gone.) Add before the `# ── stable line IDs` header:
 
 ```python
 def is_removal(entry: dict) -> bool:
@@ -1513,7 +1599,7 @@ Expected: all pass, including the unchanged `test_removing_a_negative_the_sheet_
 
 ```bash
 git add backend/src/rapid_reports_ai/template_ledger_apply.py backend/tests/test_template_ledger_apply.py
-git commit -m "feat(line-ids): with a registry, a removal whose line is absent is satisfied, never a card
+git commit -m "feat(line-ids): a removal whose line is shown absent (uid gone) is satisfied, never a card
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -1623,7 +1709,6 @@ def stamp_uids(ledger: List[dict], st: tss.SheetStructure, registry: dict) -> Li
     """The ledger with each line-bound entry's uid set to the uid of the unit it names in the final parse (after the
     rebind). A uid the registry does not know is dropped (a client-held ledger cannot forge one); an entry whose line
     is not found keeps a known uid (visibly orphaned when that unit is gone). Never mutates `ledger`."""
-    from . import template_line_registry as tlr
     known = set((registry or {}).get("units") or {})
     uids = tlr.uids_for(st, registry)
     out: List[dict] = []
@@ -1641,7 +1726,6 @@ def stamp_uids(ledger: List[dict], st: tss.SheetStructure, registry: dict) -> Li
 def uid_share(ledger: List[dict], sheet: str, registry: Optional[dict]) -> dict:
     """The rebuild metric (logged, never a gate): of the ledger's line-bound entries, how many the incoming sheet
     resolves by uid (tlr.match) and how many by today's key and text matching (locate)."""
-    from . import template_line_registry as tlr
     if not tsg.is_grammar_sheet(sheet or ""):
         return {"line_bound": 0, "by_uid": 0, "by_text": 0}
     st = _parse(sheet)
@@ -1801,11 +1885,21 @@ async def test_the_ledger_is_stamped_after_the_rebind(no_jev):
 async def test_a_refused_sheet_persists_nothing(no_jev):
     p = await S.persist_sheet(_cfg("# Free\nprose"), {}, "analyser", now="T")
     assert p.outcome.status == "refused" and p.config is None
+
+
+async def test_persist_strips_client_server_written_keys_and_keeps_the_stored_ones(no_jev):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    client = _cfg(LEDGER_SHEET, uncertain=[{"uid": "x"}], normal_confirms={"x": {}}, sheet_rev=50)
+    fresh = await S.persist_sheet(client, {}, "analyser", now="T")
+    assert "uncertain" not in fresh.config and "normal_confirms" not in fresh.config and fresh.config["sheet_rev"] == 1
+    stored = {**first, "uncertain": [{"uid": "kept"}], "normal_confirms": {"g": {"kept": True}}}
+    again = await S.persist_sheet(client, stored, "chat", now="T")
+    assert again.config["uncertain"] == [{"uid": "kept"}] and again.config["normal_confirms"] == {"g": {"kept": True}}
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `PYTEST tests/test_template_sheet_save.py -k "persist or sheet_rev or stamped or stored_registry or refused_sheet_persists"`
+Run: `PYTEST tests/test_template_sheet_save.py -k "persist or sheet_rev or stamped or stored_registry or refused_sheet_persists or strips"`
 Expected: FAIL with `AttributeError: module … has no attribute 'persist_sheet'`.
 
 - [ ] **Step 3: Implement**
@@ -1822,7 +1916,14 @@ class Persisted:
     report: dict = field(default_factory=dict)    # the rebind report ({} for a non-grammar sheet)
 
 
-def _rev(v) -> int:
+# Server-written config keys (stable line IDs spec): never taken from a client config. persist_sheet writes
+# line_registry, sheet_rev and uncertain; the confirm endpoint writes normal_confirms; main._carry_structure keeps the
+# stored copies on a PUT or a restore.
+SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
+
+
+def stored_rev(v) -> int:
+    """A stored sheet_rev as an int (absent or malformed: 0, a template saved before sheet_rev existed)."""
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
 
 
@@ -1848,7 +1949,9 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
                           registry=registry)
     if out.status == "refused":
         return Persisted(out, None)
-    cfg = {**config, "skill_sheet": out.sheet}
+    cfg = {k: v for k, v in config.items() if k not in SERVER_WRITTEN}   # a client copy is never trusted (L2)
+    cfg.update({k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored})
+    cfg["skill_sheet"] = out.sheet
     if out.status != "unchanged":
         cfg["coverage_sections"] = out.coverage_sections
     if ledger is not None:
@@ -1861,7 +1964,7 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
         if ledger is not None:
             cfg["decisions"] = tla.stamp_uids(out.ledger, st, registry)
         logger.info("[line-registry] origin=%s %s drift=%d", origin, tlr.summary(report), out.ledger_drift)
-    rev = _rev(stored.get("sheet_rev"))
+    rev = stored_rev(stored.get("sheet_rev"))
     cfg["sheet_rev"] = rev + 1 if out.sheet != previous else rev
     return Persisted(out, cfg, report)
 ```
@@ -2038,24 +2141,18 @@ Expected: FAIL with `KeyError: 'sheet_rev'` / `KeyError: 'line_registry'` (the e
 
 - [ ] **Step 3: Implement in `main.py`**
 
-Before `def _carry_structure`:
-
-```python
-SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
-```
-
-At the end of `_carry_structure`, before `return new`:
+At the end of `_carry_structure`, before `return new` (the key list lives in `template_sheet_save`, Task 10):
 
 ```python
     # stable line IDs (spec 2026-10-15): the registry, the writer's uncertain lines, the normals confirms and the sheet
     # revision are server-written only: a client (or a restored version's) copy is dropped, the stored one kept
-    for k in SERVER_WRITTEN:
+    for k in tsave.SERVER_WRITTEN:
         new.pop(k, None)
         if k in old:
             new[k] = old[k]
 ```
 
-Update the `_carry_structure` docstring first line to: `"""sheet_structure and the stable-line-ID keys (SERVER_WRITTEN) are server-written only: drop any client copy, carry the stored one (sheet_structure only while the sheet is unchanged)."""`
+Update the `_carry_structure` docstring first line to: `"""sheet_structure and the stable-line-ID keys (tsave.SERVER_WRITTEN) are server-written only: drop any client copy, carry the stored one (sheet_structure only while the sheet is unchanged)."""`
 
 In `_vet_config`, add to the docstring: `The save itself is template_sheet_save.persist_sheet (the line registry, the ledger's uids, sheet_rev).` Then replace
 
@@ -2132,12 +2229,30 @@ def test_the_upgrade_saves_through_persist_sheet_and_mints_the_registry(db_sessi
     db_session.expire_all()
     cfg = db_session.get(Template, guided.id).template_config
     assert cfg["sheet_rev"] == 1 and len(cfg["line_registry"]["units"]) == 4
+
+
+def test_a_confirm_recorded_between_plan_and_write_is_kept(db_session, templates, tmp_path, no_jev, monkeypatch):
+    guided, _ = templates
+    real = U._plan_entry
+
+    async def plan_then_confirm(db, entry, analyser_version=None):
+        row = await real(db, entry, analyser_version)
+        t = db.get(Template, guided.id)
+        t.template_config = {**t.template_config, "normal_confirms": {"g": {"kept": True}}}
+        db.commit()
+        return row
+    monkeypatch.setattr(U, "_plan_entry", plan_then_confirm)
+    summary = U.main(_manifest(tmp_path, guided.id, GOOD), apply=True, db=db_session)
+    assert _actions(summary)[str(guided.id)] == "written"
+    db_session.expire_all()
+    cfg = db_session.get(Template, guided.id).template_config
+    assert cfg["normal_confirms"] == {"g": {"kept": True}} and cfg["skill_sheet"] == GOOD
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `PYTEST tests/test_template_upgrade_apply.py -k persist_sheet`
-Expected: FAIL: `seen == []` and `KeyError: 'sheet_rev'`.
+Run: `PYTEST tests/test_template_upgrade_apply.py -k "persist_sheet or between_plan"`
+Expected: FAIL: `seen == []`, `KeyError: 'sheet_rev'`, and the confirm recorded between plan and write is overwritten.
 
 - [ ] **Step 3: Implement**
 
@@ -2179,12 +2294,31 @@ with
     vetted = dict(saved.config)
 ```
 
+In `_write`, replace
+
+```python
+    # converted_at: the banner names its owner's converted templates (integration spec §10, P2c)
+    t.template_config = {**row["config"], "converted_at": datetime.now(timezone.utc).isoformat()}
+```
+
+with (plan review L3; spec gap 14)
+
+```python
+    # converted_at: the banner names its owner's converted templates (integration spec §10, P2c). The planned config
+    # owns the sheet, its registry and sheet_rev (the hash re-check above guarantees the sheet, and so the registry,
+    # did not move); the server-written keys the plan does not own (the writer's uncertain lines, the normals
+    # confirms) are re-read here under the lock, so a confirm recorded since the plan is never overwritten.
+    stored = t.template_config or {}
+    kept = {k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored}
+    t.template_config = {**row["config"], **kept, "converted_at": datetime.now(timezone.utc).isoformat()}
+```
+
 In the module docstring, change `skipped-refused   the one save function (template_sheet_save.vet_sheet, origin "rebuild") refused the new sheet` to `skipped-refused   the persisted save (template_sheet_save.persist_sheet, origin "rebuild") refused the new sheet`. `_already_written` keeps calling `vet_sheet` without a registry (a stateless re-run check).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_upgrade_apply.py`
-Expected: `23 passed`.
+Expected: `24 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -2501,6 +2635,17 @@ def test_confirms_survive_a_put_that_sends_its_own_copy(client, auth_headers):
     r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={"template_config": {
         **cfg, "normal_confirms": {}}}).json()
     assert r["template"]["template_config"]["normal_confirms"] == stored
+
+
+def test_a_confirm_on_a_template_saved_before_sheet_rev_compares_against_0(client, auth_headers, db_session):
+    from rapid_reports_ai.database.models import Template
+    t, cfg, group = _confirmable(client, auth_headers)
+    row = db_session.get(Template, uuid.UUID(t["id"]))
+    row.template_config = {k: v for k, v in row.template_config.items() if k != "sheet_rev"}
+    db_session.commit()
+    r = client.post(CONFIRM.format(t["id"]), headers=auth_headers, json={
+        "group": group, "sheet_rev": 0, "sheet_hash": tss.sheet_hash(LEDGER_SHEET)})
+    assert r.status_code == 200, r.text
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2544,7 +2689,7 @@ async def normal_confirm_endpoint(
     row = db.query(Template).filter(Template.id == template.id).with_for_update().populate_existing().first()
     cfg = dict(row.template_config or {})
     sheet = cfg.get("skill_sheet") or ""
-    if request.sheet_rev != cfg.get("sheet_rev") or request.sheet_hash != tss.sheet_hash(sheet):
+    if request.sheet_rev != tsave.stored_rev(cfg.get("sheet_rev")) or request.sheet_hash != tss.sheet_hash(sheet):
         db.rollback()
         raise HTTPException(status_code=409, detail="The template has changed; reload it and confirm again.")
     st = tsg.parse_sheet(sheet, mode="template").structure if tsg.is_grammar_sheet(sheet) else None
@@ -2567,7 +2712,7 @@ async def normal_confirm_endpoint(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_ids_routes.py`
-Expected: all pass (12).
+Expected: all pass (13).
 
 - [ ] **Step 5: Commit**
 
@@ -2817,6 +2962,14 @@ def test_a_put_never_takes_uncertain_from_the_client(client, auth_headers):
     r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={"template_config": {
         **t["template_config"], "skill_sheet": EDITED, "uncertain": []}}).json()
     assert r["template"]["template_config"]["uncertain"] == stored
+
+
+def test_more_than_twenty_questions_are_cut_not_refused(client, auth_headers):
+    qs = [QUESTION] + [{"line": f'FIXED "Line {k}."', "why": "w"} for k in range(30)]
+    r = client.post("/api/templates", headers=auth_headers, json={
+        "name": "Knee", "questions": qs,
+        "template_config": {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD}}).json()
+    assert r["success"] and len(r["template"]["template_config"]["uncertain"]) == 1
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2826,7 +2979,7 @@ Expected: FAIL with `TypeError: persist_sheet() got an unexpected keyword argume
 
 - [ ] **Step 3: Implement**
 
-3a. Append to `template_line_registry.py` (and add `import re` to its imports):
+3a. Append to `template_line_registry.py` (`re` is already imported since Task 2):
 
 ```python
 MAX_UNCERTAIN = 20
@@ -2876,15 +3029,22 @@ def resolve_uncertain(questions, st, registry, *, now: Optional[str] = None) -> 
 
 ```python
 WRITER_QUESTIONS_MAX = 20   # the writer's uncertain lines sent back on Create (template_line_registry.MAX_UNCERTAIN)
+
+
+def _cap_questions(v):
+    return list(v or [])[:WRITER_QUESTIONS_MAX]
 ```
 
-Add to `TemplateCreate`:
+Add to `TemplateCreate`, and the same field and validator to `SkillSheetSaveRequest` (after `rules_step` and its validator). More than 20 are cut, never refused with a 422 (plan review L5):
 
 ```python
-    questions: List[Dict[str, Any]] = Field(default=[], max_length=WRITER_QUESTIONS_MAX)   # the writer's [{line, why}]
-```
+    questions: List[Dict[str, Any]] = []   # the writer's [{line, why}]; more than WRITER_QUESTIONS_MAX are cut, never refused
 
-and the same field to `SkillSheetSaveRequest` (after `rules_step`). Change `_vet_config`'s signature to
+    @field_validator("questions")
+    @classmethod
+    def _questions_cap(cls, v):
+        return _cap_questions(v)
+``` Change `_vet_config`'s signature to
 
 ```python
 async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str, creating: bool = False,
@@ -3564,7 +3724,7 @@ At most 2 runs in total. A second run happens only if the first is broken (for e
 - [ ] **Step 1: Full suite**
 
 Run: `PYTEST tests` (about 3.5 minutes).
-Expected: everything passes except the one pre-existing failure (spec gap 13): `tests/test_provider_key_routing.py::test_every_provider_client_carries_its_key_explicitly[claude-sonnet-5-5-anthropic-key]`. Any other failure is ours. Fix it and re-run.
+Expected: everything passes except the one pre-existing failure (spec gap 15): `tests/test_provider_key_routing.py::test_every_provider_client_carries_its_key_explicitly[claude-sonnet-5-5-anthropic-key]`. Any other failure is ours. Fix it and re-run.
 
 - [ ] **Step 2: Check the working tree**
 
@@ -3614,7 +3774,7 @@ Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), th
 
 **Placeholder scan:** no "TBD"/"TODO"/"similar to". Two placeholders are deliberate: `<ROOT given by Hassan>` (private data path) and `<session>` (scratchpad path at run time).
 
-**Type consistency:** `tlr.rebind(registry, st, carried, *, now)` returns `(reg, report)`; `tlr.match`/`uids_for(st, registry)` return `{ref: uid}`; `tla.apply_ledger(sheet, ledger, before, registry)` returns `LedgerResult` with `.ledger/.carried/.satisfied/.rekeyed`; `tla.stamp_uids(ledger, st, registry)`; `tla.locate(entry, st)`; `tla.uid_share(ledger, sheet, registry)`; `S.vet_sheet(..., registry=)` returns `VetOutcome.carried`; `S.persist_sheet(config, stored_config, origin, *, ledger, questions, now)` returns `Persisted(outcome, config, report)` (`questions` added in Task 16); `tnc.groups(st, sheet, registry)`, `tnc.record(group, registry, *, sheet_rev, sheet_hash, user_id, now)`, `tnc.confirm_state(group, rec, registry)`. All of these were checked against a scratch prototype run on a copy of this branch's code and tests.
+**Type consistency:** `tlr.rebind(registry, st, carried, *, now)` returns `(reg, report)`; `tlr.match`/`uids_for(st, registry)` return `{ref: uid}`; `tla.apply_ledger(sheet, ledger, before, registry)` returns `LedgerResult` with `.ledger/.carried/.satisfied/.rekeyed`; `tla.stamp_uids(ledger, st, registry)`; `tla.locate(entry, st)`; `tla.uid_share(ledger, sheet, registry)`; `S.vet_sheet(..., registry=)` returns `VetOutcome.carried`; `S.persist_sheet(config, stored_config, origin, *, ledger, questions, now)` returns `Persisted(outcome, config, report)` (`questions` added in Task 16); `S.SERVER_WRITTEN`, `S.stored_rev`; `tnc.groups(st, sheet, registry)`, `tnc.record(group, registry, *, sheet_rev, sheet_hash, user_id, now)`, `tnc.confirm_state(group, rec, registry)`. All of these were checked against a scratch prototype run on a copy of this branch's code and tests.
 
 **Risky tasks**
 - **Task 6** (apply_ledger threading) touches the most code paths. The 4- or 5-value op return and the `is` identity in `_by_uid` are the subtle parts. The existing 49 ledger tests are the guard.
