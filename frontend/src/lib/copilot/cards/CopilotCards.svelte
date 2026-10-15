@@ -11,6 +11,8 @@
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import RailSkeleton from '$lib/rail/RailSkeleton.svelte';
 	import { cardRef, kindOf, quiet, type Group } from '../state';
+	import { findingNumbers } from '../markers';
+	import FindingMarker from './FindingMarker.svelte';
 	import type { Card } from '../types';
 	import type { Unresolved } from '../gate';
 	import './cards.css';
@@ -40,7 +42,9 @@
 		onApply = undefined,
 		onExpand = undefined,
 		unresolved = [],
-		onSeen = undefined
+		onSeen = undefined,
+		activeFinding = null,
+		onFindingHover = undefined
 	}: {
 		groups: Group[];
 		views: Record<string, CardView>;
@@ -69,11 +73,16 @@
 		unresolved?: Unresolved[];
 		/** "Seen, leave as is" (session.seen). */
 		onSeen?: (key: string) => void;
+		/** The finding being looked at (hovered or open on either side): its group is outlined. */
+		activeFinding?: string | null;
+		/** A group was hovered or focused (its finding id), or left (null). */
+		onFindingHover?: (id: string | null) => void;
 	} = $props();
 
 	const shown = $derived(groups.filter((g) => g.cards.length));
 	const viewOf = (c: Card) => views[cardRef(c)] ?? closedView;
 	const handlers = $derived({ onOpen, onClose, onRetry });
+	const numbers = $derived(findingNumbers(groups));
 	const blocking = $derived(Object.fromEntries(unresolved.map((u) => [u.key, u])));
 </script>
 
@@ -107,10 +116,13 @@
 		{/if}
 	{:else}
 		{#each shown as g (g.finding?.id ?? 'exam')}
-			<section class="cp-group" aria-label={g.finding ? g.finding.text : 'This exam'}>
+			<section class="cp-group" class:cp-active={!!g.finding && activeFinding === g.finding.id} aria-label={g.finding ? g.finding.text : 'This exam'}
+				data-finding-card={g.finding?.id}
+				onmouseenter={() => g.finding && onFindingHover?.(g.finding.id)} onmouseleave={() => g.finding && onFindingHover?.(null)}
+				onfocusin={() => g.finding && onFindingHover?.(g.finding.id)} onfocusout={() => g.finding && onFindingHover?.(null)}>
 				{#if g.finding}
 					<div class="gl-inline-label cp-group-head" title={g.finding.text}>
-						<span class="cp-group-text">{g.finding.text}</span>
+						<FindingMarker n={numbers[g.finding.id]} id={g.finding.id} text={g.finding.text} side="rail" active={activeFinding === g.finding.id} />
 					</div>
 				{/if}
 				{#each g.cards as c (cardRef(c))}
@@ -149,13 +161,10 @@
 		min-width: 0;
 		margin: 2px 0 0;
 	}
-	.cp-group-text {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--rv-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.cp-active {
+		outline: 1px solid rgb(167 139 250 / 0.35);
+		outline-offset: 3px;
+		border-radius: 6px;
 	}
 	.cp-empty {
 		margin: 4px 0;

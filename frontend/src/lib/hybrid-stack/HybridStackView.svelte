@@ -13,6 +13,7 @@
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { AppliedRec, StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import RecommendationsSection from './RecommendationsSection.svelte';
+	import FindingMarker from '$lib/copilot/cards/FindingMarker.svelte';
 	import ValueChips from './ValueChips.svelte';
 	import { SIDE_KIND, type NotReported } from './sides';
 	import { openCount as openValueChips } from './values';
@@ -91,6 +92,9 @@
 		recommendations = [],
 		onRecEdit = () => {},
 		onRecDelete = () => {},
+		findingMarks = {},
+		activeFinding = null,
+		onFindingHover = () => {},
 		onConfirm,
 		onDeleteRegion = () => {},
 		onAppend = () => {},
@@ -205,6 +209,12 @@
 		recommendations?: AppliedRec[];
 		onRecEdit?: (key: string, text: string) => void;
 		onRecDelete?: (key: string) => void;
+		/** Guideline finding ids (`u<unit>` | `u<unit>.<part>`) to their rail number: a numbered marker in the margin of that
+		 *  unit's line; {} (Copilot off) shows none. A part's id marks its unit's line (parts render as one line). */
+		findingMarks?: Record<string, number>;
+		/** The finding being looked at on either side: its line gets a faint highlight (no layout shift). */
+		activeFinding?: string | null;
+		onFindingHover?: (id: string | null) => void;
 		onConfirm: () => void;
 		/** The walkthrough's last step: Confirm, then Generate. Absent: the last step only confirms. */
 		onConfirmGenerate?: (() => void) | null;
@@ -889,10 +899,19 @@
 {/snippet}
 
 {#snippet line(r: ViewRow, nested: boolean)}
+	{@const fids = Object.keys(findingMarks).filter((id) => id === `u${r.unitId}` || id.startsWith(`u${r.unitId}.`))}
+	{@const lit = !!activeFinding && fids.includes(activeFinding)}
 	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
 	     sentence fades in where it belongs with a soft highlight that fades out. -->
-	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}
-		onmouseleave={() => { if (!walking) hoverOff(); }}>
+	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : lit ? 'bg-violet-400/[0.07]' : ''}" in:fade={{ duration: ms }}
+		data-finding-line={fids.length ? fids.join(' ') : undefined} data-finding-active={fids.length ? String(lit) : undefined}
+		onmouseenter={() => { if (fids.length) onFindingHover(fids[0]); }}
+		onmouseleave={() => { if (fids.length) onFindingHover(null); if (!walking) hoverOff(); }}>
+		{#if fids.length}
+			<span class="absolute -left-5 top-1 flex flex-col gap-0.5">
+				{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} />{/each}
+			</span>
+		{/if}
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
 				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
