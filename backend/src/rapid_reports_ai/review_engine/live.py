@@ -226,7 +226,10 @@ def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         kind = str(e["kind"])
         text = str(e.get("sentence") or e.get("text") or e.get("item") or "")
         label = e.get("message") or _FLAG_LABEL.get(kind, "{text}").format(text=e.get("text") or e.get("item") or text)
-        key = item_key("accuracy", kind, text or str(label))
+        key_text = text or str(label)
+        if kind == "dictated_number_missing" and e.get("text"):   # one item per missing number, not per sentence
+            key_text = f"{key_text} | {e['text']}"
+        key = item_key("accuracy", kind, key_text)
         if key in seen:
             continue
         seen.add(key)

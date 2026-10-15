@@ -64,3 +64,16 @@ def test_a_missing_dictated_number_is_an_unanchored_action_item():
     assert item.kind == "dictated_number_missing" and item.cls == "action" and item.status == "open"
     assert item.edit is None and item.anchor is None
     assert item.label == "Dictated number not in the report: 140 mcg/kg/min"
+
+
+def test_two_missing_numbers_in_one_dictated_sentence_are_two_items():
+    s = "Adenosine 140 mcg/kg/min for 4 minutes."
+    inp = _inp(review=[
+        {"kind": "dictated_number_missing", "text": "140 mcg/kg/min", "severity": "high", "sentence": s,
+         "values": [140.0], "message": "Dictated number not in the report: 140 mcg/kg/min"},
+        {"kind": "dictated_number_missing", "text": "4 minutes", "severity": "high", "sentence": s,
+         "values": [4.0], "message": "Dictated number not in the report: 4 minutes"}])
+    items = live.check_flag_items(inp, "run1")
+    assert [i.label for i in items] == ["Dictated number not in the report: 140 mcg/kg/min",
+                                        "Dictated number not in the report: 4 minutes"]
+    assert len({i.key for i in items}) == 2
