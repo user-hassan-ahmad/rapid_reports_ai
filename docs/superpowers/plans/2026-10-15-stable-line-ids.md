@@ -14,9 +14,9 @@
 
 ## Spec gaps found while planning
 
-Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts.
+Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts. The plan follows the spec as of `b9df0b93` (Hassan's decisions 4 and 5: the wider meaningful-token set with protected negation and hedge words, Task 1; a normal follows a renamed paragraph only with its own text unchanged, Task 3; a renamed group's confirm is stale, Task 13).
 
-1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS) or a cosmetically reworded negative therefore has no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact and cosmetic tiers against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping, `uncertain`). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_a_normal_entry_survives_a_paragraph_rename_and_a_writer_rewording`.
+1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS), the normals in it whose text is unchanged (decision 5), or a cosmetically reworded negative therefore have no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact and cosmetic tiers against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping, `uncertain`). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line`.
 2. **"Removal decisions … never become cards" is narrowed (plan review H1).** A removal counts as satisfied only when its line is *shown* absent: the entry carries a uid the registry knows, and no unit of the current parse holds that uid. Without that evidence (no uid, a paragraph not found or ambiguous, a reworded negative) it stays a card, as today. It applies only on the registry path (persisted saves), so `registry=None` stays exactly as today and `test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept` is unchanged.
 3. **"Deterministic: same inputs, same result" vs "6 random base32 characters".** Each registry gets a random 8-hex `salt` when it is first minted; uids are `sha256(salt | kind | identity | n)`, base32, first 6 characters. Given the stored registry, rebind is fully deterministic, and two templates never share uids.
 4. **Writer questions only reach Create if the client sends them back.** The real creator (`frontend/src/routes/components/SkillSheetCreator.svelte`) ignores `questions` today, and the spec puts all UI out of scope. This plan adds `questions` to `TemplateCreate` and `SkillSheetSaveRequest` and resolves them. Until slice 3 echoes them, `uncertain` stays empty in production. Two dev-only pages (`/skill-sheet-proto`, `/skill-sheet-test`) show `questions` in the old `{question, suggestions}` shape and will display the new `{line, why}` items oddly. They are not production routes.
@@ -114,6 +114,16 @@ ADVERSARIAL = [
     ("Left kidney, right adrenal.", "Right kidney, left adrenal."),
     ("Non-enhancing lesion.", "Enhancing lesion."),
     ("Small effusion.", "Large effusion."),
+    ("Measures .5 mm.", "Measures 5 mm."),
+    ("No fracture. Dislocation.", "No fracture, dislocation."),
+    ("No mass; effusion.", "No mass effusion."),
+    ("Stenosis <25%.", "Stenosis 25%."),
+    ("Measures 5 x 3 mm.", "Measures 53 mm."),
+    ("Effusion is seen.", "Effusion is not seen."),
+    ("Likely pneumonia.", "Pneumonia."),
+    ("Malignancy cannot be excluded.", "Malignancy excluded."),
+    ("Possible collection.", "Probable collection."),
+    ("Well-defined margin.", "Defined margin."),
 ]
 
 
@@ -128,19 +138,46 @@ def test_cosmetic_rewordings_are_the_same_line():
     assert tlm.same_text("No focal liver lesion.", "no focal liver lesion") == "exact"
 
 
-def test_decimals_comparators_and_units_are_their_own_tokens():
+@pytest.mark.parametrize("a,b", [
+    ("No fracture \u2013 left side.", "No fracture - left side."),
+    ("No fracture \u2014 left side.", "No fracture - left side."),
+    ("Change of \u22121 mm.", "Change of -1 mm."),
+    ("The patient\u2019s \u201cnormal\u201d study.", "The patient's \"normal\" study."),
+    ("Measures 5 \u00d7 3 mm.", "Measures 5 x 3 mm."),
+    ("No\u00a0effusion.", "No effusion."),
+    ("No\u202feffusion.", "No effusion."),
+])
+def test_cosmetic_typography_always_matches(a, b):
+    assert tlm.same_text(a, b) in ("exact", "cosmetic")
+
+
+def test_meaningful_tokens_are_their_own_tokens():
     assert tlm.tokens("1.5mm<2") == ("1.5", "mm", "<", "2")
+    assert tlm.tokens(".5 x3, (well-defined)?") == (".5", "x", "3", ",", "(", "well-defined", ")", "?")
     assert tlm.gates("Mild left 1.5 mm effusion, no mass.") == ("mild", "left", "1.5", "mm", "no")
+    assert tlm.gates("Possibly 5 x 3 mm; cannot be excluded.") == ("possibly", "5", "x", "3", "mm", "cannot be excluded")
+    assert tlm.gates("Unremarkable, non-enhancing.") == ("unremarkable", "non-enhancing")
 
 
-def test_spelling_table_and_filler_list_do_not_collide():
+def test_spelling_table_lookalikes_and_filler_list_do_not_collide():
     keys, values = set(tlm.SPELLING), set(tlm.SPELLING.values())
     assert len(values) == len(tlm.SPELLING)          # no two UK words map to one US word
     assert not keys & values                         # no word is both a source and a target
-    gate_words = tlm.NEGATION | tlm.LATERALITY | tlm.SEVERITY | tlm.UNITS
+    gate_words = tlm.NEGATION | tlm.HEDGE_WORDS | tlm.LATERALITY | tlm.SEVERITY | tlm.UNITS
     assert not (keys | values) & gate_words          # spelling never touches a gate token
-    assert not {w for f in tlm.FILLERS for w in f} & gate_words
     assert len(set(tlm.FILLERS)) == len(tlm.FILLERS)
+    assert set(tlm.LOOKALIKES.values()) <= {"-", '"', "'", "x", " "}    # lookalikes merge into these forms only
+
+
+def test_no_filler_contains_or_can_delete_a_negation_or_hedge_word():
+    protected = tlm.NEGATION | tlm.HEDGE_WORDS | {w for p in tlm.HEDGE_PHRASES for w in p}
+    assert not {w for f in tlm.FILLERS for w in f} & protected
+    for f in tlm.FILLERS:                            # a protected word inside a filler phrase stops the removal
+        words = list(f)
+        for k in range(1, len(words)):
+            for w in sorted(tlm.NEGATION | tlm.HEDGE_WORDS):
+                broken = " ".join(words[:k] + [w] + words[k:])
+                assert tlm.same_text(f"Effusion {broken}.", f"Effusion {' '.join(words)}.") is None
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -154,13 +191,22 @@ Create `backend/src/rapid_reports_ai/template_line_match.py`:
 
 ```python
 """Cosmetic equality of two sheet-line texts (spec 2026-10-15-stable-line-ids-design, "Wrong matches are worse than lost
-answers"). No similarity threshold: two texts are the same line only when they are exactly equal after norm_key, or
-cosmetically equal: the same tokens in the same order once case, spacing, sentence punctuation, a fixed UK/US spelling
-table and a fixed list of filler phrases are set aside, with every clinical gate token (negation, laterality,
-severity, numbers, comparators, units) identical and in order. When in doubt, not the same.
+answers"; Hassan's decision 4). No similarity threshold: two texts are the same line only when they are exactly equal
+after norm_key, or cosmetically equal:
 
-Versioned constants: changing FILLERS or SPELLING changes which lines keep their uid, so bump MATCH_VERSION and keep
-the collision test green."""
+1. lookalike characters unified (dashes and minus -> "-", curly -> straight quotes, "×" -> "x", Unicode spaces ->
+   space): the only step that merges characters;
+2. tokenised, nothing removed: numbers (".5" and "1.5" are one token each), comparators and operators, units,
+   in-sentence punctuation (. ; : , ( ) ?) and hyphenated words (one token each);
+3. normalised: lower case, only a final full stop and quotation marks dropped, a fixed UK/US spelling table, a fixed
+   list of filler phrases removed only as exact whole phrases;
+4. every remaining token compared in order, and the clinical gate tokens (negation, hedging, laterality, severity,
+   numbers, comparators, operators, units) identical in order.
+Protected words: no filler phrase contains a negation or hedge word, so "is not seen" never tidies to "is seen".
+When in doubt, not the same.
+
+Versioned constants: changing LOOKALIKES, FILLERS or SPELLING changes which lines keep their uid, so bump MATCH_VERSION
+and keep the constant tests green."""
 from __future__ import annotations
 
 import re
@@ -170,13 +216,22 @@ from .hybrid_stack.template import norm_key
 
 MATCH_VERSION = 1
 
-# Tokenise first: a number (a decimal is one token), a comparator or symbol, a word (hyphenated and apostrophe words
-# are one token), or any other single non-space character. Nothing is dropped here.
-_TOKEN = re.compile(r"\d+(?:\.\d+)?|[<>≤≥=±+/%]|[a-z]+(?:[-'][a-z0-9]+)*|\S")
-_DROP = frozenset('.,;:"\'')   # sentence punctuation and quotes: the only tokens normalising removes
-_QUOTES = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"})
+# Lookalike characters -> one form. The only merging step.
+LOOKALIKES = {
+    "–": "-", "—": "-", "−": "-", "‒": "-", "‐": "-", "‑": "-",
+    "“": '"', "”": '"', "„": '"', "‘": "'", "’": "'", "‚": "'",
+    "×": "x",
+    " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", " ": " ",
+    " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", "　": " ",
+}
+_LOOKALIKE = str.maketrans(LOOKALIKES)
 
-# Filler phrases, removed as whole token runs after tokenising.
+# A number (".5", "5", "1.5"), a comparator, operator or in-sentence punctuation mark, a word (hyphenated and
+# apostrophe words are one token), or any other single non-space character.
+_TOKEN = re.compile(r"\d*\.\d+|\d+|[<>≤≥=±+/%.;:,()?]|[a-z]+(?:[-'][a-z0-9]+)*|\S")
+_QUOTE_TOKENS = frozenset({'"', "'"})
+
+# Filler phrases, removed only as exact whole-phrase token runs. Never a negation or hedge word (test enforced).
 FILLERS: Tuple[Tuple[str, ...], ...] = (
     ("there", "is"), ("there", "are"), ("is", "seen"), ("is", "noted"), ("is", "identified"),
     ("is", "demonstrated"),
@@ -196,32 +251,59 @@ SPELLING = {
 }
 
 NEGATION = frozenset({"no", "not", "without", "absent", "neither", "nor", "negative"})
+_NEGATION_PREFIX = re.compile(r"^(?:non-?|un)[a-z]")   # non-enhancing, nonspecific, unremarkable, … (fail closed)
+HEDGE_WORDS = frozenset({"possible", "possibly", "likely", "probable", "probably", "suspicious", "suggestive", "may",
+                         "query", "?"})
+HEDGE_PHRASES: Tuple[Tuple[str, ...], ...] = (
+    ("cannot", "be", "excluded"), ("not", "excluded"), ("in", "keeping", "with"), ("consistent", "with"),
+)
 LATERALITY = frozenset({"left", "right", "bilateral", "unilateral"})
 SEVERITY = frozenset({"minimal", "mild", "moderate", "severe", "marked", "small", "large", "grade", "category"})
 UNITS = frozenset({"mm", "cm", "m", "ml", "l", "mg", "g", "kg", "mgy", "mgycm", "msv", "hu", "ms", "s", "bpm",
                    "mmhg", "cc"})
-_COMPARATORS = frozenset("<>≤≥=±+/%")
-_NUMBER = re.compile(r"\d+(?:\.\d+)?$")
+OPERATORS = frozenset("<>≤≥=±+/%")
+_NUMBER = re.compile(r"\d*\.\d+$|\d+$")
 
 
 def tokens(text: str) -> Tuple[str, ...]:
-    """Every token of the text, lower case, nothing removed."""
-    return tuple(_TOKEN.findall((text or "").lower().translate(_QUOTES)))
+    """Every token of the text after the lookalike map, lower case, nothing removed."""
+    return tuple(_TOKEN.findall((text or "").translate(_LOOKALIKE).lower()))
 
 
-def _gate(t: str) -> bool:
-    return (t in NEGATION or t.startswith("non-") or t in LATERALITY or t in SEVERITY or t in UNITS
-            or t in _COMPARATORS or bool(_NUMBER.match(t)))
+def _gate(toks: Tuple[str, ...], i: int) -> bool:
+    t = toks[i]
+    if _NUMBER.match(t) or t in OPERATORS:
+        return True
+    if t == "x":   # an operator only between two numbers ("5 x 3 mm")
+        return 0 < i < len(toks) - 1 and bool(_NUMBER.match(toks[i - 1])) and bool(_NUMBER.match(toks[i + 1]))
+    return (t in NEGATION or bool(_NEGATION_PREFIX.match(t)) or t in HEDGE_WORDS or t in LATERALITY
+            or t in SEVERITY or t in UNITS)
 
 
 def gates(text: str) -> Tuple[str, ...]:
-    """The clinical gate tokens of the raw text, in order (they must be identical for a cosmetic match)."""
-    return tuple(t for t in tokens(text) if _gate(t))
+    """The clinical gate tokens of the raw text, in order (they must be identical for a cosmetic match); a hedge
+    phrase ("cannot be excluded") is one gate."""
+    toks = tokens(text)
+    out = []
+    i = 0
+    while i < len(toks):
+        phrase = next((p for p in HEDGE_PHRASES if toks[i:i + len(p)] == p), None)
+        if phrase:
+            out.append(" ".join(phrase))
+            i += len(phrase)
+            continue
+        if _gate(toks, i):
+            out.append(toks[i])
+        i += 1
+    return tuple(out)
 
 
 def form(text: str) -> Tuple[str, ...]:
-    """The cosmetic form: tokens without sentence punctuation, spelling mapped, filler runs removed, order kept."""
-    toks = [SPELLING.get(t, t) for t in tokens(text) if t not in _DROP]
+    """The cosmetic form: tokens without quotation marks or a final full stop, spelling mapped, filler phrases removed
+    as exact whole runs, order kept."""
+    toks = [SPELLING.get(t, t) for t in tokens(text) if t not in _QUOTE_TOKENS]
+    if toks and toks[-1] == ".":
+        toks.pop()
     out: list = []
     i = 0
     while i < len(toks):
@@ -250,14 +332,14 @@ def same_text(a: str, b: str) -> Optional[str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `15 passed` (12 adversarial pairs, parametrised, plus 3 others).
+Expected: `33 passed` (22 adversarial pairs and 7 typography pairs, parametrised, plus 4 others).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/line-ids
 git add backend/src/rapid_reports_ai/template_line_match.py backend/tests/test_template_line_registry.py
-git commit -m "feat(line-ids): tokeniser, clinical gates and cosmetic line equality
+git commit -m "feat(line-ids): lookalike map, meaningful-token tokeniser, clinical and hedge gates, cosmetic equality
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -323,7 +405,8 @@ A uid names a slot, not a string. Identity per kind (all must match):
     section    normalised name
     paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set, the two
                names passing the clinical gates
-    normal     section uid + paragraph uid + structure (its text is tracked by text_hash, not identity)
+    normal     section uid + paragraph uid + structure (its text is tracked by text_hash, not identity); across a
+               paragraph rename (the COVERS rule) its text must also be exact or cosmetic (decision 5)
     negative   section uid + paragraph uid + condition + condition_source + kind + origin + text
     fixed      section uid + paragraph uid + text
     rule       section uid + paragraph uid + effect + condition + condition_source + target + anchor + position +
@@ -501,7 +584,7 @@ def _cosmetic(kind: str, ident: dict) -> Optional[tuple]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `17 passed`.
+Expected: `35 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -694,6 +777,21 @@ def test_a_paragraph_rename_keeps_uids_only_with_the_same_covers_and_passing_gat
     assert _live(reg4, "Left liver") in rep4["gone"]
 
 
+def test_across_a_paragraph_rename_a_normal_keeps_its_uid_only_with_the_same_text():
+    a = _sheet('## Paragraph: Arterial phase (FINDINGS)\nCOVERS ["liver" | "spleen"]\n'
+               'NORMAL [liver] "The liver enhances normally."\nNORMAL [spleen] "The spleen is normal."')
+    reg, _ = _bind(a)
+    changed, same = _live(reg, "The liver enhances normally."), _live(reg, "The spleen is normal.")
+    renamed = a.replace("Arterial phase", "Portal venous phase")
+    _, rep = _bind(renamed.replace("The liver enhances normally.", "The liver enhances homogeneously."), reg)
+    assert _live(reg, "Arterial phase") in rep["cosmetic"]                 # the paragraph kept its uid (COVERS)
+    assert changed in rep["gone"] and same in rep["exact"]                 # a reworded normal is a new unit
+    _, rep2 = _bind(renamed.replace('"The liver enhances normally."', '"There is normal liver enhancement"'), reg)
+    assert changed in rep2["gone"]
+    _, rep3 = _bind(renamed.replace('"The liver enhances normally."', '"The liver enhances normally"'), reg)
+    assert changed in rep3["exact"]                                        # exact text: kept
+
+
 def test_one_old_uid_claimed_by_two_new_lines_is_ambiguous():
     reg, _ = _bind(LEDGER_SHEET)
     uid = _live(reg, "No focal liver lesion.")
@@ -771,15 +869,15 @@ def _parents_match(u: Unit, assigned: Dict[str, str], prev_identity: dict) -> bo
 
 def _pair(new: List[Tuple[Unit, dict]], pool: Dict[str, dict], keyfn) -> Tuple[Dict[str, str], List[str], set]:
     """One tier: {unit ref: uid} for 1:1 pairs, the refs of new units with competing candidates (ambiguous), and the
-    uids those competed for (they pair with nothing after this tier)."""
+    uids those competed for (they pair with nothing after this tier). keyfn(kind, identity, text)."""
     by_key: Dict[tuple, List[str]] = {}
     for uid, e in pool.items():
-        k = keyfn(e["kind"], e["identity"])
+        k = keyfn(e["kind"], e["identity"], e.get("text", ""))
         if k is not None:
             by_key.setdefault(k, []).append(uid)
     cands = {}
     for u, ident in new:
-        k = keyfn(u.kind, ident)
+        k = keyfn(u.kind, ident, u.text)
         if k is not None and by_key.get(k):
             cands[u.ref] = by_key[k]
     claims: Dict[str, int] = {}
@@ -814,6 +912,18 @@ def _bind(registry, st, carried, now):
     assigned: Dict[str, str] = {}   # unit ref -> uid
     used: set = set()
     all_units = units(st)
+    renamed: set = set()   # paragraph uids kept by the COVERS rename rule (spec decision 5)
+
+    def exact_key(k: str, ident: dict, text: str) -> tuple:
+        """Across a paragraph rename a normal also needs its own text (decision 5, option c)."""
+        base = _exact(k, ident)
+        return (*base, norm_key(text)) if k == "normal" and ident.get("paragraph") in renamed else base
+
+    def cosmetic_key(k: str, ident: dict, text: str) -> Optional[tuple]:
+        if k == "normal" and ident.get("paragraph") in renamed:
+            return (*_exact(k, ident), tlm.cosmetic_key(text))
+        return _cosmetic(k, ident)
+
     for kind in KINDS:
         todo = [u for u in all_units if u.kind == kind]
         live = {uid: e for uid, e in prev.items() if e["kind"] == kind and e.get("status") == "live"}
@@ -835,7 +945,7 @@ def _bind(registry, st, carried, now):
                 if len(hits) == 1:
                     take(hits[0], uid, _identity(hits[0], assigned), "carried")
         excluded: set = set()
-        tiers = (("exact", live, _exact), ("cosmetic", live, _cosmetic), ("revived", gone, _exact))
+        tiers = (("exact", live, exact_key), ("cosmetic", live, cosmetic_key), ("revived", gone, exact_key))
         for how, pool, keyfn in tiers:
             rest = [(u, _identity(u, assigned)) for u in todo if u.ref not in assigned and u.ref not in excluded]
             avail = {uid: e for uid, e in pool.items() if uid not in used}
@@ -859,6 +969,8 @@ def _bind(registry, st, carried, now):
             if uid not in assigned.values():
                 prev[uid] = {**prev[uid], "status": "gone"}
                 report["gone"].append(uid)
+        if kind == "paragraph":
+            renamed = {u for u in report["cosmetic"] if u.startswith(PREFIX["paragraph"])}
     return reg, report, assigned
 
 
@@ -870,7 +982,7 @@ def summary(report: dict) -> str:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `47 passed` (17 before + 30 new, 12 of them adversarial).
+Expected: `76 passed` (35 before + 41 new, 22 of them adversarial).
 
 - [ ] **Step 5: Commit**
 
@@ -936,7 +1048,7 @@ def uids_for(st, registry) -> Dict[str, str]:
     for kind in KINDS:
         live = {uid: e for uid, e in reg["units"].items() if e["kind"] == kind and e.get("status") == "live"}
         todo = [(u, _identity(u, out)) for u in units(st) if u.kind == kind]
-        paired, _, _ = _pair(todo, live, _exact)
+        paired, _, _ = _pair(todo, live, lambda k, i, t: _exact(k, i))
         out.update(paired)
     return out
 
@@ -953,7 +1065,7 @@ def match(st, registry) -> Dict[str, str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `49 passed`.
+Expected: `78 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -1127,16 +1239,18 @@ def test_uid_first_finds_a_negative_the_writer_reworded_and_rekeys_it():
     assert res.carried == {uid: 'NEGATIVE "No focal liver lesion."'}
 
 
-def test_a_normal_entry_survives_a_paragraph_rename_and_a_writer_rewording():
+def test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line():
     reg = _reg(LEDGER_SHEET)
     uid = _uid(LEDGER_SHEET, reg, "m0")
     led = [_with_uid(_led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}))[0], uid)]
-    rebuilt = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)") \
-                          .replace('"The liver is normal in size."\nNEGATIVE', '"Normal liver size."\nNEGATIVE')
-    assert tla.apply_ledger(rebuilt, led).unmatched == led                 # today: paragraph not found
-    res = tla.apply_ledger(rebuilt, led, registry=reg)
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.apply_ledger(renamed, led).unmatched == led                 # today: paragraph not found
+    res = tla.apply_ledger(renamed, led, registry=reg)                     # the line unchanged: its uid finds it
     assert 'NORMAL [liver] "The liver is unremarkable."' in res.sheet and not res.unmatched
     assert res.ledger[0]["key"] == "Hepatobiliary :: liver" and uid in res.carried
+    reworded = renamed.replace('"The liver is normal in size."\nNEGATIVE', '"Normal liver size."\nNEGATIVE')
+    res2 = tla.apply_ledger(reworded, led, registry=reg)                   # renamed and reworded: asked again
+    assert res2.unmatched == led and res2.sheet == reworded
 
 
 def test_a_uid_the_registry_does_not_know_is_no_uid():
@@ -2426,6 +2540,17 @@ def test_state_is_valid_until_a_unit_changes_is_added_or_removed():
     reg4 = _reg(removed, reg)
     assert tnc.confirm_state(_groups(removed, reg4)[0], rec, reg4) == "stale"
     assert tnc.confirm_states(_st(removed), removed, reg4, {g.id: rec}) == {g.id: "stale"}
+
+
+def test_a_renamed_group_is_stale_even_when_every_sentence_carried():
+    reg = _reg(LEDGER_SHEET)
+    g, rec = _confirmed(LEDGER_SHEET, reg)
+    assert rec["group_name"] == "liver"
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    reg2 = _reg(renamed, reg)
+    g2 = _groups(renamed, reg2)[0]
+    assert (g2.id, g2.units) == (g.id, g.units)                       # the same paragraph and sentences (uids kept)
+    assert tnc.confirm_state(g2, rec, reg2) == "stale"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2449,8 +2574,9 @@ one group. A group with more than MAX_GROUP attestable units is split into conse
 document order ("<uid>#1", "#2", …). Inserting or removing a normal shifts later chunks, so they go stale and are
 confirmed again (accepted). Attestable units: the group's NORMAL lines and its unconditional template NEGATIVE lines.
 
-State: valid (the group's current attestable units are exactly the record's, each with the same text_hash), stale
-(anything else), missing (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
+State: valid (the group's current attestable units are exactly the record's, each with the same text_hash, and its
+paragraph or section still has the recorded name), stale (anything else, including a rename even when every sentence
+carried over: a confirm given in one context never silently covers another), missing (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
 once the template is saved: there are no creation-time confirms."""
 from __future__ import annotations
 
@@ -2473,6 +2599,7 @@ class Group:
     id: str
     label: str
     units: Tuple[str, ...]   # uids, in document order
+    name: str = ""           # the paragraph's or section's normalised name: a rename makes a confirm stale
 
 
 def attestable(st) -> List[str]:
@@ -2496,6 +2623,11 @@ def _positions(sheet: str, st) -> Dict[str, int]:
     return out
 
 
+def group_name(name: str) -> str:
+    """A paragraph's or section's name as a confirm record stores it (case and spacing ignored)."""
+    return " ".join((name or "").lower().split())
+
+
 def groups(st, sheet: str, registry) -> List[Group]:
     """The confirm groups of a parsed sheet, in section order (module doc). A group whose parent or any unit has no
     uid in `registry` is left out (logged): it cannot be recorded."""
@@ -2507,26 +2639,29 @@ def groups(st, sheet: str, registry) -> List[Group]:
     out: List[Group] = []
     for sec in sorted(st.sections, key=lambda s: s.order):
         mine = [r for r in att if by_ref[r].section == f"S:{sec.name}"]
-        buckets: List[Tuple[str, str, List[str]]] = []
+        buckets: List[Tuple[str, str, str, List[str]]] = []   # (parent ref, label, name, unit refs)
         if sec.role == "findings":
             for p in (p for p in st.paragraphs if p.section == sec.name):
-                buckets.append((p.id, f"{sec.name.title()} › {regions.get(p.id, p.name)}",
+                buckets.append((p.id, f"{sec.name.title()} › {regions.get(p.id, p.name)}", p.name,
                                 [r for r in mine if by_ref[r].paragraph == p.id]))
-            buckets.append((f"S:{sec.name}", sec.name.title(), [r for r in mine if not by_ref[r].paragraph]))
+            buckets.append((f"S:{sec.name}", sec.name.title(), sec.name,
+                            [r for r in mine if not by_ref[r].paragraph]))
         else:
-            buckets.append((f"S:{sec.name}", sec.name.title(), mine))
-        for parent, label, refs in buckets:
+            buckets.append((f"S:{sec.name}", sec.name.title(), sec.name, mine))
+        for parent, label, raw_name, refs in buckets:
             if not refs:
                 continue
             if parent not in uids or any(r not in uids for r in refs):
                 logger.info("[confirms] group %s left out: a unit has no uid", label)
                 continue
             members = tuple(uids[r] for r in refs)
+            name = group_name(raw_name)
             if len(members) <= MAX_GROUP:
-                out.append(Group(uids[parent], label, members))
+                out.append(Group(uids[parent], label, members, name))
                 continue
             chunks = [members[k:k + MAX_GROUP] for k in range(0, len(members), MAX_GROUP)]
-            out += [Group(f"{uids[parent]}#{n}", f"{label} ({n}/{len(chunks)})", c) for n, c in enumerate(chunks, 1)]
+            out += [Group(f"{uids[parent]}#{n}", f"{label} ({n}/{len(chunks)})", c, name)
+                    for n, c in enumerate(chunks, 1)]
     return out
 
 
@@ -2535,7 +2670,7 @@ def record(group: Group, registry, *, sheet_rev: int, sheet_hash: str, user_id: 
     """The confirm record of one group, its units' text_hash read from the stored registry."""
     units = tlr.load(registry)["units"]
     return {"group": group.id, "label": group.label, "units": {u: units[u]["text_hash"] for u in group.units},
-            "sheet_rev": sheet_rev, "sheet_hash": sheet_hash, "user_id": user_id,
+            "sheet_rev": sheet_rev, "sheet_hash": sheet_hash, "group_name": group.name, "user_id": user_id,
             "at": now or datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
 
@@ -2544,7 +2679,7 @@ def confirm_state(group: Optional[Group], rec: Optional[dict], registry) -> str:
     record names it). The same attestable predicate is used when confirming and when checking."""
     if not isinstance(rec, dict):
         return MISSING
-    if group is None:
+    if group is None or rec.get("group_name") != group.name:   # a renamed paragraph or section (decision 5)
         return STALE
     units = tlr.load(registry)["units"]
     now = {u: units[u]["text_hash"] for u in group.units if units.get(u, {}).get("status") == "live"}
@@ -2563,7 +2698,7 @@ def confirm_states(st, sheet: str, registry, confirms) -> Dict[str, str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_normal_confirms.py`
-Expected: `5 passed`.
+Expected: `6 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -3552,10 +3687,10 @@ NEGATIVE "No right basal consolidation."
 Opening: "Normal study."
 """
 
-# (A line, B line) of every line-bound unit that is the same slot in both (paragraphs by name).
+# (A line, B line) of every line-bound unit that is the same slot in both (paragraphs by name). The reworded liver
+# NORMAL in the renamed paragraph is NOT the same slot (spec decision 5: across a rename a normal needs its own text).
 SAME = [
     ('FIXED "Axial images were acquired after contrast."', 'FIXED "Axial images were acquired after contrast"'),
-    ('NORMAL [liver] "The liver is normal in size and attenuation."', 'NORMAL [liver] "Normal liver size and attenuation."'),
     ('NORMAL [gallbladder] "The gallbladder is unremarkable."', 'NORMAL [gallbladder] "The gallbladder is unremarkable."'),
     ('NEGATIVE "No focal liver lesion."', 'NEGATIVE "There is no focal liver lesion"'),
     ('NORMAL [lung bases] "The lung bases are clear."', 'NORMAL [lung bases] "The lung bases are clear."'),
@@ -3633,7 +3768,7 @@ def test_the_rebuild_resolution_share_is_reported():
 - [ ] **Step 2: Run the tests**
 
 Run: `PYTEST tests/test_template_line_rebuild.py -s`
-Expected: `2 passed`, printing `rebuild: exact=13 cosmetic=2 carried=0 revived=0 new=5 gone=4 ambiguous=0 kept=15 wrong=0 missed=[]` and `rebuild resolution: {'line_bound': 5, 'by_uid': 3, 'by_text': 1}`. (These were verified against a scratch prototype while writing this plan. If they differ, investigate before going on: `wrong` must stay 0.)
+Expected: `2 passed`, printing `rebuild: exact=12 cosmetic=2 carried=0 revived=0 new=6 gone=5 ambiguous=0 kept=14 wrong=0 missed=[]` and `rebuild resolution: {'line_bound': 5, 'by_uid': 2, 'by_text': 1}`. (These were verified against a scratch prototype while writing this plan. If they differ, investigate before going on: `wrong` must stay 0.)
 
 - [ ] **Step 3: Commit**
 
@@ -3745,7 +3880,9 @@ Report to Hassan: the commits, the spec gaps above (1, 2 and 4 need his eye), th
 | --- | --- |
 | Registry, uid format, `text_hash`, status live/gone, `minted` once | 2, 3 |
 | Identity per kind (section, paragraph incl. rename, normal, negative, fixed, rule) | 2, 3 |
-| No similarity threshold; tokenise first; normalise; order kept; hard gates; versioned constants; collision test | 1 |
+| No similarity threshold; lookalikes unified first; meaningful tokens (decimals incl. `.5`, operators, `x` between numbers, in-sentence punctuation, hyphenated words) never removed; only final full stop and quotes dropped; hard gates incl. hedging and `un-`/`non-`; protected words in fillers; versioned constants; collision and constant tests; new adversarial and typography pairs | 1 |
+| A normal follows a renamed paragraph only with exact or cosmetic text (decision 5) | 3, 6 |
+| A renamed group's confirm is stale; record stores `group_name` (decision 5) | 13 |
 | Rebind: carried first, exact, cosmetic, revival on exact only, 1:1, ambiguous, deterministic, report | 3 |
 | `uids_for` pure, read time, never stored on `sheet_structure` | 4 |
 | Persisting vs stateless paths; no minting on stateless; unknown client uid treated as none | 6 (`_by_uid` ignores unknown), 8 (`stamp_uids` drops it), 11 (routes) |
