@@ -254,3 +254,53 @@ async def test_a_stack_value_missing_reaches_the_rail_once(monkeypatch):
     vm = [it for it in res.items if it.kind == "value_missing"]
     assert len(vm) == 1 and vm[0].detectors == ["post_check_flag"] and vm[0].cls == "info" and vm[0].anchor is None
     assert not [it for it in res.items if it.kind in tg.KINDS]       # no second source for the same value
+
+
+def _with_value_missing(i, *names):
+    qc = {"review": [{"kind": "value_missing", "text": n, "message": f"Required value {n} not found in the report"}
+                     for n in names]}
+    return i.model_copy(update={"stack": True, "artifacts": i.artifacts.model_copy(update={"quality_check": qc})})
+
+
+def test_an_empty_slot_whose_value_the_backstop_flags_is_shown_once():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    assert ("template_slot_empty", "Average HR") in _flags(_inp(report))[0]
+    flags, _, _ = _flags(_with_value_missing(_inp(report), "Average HR"))
+    assert not [f for f in flags if f[0] == "template_slot_empty"]
+    # a slot name counts too ("Average HR: {rate} bpm." holds "rate")
+    assert not [f for f in _flags(_with_value_missing(_inp(report), "rate"))[0] if f[0] == "template_slot_empty"]
+
+
+def test_an_empty_slot_stays_flagged_when_the_missing_value_is_another_one():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    flags, _, _ = _flags(_with_value_missing(_inp(report), "LVEF"))
+    assert ("template_slot_empty", "Average HR") in flags
+    i = _with_value_missing(_inp(report), "Average HR").model_copy(update={"stack": False})
+    assert ("template_slot_empty", "Average HR") in _flags(i)[0]     # not a stack report: no backstop flag on the rail
+
+
+def test_only_the_slot_s_own_wording_counts_not_its_paragraph():
+    # every unit on one line: an item named in a neighbouring sentence must not hide this slot
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    one_para = report.replace("Scan quality: Good\nAverage HR:  bpm.\n", "Scan quality: Good. Coronary note. Average HR:  bpm.\n")
+    assert ("template_slot_empty", "Average HR") in _flags(_inp(one_para))[0]
+    for other in ("coronary", "quality", "Scan quality"):
+        flags, _, _ = _flags(_with_value_missing(_inp(one_para), other))
+        assert ("template_slot_empty", "Average HR") in flags, other
+
+
+def test_one_value_flag_hides_one_slot_and_carries_its_anchor():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    i = _with_value_missing(_inp(report), "rate")     # the slot's name: {rate}
+    items, log = tg.gap_items(i, RUN)
+    s, e = log["value_slots"]["rate"]
+    assert report[s:e].startswith("Average HR:")
+    from rapid_reports_ai.review_engine import live
+    flags = live.check_flag_items(i, RUN)
+    assert flags[0].anchor.text == "rate" and not flags[0].anchor.start == s   # the substring found "sepa*rate*"
+    assert tg.anchor_value_flags(flags, log, report) == 1
+    assert flags[0].anchor is not None and flags[0].anchor.text.startswith("Average HR:")
+    # two empty slots, one flag: the second slot is still its own gap
+    two = report + "\n{rate}\n"
+    flags, _, _ = _flags(_with_value_missing(_inp(two), "rate"))
+    assert len([f for f in flags if f[0] == "template_slot_empty"]) == 1
