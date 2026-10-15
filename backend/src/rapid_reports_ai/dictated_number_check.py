@@ -6,14 +6,19 @@ the report. Code only, both stack paths, review flags only (no repair). A number
 ("2.3 x 1.8 cm", "50-69%", "132/78 to 118/70 mmHg") and the unit after the chain's last number applies to each.
 Number words are not dictated numbers. Identifiers (T2, L4/5, b1000), dates, clock times and list markers are masked
 as in `template_number_check`. A dictated value is present when the report holds the same value (float equality:
-0.14 = .14, 1.5 != 15) with the same normalised unit or no unit; a dictated value without a unit matches any unit
-or, up to twenty, its number word ("three minutes" holds 3 min). No unit conversion: 5 mm reported as 0.5 cm is a miss. Never raises.
+0.14 = .14, 1.5 != 15) with the same normalised unit (a number word followed by that unit counts: "three minutes" holds 3 min); a bare
+report number never satisfies a dictated unit ("segment 4" does not hold "4 minutes"). Matching is one-to-one: each
+report occurrence satisfies one dictated (value, unit), so "4 mm and 4 mm" needs two. Each source is matched afresh,
+so a value repeated across sources (dictation and a tapped row) is one fact. A dictated value without a unit
+matches any report value or, up to twenty, its number word, and uses up nothing. No unit conversion: 5 mm reported
+as 0.5 cm is a miss. Never raises.
 """
 from __future__ import annotations
 
 import os
 import re
 from dataclasses import dataclass
+from collections import Counter
 from typing import Iterable, List, Optional
 
 from .template_number_check import _masked, _sentence
@@ -128,22 +133,29 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
     values); never the history, assumed normals or a removed sentence."""
     try:
         found = extract(report)
-        with_unit = {(n.value, n.unit) for n in found}
         any_unit = {n.value for n in found}
-        bare = {n.value for n in found if n.unit is None}
         words = set()   # number words: (value, unit) when a unit follows, else (value, None)
+        held: Counter = Counter((n.value, n.unit) for n in found if n.unit)   # report occurrences per (value, unit)
         for m in _WORD_RX.finditer(report or ""):
             v = float(_WORD_NUMS.index(m.group(1).lower()))
-            words.add((v, _unit_at(report, m.end())[0]))
+            u = _unit_at(report, m.end())[0]
+            words.add((v, u))
+            if u:
+                held[(v, u)] += 1
         out: List[dict] = []
         seen: set = set()
         for src in sources:
             if not src:
                 continue
             chains: dict = {}
+            used: Counter = Counter()   # one-to-one within a source; each source is matched afresh
             for n in extract(src):
-                ok = (n.value in any_unit or any(v == n.value for v, _ in words)) if n.unit is None \
-                    else bool({(n.value, n.unit), (n.value, None)} & (with_unit | words)) or n.value in bare
+                if n.unit is None:
+                    ok = n.value in any_unit or any(v == n.value for v, _ in words)
+                else:
+                    key = (n.value, n.unit)
+                    ok = used[key] < held[key]
+                    used[key] += 1
                 c = chains.setdefault((n.start, n.text), [])
                 if not ok and n.value not in c:
                     c.append(n.value)

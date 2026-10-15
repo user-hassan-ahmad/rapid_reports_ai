@@ -29,10 +29,18 @@ checks the reverse direction (numbers in the report that nobody dictated).
 A dictated value is **present** when the report holds a number token with the same numeric value
 (`float` equality: `0.14` = `.14` = `0.140`; `1.5` != `15`; `5` != `.5`) and a compatible unit:
 
-- dictated with a unit -> the report token has the same normalised unit, or no unit of its own (prose such as
-  "5 x 3 mm" puts the unit after the last number only; the chain rule above covers most of these anyway);
+- dictated with a unit -> the report token has the same normalised unit (a number word followed by that unit
+  counts: "three minutes" holds "3 minutes"). A bare report number never satisfies a dictated unit: "segment 4"
+  does not hold "4 minutes" (tightened 2026-10-15, Hassan Q1, after the lab's coincidental-match misses);
 - dictated without a unit -> any report token with that value (the writer may add a unit: "LVEF 55" -> "55%").
 - A unitless dictated value up to 20 also matches its number word in the report ("2 lesions" -> "two lesions").
+
+**One-to-one (unit-bearing values).** Each report occurrence of a (value, unit) satisfies one dictated occurrence:
+"4 mm and 4 mm" or "4 x 4 mm" needs two "4 mm" in the report, and "12 mm, previously 12 mm" with one "12 mm" in the
+report flags the second. Repeat rule: counting is per source (one dictated unit, tapped row or typed value), and each
+source is matched afresh against the whole report, so the same value restated across sources (dictation plus a tapped
+row, or the finding plus the impression line) is one fact, not two. Unitless dictated values keep presence matching
+and use up nothing.
 
 Unit spellings are normalised (millimetre/mm, ml/mL/cc, mGy·cm / mGycm / mGy.cm / mGy cm, bpm / beats per minute,
 mmHg, mcg/kg/min / micrograms/kg/min, ml/m2 / ml/m², g/m2, ms, HU, %, s, mg, ...). **No unit conversion**: dictated
@@ -40,8 +48,10 @@ mmHg, mcg/kg/min / micrograms/kg/min, ml/m2 / ml/m², g/m2, ms, HU, %, s, mg, ..
 should see; unit conversion in code would also hide a real 5 mm -> 5 cm error. The lab measures how often this costs
 precision.
 
-Matching is value-presence anywhere in the report, not sentence-aligned. This trades a little recall (a dropped "72"
-is missed when another "72" appears elsewhere) for simplicity and precision; the lab measures the recall cost.
+Matching is anywhere in the report, not sentence-aligned. This trades a little recall (a dropped "72 bpm" is missed
+when another "72 bpm" appears elsewhere) for simplicity and precision. Lab re-score after the Q1 tightening, same
+stored outputs: precision 4/4, recall 4/5 (was 2/2, 2/5); the one miss is a prior "12 mm" whose value the report
+restates in a summary line.
 
 This is a mechanical question (is this value written?), so code is the right owner (feedback: code for mechanics,
 Jev for meaning). If the lab shows matching needs judgement (paraphrased values), a Jev/Qwen step goes after the code

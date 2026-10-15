@@ -83,8 +83,24 @@ def test_a_different_unit_is_a_miss_and_there_is_no_conversion():
     assert missing("Nodule 0.5 cm.", "Nodule 5 mm.") == ["5 mm"]
 
 
-def test_a_unitless_report_value_satisfies_a_dictated_unit():
-    assert missing("The wall is thinned to 5 in segment 4.", "Wall 5 mm.") == []
+def test_a_dictated_unit_needs_the_same_unit_in_the_report():   # Q1: a bare report number no longer matches
+    assert missing("The wall is thinned to 5 in segment 4.", "Wall 5 mm.") == ["5 mm"]
+    assert missing("Perfusion defect in segment 4.", "Defect in segment 4 after 4 minutes.") == ["4 minutes"]
+
+
+def test_each_report_number_satisfies_one_dictated_number():
+    assert missing("Two nodules of 4 mm.", "Nodules 4 mm and 4 mm.") == ["4 mm"]
+    assert missing("Nodules of 4 mm and 4 mm.", "Nodules 4 mm and 4 mm.") == []
+    assert missing("Nodule 4 x 4 mm.", "Nodule 4 x 4 mm.") == []
+    assert missing("Nodule 4 mm.", "Nodule 4 x 4 mm.") == ["4 x 4 mm"]
+
+
+def test_a_repeat_across_sources_is_one_fact():   # dictation and a tapped row restate the same value
+    assert missing("LVEF 62%.", "LVEF 62%.", "LVEF 62%") == []
+
+
+def test_a_dictated_bare_value_still_matches_any_report_number():
+    assert missing("Segment 4 is thinned.", "Thinned 4.") == []
 
 
 def test_a_dictated_bare_value_matches_any_unit_or_a_number_word():
