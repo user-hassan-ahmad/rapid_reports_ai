@@ -193,15 +193,9 @@ Confirms are never written by code and never carried across a text change.
 
 The writer naming a sheet line for each uncertainty (re-enabling `questions` as `{line, why}`, resolving each `line` to a uid at Create, storing `template_config["uncertain"]`) moves to slice 4, where uncertainty is consumed (decision 8). This slice only reserves the `uncertain` key as server-written in `_carry_structure`.
 
-## Existing templates and the backfill
+## Existing templates
 
 - No registry: everything works as today. The registry is minted on the next persisted save. Reads never write (the read path re-parses without persisting today; unchanged).
-- `scripts/backfill_line_registry.py --dry-run | --apply`:
-  - Skips inactive and non-grammar templates.
-  - Mints a registry, stamps uids onto ledger entries that resolve by today's exact key and text matching, sets `sheet_rev = 1`.
-  - Leaves every unresolved entry exactly as it is. Value and concept entries are reported as `not line-bound`, not as unresolved.
-  - Dry run: read-only session, rolled back, with a test that it commits nothing. Writes a per-template report to the scratchpad (never the repo; it reflects production templates): resolved count, and one row per unresolved entry with kind, key and reason (`no line`, `paragraph not found`, `paragraph ambiguous`, `lint failure`).
-  - Apply: takes the row lock the upgrade script uses (`_locked_check`, `template_upgrade_apply.py:125`), re-checks under the lock that the sheet hash is unchanged since the dry run and skips the template if it moved, writes config directly, creates no new `TemplateVersion`. On Hassan's go-ahead only.
 
 ## Metrics (logged, no gates)
 
@@ -234,7 +228,6 @@ Existing suites:
 - Confirm endpoint: 409 on a stale `sheet_rev` / `sheet_hash`; units computed server-side; a client-sent unit list is ignored.
 - Restore of a version with no registry rebinds against the current registry.
 - Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session. Stale safety nets: (a) a normal reworded in place keeps its slot uid but its changed `text_hash` makes the confirm stale; (b) a paragraph or section rename with every sentence identical makes the confirm stale (`group_name`).
-- Backfill: dry run commits nothing; unresolved entries listed with reasons and untouched; no new version on apply.
 - Rebuild fixture: two writer outputs for the same synthetic reports. Primary metric: wrong matches (0). Secondary: resolved share against text matching.
 
 ## Decisions taken (2026-10-15)
