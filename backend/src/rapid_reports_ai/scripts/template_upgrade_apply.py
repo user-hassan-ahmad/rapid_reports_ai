@@ -167,7 +167,7 @@ def _write(db, row: dict) -> None:
     # did not move); the server-written keys the plan does not own (`uncertain`, reserved for slice 4, the normals
     # confirms) are re-read here under the lock, so a confirm recorded since the plan is never overwritten.
     stored = t.template_config or {}
-    kept = {k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored}
+    kept = {k: stored[k] for k in tsave.CONFIRM_KEYS if k in stored}
     t.template_config = {**row["config"], **kept, "converted_at": datetime.now(timezone.utc).isoformat()}
     # (as crud.update_template: assign, commit (updated_at), snapshot the new state)
     db.commit()

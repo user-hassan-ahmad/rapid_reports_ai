@@ -185,3 +185,35 @@ def test_a_confirm_on_a_template_saved_before_sheet_rev_compares_against_0(clien
     r = client.post(CONFIRM.format(t["id"]), headers=auth_headers, json={
         "group": group, "sheet_rev": 0, "sheet_hash": tss.sheet_hash(LEDGER_SHEET)})
     assert r.status_code == 200, r.text
+
+
+def test_a_put_keeps_a_confirm_committed_while_it_was_vetting(client, auth_headers, db_session, monkeypatch):
+    from sqlalchemy.orm.attributes import flag_modified
+    from rapid_reports_ai import main
+    from rapid_reports_ai.database.models import Template
+    t, cfg, group = _confirmable(client, auth_headers)
+    real = main._vet_config
+    rec = {"group": group, "units": {}, "user_id": "u"}
+
+    async def racing(new_cfg, old_cfg, origin, creating=False):   # a confirm commits while the PUT is vetting
+        out = await real(new_cfg, old_cfg, origin, creating)
+        row = db_session.get(Template, uuid.UUID(t["id"]))
+        row.template_config = {**row.template_config, "normal_confirms": {group: rec}, "uncertain": [{"x": 1}]}
+        flag_modified(row, "template_config")
+        db_session.commit()
+        return out
+    monkeypatch.setattr(main, "_vet_config", racing)
+    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={"template_config": {
+        **cfg, "skill_sheet": LEDGER_SHEET + 'NORMAL [spleen] "The spleen is normal."\n'}}).json()
+    assert r["success"], r
+    stored = _get(client, auth_headers, t["id"])["template_config"]
+    assert stored["normal_confirms"] == {group: rec} and stored["uncertain"] == [{"x": 1}]
+
+
+def test_another_user_cannot_confirm_a_template_404(client, auth_headers, db_session):
+    from tests.test_review_engine_api import _other_headers
+    t, cfg, group = _confirmable(client, auth_headers)
+    r = client.post(CONFIRM.format(t["id"]), headers=_other_headers(db_session), json={
+        "group": group, "sheet_rev": cfg["sheet_rev"], "sheet_hash": tss.sheet_hash(LEDGER_SHEET)})
+    assert r.status_code == 404
+    assert "normal_confirms" not in _get(client, auth_headers, t["id"])["template_config"]

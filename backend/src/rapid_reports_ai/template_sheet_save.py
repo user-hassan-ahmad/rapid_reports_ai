@@ -309,9 +309,12 @@ class Persisted:
 
 
 # Server-written config keys (stable line IDs spec): never taken from a client config. persist_sheet writes
-# line_registry, sheet_rev and uncertain; the confirm endpoint writes normal_confirms; main._carry_structure keeps the
-# stored copies on a PUT or a restore.
+# line_registry and sheet_rev; the confirm endpoint writes normal_confirms; `uncertain` is reserved for slice 4 (no
+# writer yet). main._carry_structure keeps the stored copies on a PUT or a restore.
 SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
+# The server-written keys a save does not own: every writer re-reads them from the stored row (under its lock, where
+# it holds one) and keeps them, so a confirm recorded meanwhile is never overwritten.
+CONFIRM_KEYS = ("uncertain", "normal_confirms")
 
 
 def stored_rev(v) -> int:
@@ -342,7 +345,7 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
     if out.status == "refused":
         return Persisted(out, None)
     cfg = {k: v for k, v in config.items() if k not in SERVER_WRITTEN}   # a client copy is never trusted (L2)
-    cfg.update({k: stored[k] for k in ("uncertain", "normal_confirms") if k in stored})
+    cfg.update({k: stored[k] for k in CONFIRM_KEYS if k in stored})
     cfg["skill_sheet"] = out.sheet
     if out.status != "unchanged":
         cfg["coverage_sections"] = out.coverage_sections
