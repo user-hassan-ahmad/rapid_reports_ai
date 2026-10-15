@@ -28,7 +28,7 @@ from .polish_attachment import MOVED_MIN, moved_score
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
-from .hybrid_stack.jev_stack import ask_command, decide_command
+from .hybrid_stack.jev_stack import ask_command, decide_command, held_score, settle_instruction
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1117,7 +1117,8 @@ class BundleRouteResponse(BaseModel):
     asr_fixes: list[dict] = []
     asr_flags: list[dict] = []
     repair_ms: Optional[int] = None
-    # Scratchpad v2: {"action": "dictate"|"delete"|"accept", "region", "chip", "command", "confidence"}
+    # Scratchpad v2: {"action": "dictate"|"delete"|"answer"|"instruction", "region", "item", "command", "confidence"};
+    # with RR_STACK_INSTRUCTION_FLAG on, also "instruction" (its score)
     stack_command: Optional[dict] = None
 
 
@@ -1134,8 +1135,11 @@ async def _stack_command(request: "BundleRequest") -> Optional[dict]:
     d = decide_command(parsed)
     item = rows[texts.index(d["chip"])][0] if d["action"] == "accept" and d["chip"] in texts else None
     action = "answer" if item else ("dictate" if d["action"] == "accept" else d["action"])
-    return {"action": action, "region": d["region"], "item": item,
-            "command": parsed.get("command"), "confidence": parsed.get("confidence")}
+    out = {"action": action, "region": d["region"], "item": item,
+           "command": parsed.get("command"), "confidence": parsed.get("confidence")}
+    if "instruction" in parsed:   # the instruction flag asked it: "instruction" = held for the radiologist, not written
+        out["instruction"] = round(held_score(parsed), 3)
+    return out
 
 
 @canvas_router.post("/bundle", response_model=BundleRouteResponse)
@@ -1167,6 +1171,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
             d = await classify()
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
                      asr_min_conf=request.asr_min_conf, preceding=request.active)
+    stack_command = settle_instruction(stack_command, r.route)
     ok = isinstance(d, BundleDecision)
     # Word-sense spotter + fixer: Jev flagged words that make no clinical sense as heard;
     # code proposes sound-alikes, Jev chooses the sentence, a confident choice is applied.
@@ -1221,8 +1226,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         "asr_fix_confidence": [f["confidence"] for f in rep.fixes] if rep else [],
         "repair_asked": rep.asked if rep else 0,
         "repair_error": rep.error if rep else None,
-        "stack_command": ({k: stack_command[k] for k in ("action", "command", "confidence")}
-                          if stack_command else None),
+        "stack_command": ({k: stack_command[k] for k in ("action", "command", "confidence", "instruction")
+                           if k in stack_command} if stack_command else None),
     }))
     return resp
 

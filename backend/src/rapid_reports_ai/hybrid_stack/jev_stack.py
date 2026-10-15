@@ -32,6 +32,39 @@ COMMAND_QUESTION: dict[str, Any] = {
     },
 }
 
+# Instruction flag (design 2026-10-15-instruction-flag): asked in the same call, only when RR_STACK_INSTRUCTION_FLAG is
+# on. An instruction no other option covers is held for the radiologist, never written and never obeyed.
+INSTRUCTION = "instruction"
+INSTRUCTION_CRITERION = (
+    "An instruction to the software that is not report content: it asks for the report or scratchpad to be changed, "
+    "cleared, restarted, reorganised, reformatted, rewritten or navigated, or for something said to be moved or made "
+    "into another part of the report (such as the conclusion or impression), in a way none of the other options "
+    "covers; or it is speech not meant for the report (talking to the software or to someone else). A sentence that "
+    "records what was done, found, compared, communicated or advised (technique, a comparison, a reference to another "
+    "report, who was told, a recommendation to the referrer) is report content.")
+INSTRUCTION_MIN = 0.85  # lab 2026-10-15 (120 synthetic, 2 runs): 0/120 report sentences held (highest 0.81), 57/60 instructions held; Hassan picks the bar, the flag stays off until then
+
+
+WRITING_ROUTES = ("fast_append", "polish")   # bundle routes that write the words as report text
+
+
+def settle_instruction(stack: dict | None, bundle_route: str) -> dict | None:
+    """A held instruction is flagged only when the bundle would write the words (fast_append, or polish, which also
+    takes fillers and "remove the last sentence"): a delete, skip or formatting command route stands, unflagged."""
+    if stack and stack.get("action") == INSTRUCTION and bundle_route not in WRITING_ROUTES:
+        return {**stack, "action": "dictate"}
+    return stack
+
+
+def instruction_on() -> bool:
+    return os.environ.get("RR_STACK_INSTRUCTION_FLAG", "").strip().lower() in ("1", "true", "on")
+
+
+def command_question(instruction: bool = False) -> dict[str, Any]:
+    if not instruction:
+        return COMMAND_QUESTION
+    return {**COMMAND_QUESTION, "criteria": {**COMMAND_QUESTION["criteria"], INSTRUCTION: INSTRUCTION_CRITERION}}
+
 
 def region_question(regions: list[str]) -> dict[str, Any]:
     crit = {r: f"It names this region, or a structure that belongs to it: {r}." for r in regions}
@@ -57,8 +90,8 @@ def stated_question(chip: str) -> dict[str, Any]:
         f"the same finding, at the same or stronger certainty): {chip}")}
 
 
-def command_questions(regions: list[str], chips: list[str]) -> dict[str, dict[str, Any]]:
-    qs: dict[str, dict[str, Any]] = {"command": COMMAND_QUESTION}
+def command_questions(regions: list[str], chips: list[str], instruction: bool = False) -> dict[str, dict[str, Any]]:
+    qs: dict[str, dict[str, Any]] = {"command": command_question(instruction)}
     if regions:
         qs["target_region"] = region_question(regions)
     if chips:
@@ -71,9 +104,20 @@ def command_state(scratchpad: str, utterance: str, chips: list[str]) -> str:
     return f"SCRATCHPAD:\n{scratchpad}\n\nSUGGESTIONS:\n{sug}\n\nLATEST UTTERANCE:\n{utterance}"
 
 
-def parse_command(answers: dict, chips: list[str]) -> dict:
+def option_p(a: dict, option: str) -> float:
+    """P(option) of a choice answer: its probability when Jev sends them, else the confidence of that choice, else 0."""
+    probs = a.get("probabilities")
+    if isinstance(probs, dict) and option in probs:
+        return float(probs.get(option) or 0.0)
+    return float(a.get("confidence") or 0.0) if a.get("choice") == option else 0.0
+
+
+def parse_command(answers: dict, chips: list[str], instruction: bool = False) -> dict:
     a = answers.get("command") or {}
     out = {"command": a.get("choice"), "confidence": float(a.get("confidence") or 0.0), "region": None, "chip": None}
+    if instruction:
+        out[INSTRUCTION] = option_p(a, INSTRUCTION)
+        out["p_delete"] = option_p(a, "delete")
     r = answers.get("target_region")
     if r and r.get("choice") not in (None, NONE):
         out["region"] = r["choice"]
@@ -85,12 +129,15 @@ def parse_command(answers: dict, chips: list[str]) -> dict:
 
 
 async def ask_command(scratchpad: str, utterance: str, regions: list[str], chips: list[str],
-                      transport=None) -> dict:
+                      transport=None, instruction: bool | None = None) -> dict:
+    """`instruction`: ask the instruction option too (default: RR_STACK_INSTRUCTION_FLAG); the parsed answer then
+    carries its score under "instruction"."""
+    ins = instruction_on() if instruction is None else instruction
     r = await jev_post({"model": JEV_MODEL, "state": command_state(scratchpad, utterance, chips),
-                        "questions": command_questions(regions, chips)},
+                        "questions": command_questions(regions, chips, ins)},
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
-    return parse_command(r.json().get("answers") or {}, chips)
+    return parse_command(r.json().get("answers") or {}, chips, ins)
 
 
 def contra_key(i: int) -> str:
@@ -147,15 +194,30 @@ def chip_state(stated: float, contra: float) -> str:
     return "included"
 
 
-def decide_command(parsed: dict) -> dict:
+def held_score(parsed: dict) -> float:
+    """P(an instruction the scratchpad will not carry out): P(instruction) + P(delete). The scratchpad acts on a
+    delete only when it names a region; any other removal ("delete all the other sections") would otherwise be
+    written as dictation (P3). Lab 2026-10-15: those removals split between delete and instruction."""
+    return float(parsed.get(INSTRUCTION) or 0.0) + float(parsed.get("p_delete") or 0.0)
+
+
+def decide_command(parsed: dict, instruction_min: float | None = None) -> dict:
     """The action of a final (spec v2 §7.3, lab §10.1). Accept: Jev reads an accept command and names a visible
-    chip (a correction naming a chip is dictation: its words must never be replaced). Delete: at COMMAND_DELETE_MIN, with the named region if any. Everything else,
+    chip (a correction naming a chip is dictation: its words must never be replaced). Delete: at COMMAND_DELETE_MIN, with the named region if any. Instruction
+    (only when the flag asked it): `held_score` at INSTRUCTION_MIN, held for the radiologist; the route still
+    lets the bundle's own delete, skip or command win (`settle_instruction`). Everything else,
     correct included, is dictation (today's write path already handles corrections)."""
     cmd, conf = parsed.get("command"), float(parsed.get("confidence") or 0.0)
     if parsed.get("chip") and cmd == "accept_suggestion":
         return {"action": "accept", "region": None, "chip": parsed["chip"]}
-    if cmd == "delete" and conf >= COMMAND_DELETE_MIN:
+    asked = INSTRUCTION in parsed   # the instruction flag asked the option
+    delete = cmd == "delete" and conf >= COMMAND_DELETE_MIN
+    if delete and (parsed.get("region") or not asked):
         return {"action": "delete", "region": parsed.get("region"), "chip": None}
+    if asked and held_score(parsed) >= (INSTRUCTION_MIN if instruction_min is None else instruction_min):
+        return {"action": INSTRUCTION, "region": None, "chip": None}
+    if delete:   # no region: the bundle's own route decides (the last thing said)
+        return {"action": "delete", "region": None, "chip": None}
     return {"action": "dictate", "region": None, "chip": None}
 
 
