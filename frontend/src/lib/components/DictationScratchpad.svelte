@@ -22,6 +22,7 @@
 		keytermCaseKey,
 		separatorFor,
 		substituteLast,
+		withoutUndecided,
 		tokenSet,
 		type AsrFields,
 		type BundleRouteResponse,
@@ -603,6 +604,13 @@
 	// Transcript as of the last /process call that completed, so the next call can
 	// send the delta as `last_utterance` (triage only; never affects the live response).
 	let lastSentTranscript = '';
+	// Decision-first: finals whose decision has not landed. A polish never sees them (withoutUndecided), so a final
+	// later held as an instruction cannot be written by a polish an earlier final fired.
+	let undecidedFinals: string[] = [];
+	function markDecided(chunk: string): void {
+		const i = undecidedFinals.indexOf(chunk);
+		if (i >= 0) undecidedFinals = [...undecidedFinals.slice(0, i), ...undecidedFinals.slice(i + 1)];
+	}
 	let pendingUtterance: string | null = null;
 
 	// Latest-wins processing: only one Qwen call runs at a time.
@@ -839,10 +847,12 @@
 			const arrivedAt = Date.now();
 			const rangeId = chunkRangeSeq;
 			if (heldCorrection) clearTimeout(heldCorrection.timer); // speech resumed: the next decision joins it
+			undecidedFinals = [...undecidedFinals, transcript];
 			decisionChain = decisionChain
 				.then(() => decideUtterance(transcript, arrivedAt, asr, rangeId, finalSeq))
 				.catch(() => {})
 				.finally(() => {
+					markDecided(transcript); // a decision that returned early or failed
 					for (const k of [...chunkRanges.keys()]) {
 						if (k <= rangeId && k !== heldCorrection?.rangeId) chunkRanges.delete(k);
 					}
@@ -1258,6 +1268,7 @@
 		const firstRange = firstRangeId !== null ? (chunkRanges.get(firstRangeId) ?? null) : null;
 		const context = jevContext(doc0, firstRange, heldNow ? heldNow.text : chunk, solid0.length);
 		const { data, error } = await askBundle(utterance, context, asr);
+		markDecided(chunk); // decided: from here a polish may see it (unless it is taken out below)
 		const roundtrip = Math.round(performance.now() - t0);
 		if (!editor) return;
 
@@ -1502,7 +1513,8 @@
 				});
 			}
 
-			const sentTranscript = sessionTranscript;
+			// Only decided finals: a final still waiting for its decision may yet be held (instruction flag).
+			const sentTranscript = withoutUndecided(sessionTranscript, undecidedFinals);
 			const { delta } = computeDelta(sentTranscript, lastSentTranscript);
 			const activeBefore = faded ? doc.slice(0, pendingStart) : doc;
 			const body: Record<string, unknown> = {
@@ -2527,6 +2539,7 @@
 
 			websocket.onopen = () => {
 				sessionTranscript = '';
+				undecidedFinals = [];
 				isRecording = true;
 				onRecordingChange(true);
 				isConnecting = false;

@@ -45,13 +45,18 @@ the utterance is dictation (today).
      pending text no longer matches when the answer arrives (`pendingText` mismatch). Both take today's polish path.
    - **The session transcript.** A held final, like an answer or delete command, is removed from the session
      transcript, so a later polish cannot write it back.
+   - **Undecided finals.** A polish sees only finals whose decision has landed (`withoutUndecided`). If final N is
+     polished while final N+1 is still being decided, the polish does not see N+1, which may yet be held.
+     `lastSentTranscript` is that stripped transcript, so the next delta starts at N+1.
    - **Restoring the pre-hold decision.** When the bundle's route does not write, the decision returns to what it
      was before the hold (`fallback`). A region-less delete therefore stays a delete, and an open line drops its
      words as before.
    - **Manual check (no frontend unit test; vitest not run).** With the flag on, dictate "Liver normal." then
      "Delete all the other sections.", then one more finding. The card shows the instruction, and the next polish
      does not bring its words back. Use Discard and confirm that the words are gone. Do it again with Keep as text
-     and confirm that the words are added at the end. Switch case with a card open: the card clears.
+     and confirm that the words are added at the end. Switch case with a card open: the card clears. Two finals in quick succession: say "There is a small
+     effusion" and then "Delete all the other sections." with no pause, so the first is polished while the second is
+     still being decided. The polished text has only the effusion, and the second final shows as a card.
 
 ## Out of scope
 

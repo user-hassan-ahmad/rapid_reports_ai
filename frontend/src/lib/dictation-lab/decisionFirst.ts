@@ -265,6 +265,18 @@ export function substituteLast(transcript: string, raw: string, clean: string): 
 	return i < 0 ? transcript : transcript.slice(0, i) + clean + transcript.slice(i + raw.length);
 }
 
+/** The transcript a polish may see: without the finals whose decision has not landed (instruction flag review
+ *  2026-10-15: a held instruction must never reach a polish fired by an earlier final). Decisions run in arrival
+ *  order, so undecided finals are the transcript's tail; each is cut from the end, else at its last occurrence. */
+export function withoutUndecided(transcript: string, undecided: string[]): string {
+	let t = transcript;
+	for (const u of [...undecided].reverse()) {
+		const trimmed = t.trimEnd();
+		t = trimmed.endsWith(u) ? trimmed.slice(0, trimmed.length - u.length).trimEnd() : substituteLast(t, u, '');
+	}
+	return t;
+}
+
 /** What a command writes after the solid scratchpad: nothing into an empty one, and a
  *  terminal mark only where the text does not already end with one. */
 export function commandInsert(solid: string, insert: string): string {
