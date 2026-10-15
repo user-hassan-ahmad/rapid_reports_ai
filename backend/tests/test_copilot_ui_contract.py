@@ -21,6 +21,7 @@ def _models() -> dict:
         "Assumption": T.Assumption,
         "OutcomeBrief": T.OutcomeBrief,
         "DecidingAnswer": T.DecidingAnswer,
+        "Candidate": T.Candidate,
         "ExclusionReason": T.ExclusionReason,
         "DecidingInput": T.DecidingInput,
         "Entry": T.Entry,

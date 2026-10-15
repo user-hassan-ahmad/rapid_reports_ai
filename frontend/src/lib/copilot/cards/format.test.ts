@@ -5,7 +5,7 @@ import type { DraftValue } from '../types';
 const dv = (o: Partial<DraftValue>): DraftValue => ({
 	input: 'x', label: 'X', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '', quote: '', why: [], needed: false, waiting: false, options: [], by: '', ...o
 });
-import { assumptionsOf, citeText, columnRef, columnTitles, issuerSlug, openQuestions, setByExam, valueRows } from './format';
+import { assumptionsOf, citeText, columnRef, columnTitles, issuerSlug, openQuestions, setByExam, shownValue, valueRows } from './format';
 
 // SYNTHETIC fixtures only.
 describe('card text helpers', () => {
@@ -170,5 +170,21 @@ describe('assumed but still needed', () => {
 		expect(openQuestions(p)).toEqual(['Age (exact value needed)']);
 		expect(verdictOf(p)?.pill).toBe('1 question open');
 		expect(notNeeded(p)).toEqual([]);
+	});
+});
+
+describe('shownValue: a stored option id shown as words', () => {
+	it('humanises a snake_case option id and leaves ordinary values alone', () => {
+		expect(shownValue('diameter_clear_growth')).toBe('Diameter clear growth');
+		expect(shownValue('7 mm')).toBe('7 mm');
+		expect(shownValue('Yes')).toBe('Yes');
+		expect(shownValue('solid')).toBe('solid');
+		expect(shownValue('18 years or over')).toBe('18 years or over');
+		expect(shownValue('')).toBe('');
+	});
+	it('a scope-doubt headline shows the value as words', () => {
+		const rows = [dv({ input: 'growth', label: 'Growth', role: 'eligibility', state: 'prefilled', value: 'diameter_clear_growth' })];
+		const p = preview({ proposal: null, draft_outcome: outcome({ headline: 'X', action: 'Y', category: 'workup' }), draft: rows, scope_doubt: ['growth'] });
+		expect(verdictOf(p)?.headline).toBe('Check: Growth — Diameter clear growth');
 	});
 });

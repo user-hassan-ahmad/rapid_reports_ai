@@ -2,10 +2,12 @@
 // owns each card's /open state, and fails open. The card components render its state; nothing here touches the
 // report, the editor or Generate.
 import { writable, type Readable } from 'svelte/store';
-import type { StackUnit } from '$lib/hybrid-stack/types';
+import type { AppliedRec, StackUnit } from '$lib/hybrid-stack/types';
 import { findingsText } from '$lib/hybrid-stack/regionState';
 import * as defaultApi from './api';
 import { CopilotError, CopilotOff, MAX_CONCLUSION_CARDS, MAX_FINDINGS } from './api';
+import { buildApplied, CHANGED, staleOf } from './applied';
+import { readiness } from './cards/questionnaire';
 import { closedView, type CardView, type ColumnView } from './cards/view';
 import { significant, targets, verdictKey } from './gate';
 import {
@@ -49,6 +51,8 @@ export interface CopilotState {
 	seen: Record<string, string>;
 	/** The conclusion check per gate key: what the conclusion recommends for that card's finding; null: not checked. */
 	concl: Record<string, ConclusionCategory | null>;
+	/** Applied recommendations by gate key (spec 2026-10-14 §7), each with its stale state as of this publish. */
+	applied?: Record<string, AppliedRec>;
 }
 /** The stack log's `copilot` record: pack keys, card kinds, counts and ms; never finding or dictation text. */
 export type CopilotLog = {
@@ -81,6 +85,16 @@ export interface CopilotSession {
 	other(): void;
 	/** "Seen, leave as is" on a card or sibling column (gate key): held until its verdict changes. */
 	seen(ref: string): void;
+	/** The radiologist affirms a guessed value (spec §6.2): kept only while that value stands. */
+	tick(ref: string, input: string, value: string): void;
+	/** Picks one of the outcomes still possible (null clears it). */
+	pick(ref: string, outcome: string | null): void;
+	/** Writes the recommendation line through Calculate, on a ready card only. */
+	apply(ref: string): void;
+	/** Replaces the wording of an applied line. */
+	editApplied(key: string, text: string): void;
+	/** Removes an applied line. */
+	removeApplied(key: string): void;
 	/** The conclusion as the confirm bar reads it: checked against the significant cards after
 	 *  CONCLUSION_DEBOUNCE_MS of no change (and again when a card turns significant). A failure stores null. */
 	checkConclusion(conclusion: string): void;
@@ -157,6 +171,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 
 	// confirm gate (§7.12 item 5)
 	let seen: Record<string, string> = {};
+	let applied: Record<string, AppliedRec> = {};
 	let concl: Record<string, ConclusionCategory | null> = {};
 	let conclusion = ''; // the latest conclusion text
 	let conclFor: string | null = null; // the conclusion `concl` answers
@@ -174,8 +189,32 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const refs = new Set(cards.map(cardRef));
 		return [...cards, ...others.filter((c) => !refs.has(cardRef(c)))];
 	}
+
+	/** Each applied line with its stale state now (spec §7.4); a card re-previewing keeps its last state. `round()`
+	 *  updates `findings` at once but keeps the cards until the next /match (review C1): the finding's presence and the
+	 *  card's grouping are checked first, never the old card's draft alone. */
+	function appliedNow(groups: Group[]): Record<string, AppliedRec> {
+		const grouped = new Set(groups.flatMap((g) => g.cards.map((c) => cardRef(c))));
+		const out: Record<string, AppliedRec> = {};
+		for (const [k, rec] of Object.entries(applied)) {
+			const exam = rec.finding_id === 'exam';
+			const there = exam || findings.some((f) => f.id === rec.finding_id);
+			const base = k.includes('#') ? k.slice(0, k.lastIndexOf('#')) : k;
+			const v = there && (exam || grouped.has(k) || grouped.has(base)) ? targetOf(k)?.get() : undefined;
+			if (v?.loading) {
+				out[k] = rec;
+				continue;
+			}
+			const stale = staleOf(rec, v?.result?.preview ?? null, there);
+			const { stale: _old, ...cur } = rec;
+			out[k] = stale ? { ...cur, stale } : cur;
+			applied[k] = out[k];
+		}
+		return out;
+	}
 	function snapshot(): CopilotState {
 		const base: CopilotState = { on, groups: on ? groupCards(all(), findings) : [], views: { ...views }, matching, matchFailed, otherState, seen: { ...seen }, concl: {} };
+		base.applied = appliedNow(base.groups);
 		// only answers for the CURRENT conclusion and the card's current finding text ever clear a card (review I-1, M-1)
 		if (conclFor === conclusion)
 			for (const t of targets(base)) if (t.key in concl && conclFinding[t.key] === findingOf(t.card)) base.concl[t.key] = concl[t.key];
@@ -517,7 +556,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const row = draftOf(t).find((d) => d.input === input);
 		if (!row || row.state === 'not_applicable') return;
 		dropCalc(t);
-		t.set({ edits: { ...(t.get()?.edits ?? {}), [input]: value } });
+		const { [input]: _t, ...ticks } = t.get()?.ticks ?? {};
+		t.set({ edits: { ...(t.get()?.edits ?? {}), [input]: value }, ticks, pick: null });
 		// a shared patient fact (age, sex, history): one answer per case, every card and column that carries it follows
 		if (row.fact) {
 			if (value === NOT_STATED) delete patient[row.fact];
@@ -531,6 +571,71 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 				void repreview(o, null);
 			}
 		}
+		publish();
+	}
+
+
+	function tick(ref: string, input: string, value: string) {
+		if (!live()) return;
+		const t = targetOf(ref);
+		if (!t?.get()?.result || t.get()?.applying) return;
+		t.set({ ticks: { ...(t.get()?.ticks ?? {}), [input]: value } });
+		publish();
+	}
+	function pickOutcome(ref: string, outcome: string | null) {
+		if (!live()) return;
+		const t = targetOf(ref);
+		if (!t?.get()?.result || t.get()?.applying) return;
+		t.set({ pick: outcome, applyError: null });
+		publish();
+	}
+	/** Apply (spec 2026-10-14 §7): on a ready card only, Calculate over the values shown (the engine; no model), then
+	 *  one line per key: re-applying replaces it, and a line for the same pack on the same finding under another key
+	 *  (its text changed) goes. Nothing is written when the card changed meanwhile or Calculate disagrees. */
+	async function applyCard(ref: string) {
+		if (!live()) return;
+		const t = targetOf(ref);
+		const v = t?.get();
+		const p = v?.result?.preview;
+		if (!t || !v || !p || v.loading || v.applying || t.card.needs_modality) return;
+		// a pick left from before the card reached an outcome (a shared answer re-previewed it) no longer applies (review I2)
+		const pick = p.draft_outcome ? null : (v.pick ?? null);
+		if (readiness(p, v.edits ?? {}, v.ticks ?? {}, pick) !== null) return;
+		t.set({ applying: true, applyError: null });
+		publish();
+		const body: CalculateBody = { ...openBody(t.card, v.edits ?? {}), values: valuesShown(p, v.edits) };
+		try {
+			const res = await api.calculate(body);
+			if (!live()) return;
+			// the card may be gone (a new case, a re-match): write nothing, or t.set would recreate a ghost view
+			const t = targetOf(ref);
+			if (!t?.get()) return;
+			if (t.get()?.result?.preview !== p || t.get()?.loading) return void t.set({ applying: false, applyError: CHANGED });
+			if (res.error || !res.calculation) return void t.set({ applying: false, applyError: `Couldn't apply: ${res.error ?? 'no result'}` });
+			const rec = buildApplied({ key: ref, card: t.card, source: v.result?.entry?.name || t.card.name, preview: p, calc: res.calculation, pick, ticks: v.ticks ?? {} });
+			if (typeof rec === 'string') return void t.set({ applying: false, applyError: rec });
+			for (const [k, r] of Object.entries(applied)) if (k !== ref && r.pack === rec.pack && r.finding_id === rec.finding_id) delete applied[k];
+			applied[ref] = rec;
+			t.set({ applying: false, applyError: null });
+			log.ms[`${t.card.key}:apply`] = res.ms;
+		} catch (e) {
+			if (!live()) return;
+			const t = targetOf(ref);
+			if (!t?.get()) return;
+			t.set({ applying: false, applyError: failed(e) ? "Couldn't apply: the calculation failed" : null });
+			if (failed(e)) fail(`${t.card.key}:apply`);
+		} finally {
+			publish();
+		}
+	}
+	function editApplied(key: string, text: string) {
+		if (!applied[key]) return;
+		applied[key] = { ...applied[key], text };
+		publish();
+	}
+	function removeApplied(key: string) {
+		if (!(key in applied)) return;
+		delete applied[key];
 		publish();
 	}
 
@@ -799,6 +904,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			seen = { ...seen, [ref]: verdictKey(t.preview) };
 			publish();
 		},
+		tick,
+		pick: pickOutcome,
+		apply: (ref) => void applyCard(ref),
+		editApplied,
+		removeApplied,
 		checkConclusion(text) {
 			if (!live() || (text === conclusion && (conclTimer || conclAc || conclFor === text))) return;
 			conclusion = text;

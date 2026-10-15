@@ -147,8 +147,8 @@ class DraftValue(BaseModel):
     basis: str = ""                    # computed from a dated study: "from the CT of 12 Mar 2025" (spec §7.12 item 4)
     needed: bool = False               # in `needed`: can still change the outcome
     waiting: bool = False              # behind a prerequisite still unknown: not asked yet
-    decisive: bool | None = None       # assumed: flipping it alone changes the outcome (confirm at Apply); None when
-                                       # not assumed or not weighed
+    decisive: bool | None = None       # assumed or pre-filled: flipping it alone changes the
+                                       # outcome (confirm at Apply); None when read, answered or not weighed
     options: list[str] = Field(default_factory=list)  # display_options + "Not stated" (spec §7.6)
 
 
@@ -164,6 +164,14 @@ class DecidingAnswer(BaseModel):
     answer: str
     headline: str
     category: str = ""
+
+
+class Candidate(BaseModel):
+    """An outcome still possible (spec 2026-10-14 §4.4): the radiologist may pick it when no question is left."""
+    outcome: str
+    headline: str = ""
+    category: str = ""
+    proposal: Proposal | None = None   # its sentence; None when the text still cites an unknown input (answer to apply)
 
 
 class ExclusionReason(BaseModel):
@@ -204,6 +212,7 @@ class Calculation(BaseModel):
     most_likely: OutcomeBrief | None = None    # the outcome reached, in short; None while several remain
     deciding_input: DecidingInput | None = None   # several remain: the one unknown input whose answer splits them most
     deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)
+    candidates: list[Candidate] = Field(default_factory=list)   # outcomes still possible (spec 2026-10-14 §4.4)
     trace: dict[str, Any] | None = None
     pack: str = ""                     # pack_id@version
     bundle: str = ""                   # the bundle version
@@ -221,6 +230,7 @@ class Preview(BaseModel):
     most_likely: OutcomeBrief | None = None    # library packs: the draft's outcome under its assumptions, in short
     deciding_input: DecidingInput | None = None   # library packs: several outcomes remain: the input that splits most
     deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)
+    candidates: list[Candidate] = Field(default_factory=list)   # outcomes still possible (spec 2026-10-14 §4.4)
     scope_doubt: list[str] = Field(default_factory=list)   # library packs: pre-filled values (any role: eligibility,
     # or clinical such as a diameter over 3 cm) that would exclude; never an exclusion until confirmed (only a read,
     # answered or stated value excludes). The card shows them prominently (check_first); the draft is computed

@@ -1,11 +1,12 @@
 <script lang="ts">
 	/**
 	 * The inline edit for one value (Slice B2, §7.6): a menu of the input's own options (they already include
-	 * "Not stated", which clears it) or, for a free value with no options (a size, a number), a text box. Choosing an
+	 * "Not known" (sent as "Not stated"), which clears it) or, for a free value with no options (a size, a number), a text box. Choosing an
 	 * option saves at once; the text box saves on Enter or Save. Escape cancels. Nothing is applied: the card
 	 * re-previews and Calculate re-runs on the values shown.
 	 */
 	import { onMount } from 'svelte';
+	import { optionLabel, shownValue } from './format';
 
 	let {
 		label,
@@ -36,8 +37,8 @@
 <span class="cp-edit" onkeydown={key} onclick={(e) => e.stopPropagation()}>
 	{#if options.length}
 		<select bind:this={el} class="cp-edit-field" aria-label={`Answer for ${label}`} value={value} onchange={(e) => onSave(e.currentTarget.value)}>
-			{#if !options.includes(value)}<option value={value} disabled>{value || 'Choose…'}</option>{/if}
-			{#each options as o (o)}<option value={o}>{o}</option>{/each}
+			{#if !options.includes(value)}<option value={value} disabled>{shownValue(value) || 'Choose…'}</option>{/if}
+			{#each options as o (o)}<option value={o}>{optionLabel(o)}</option>{/each}
 		</select>
 	{:else}
 		<input bind:this={el} class="cp-edit-field" type="text" aria-label={`Answer for ${label}`} bind:value={draft} size="10" />

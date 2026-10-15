@@ -37,10 +37,11 @@ export function significant(p: Preview | null | undefined, card?: Card): boolean
 	return !!rankedCategory(p) || openQuestions(p).length > 0 || (p.scope_doubt?.length ?? 0) > 0;
 }
 
-/** What "Seen" holds: the verdict's category and headline, so a changed verdict re-opens the card. */
+/** What "Seen" holds: the verdict's category, headline and "If it applies" line, so a changed verdict (or a changed
+ *  outcome under a scope doubt) re-opens the card. */
 export function verdictKey(p: Preview | null | undefined): string {
 	const v = verdictOf(p);
-	return v ? `${v.category}|${v.headline}` : '';
+	return v ? `${v.category}|${v.headline}|${v.ifApplies ?? ''}` : '';
 }
 
 export interface GateTarget { key: string; card: Card; name: string; preview: Preview }
@@ -75,12 +76,15 @@ export function targets(state: CopilotState): GateTarget[] {
 
 /** The significant cards still blocking Confirm. One clears when the conclusion recommends at least as much as its
  *  verdict (rank), or, with no ranked verdict (an open question or a scope doubt), anything but none; or when
- *  "Seen" was tapped on its current verdict. A failed check (null) clears nothing. */
+ *  "Seen" was tapped on its current verdict, or its current outcome was
+ *  applied (a stale line clears nothing). A failed check (null) clears nothing. */
 export function unresolved(state: CopilotState, seen: Record<string, string>, concl: Record<string, ConclusionCategory | null>): Unresolved[] {
 	const out: Unresolved[] = [];
 	for (const t of targets(state)) {
 		if (!significant(t.preview, t.card)) continue;
 		if (seen[t.key] !== undefined && seen[t.key] === verdictKey(t.preview)) continue;
+		const a = state.applied?.[t.key];
+		if (a && !a.stale && a.verdict === verdictKey(t.preview)) continue; // applied for this outcome (spec 2026-10-14 §7.5)
 		const cat = rankedCategory(t.preview);
 		const c = concl[t.key];
 		if (c != null && (cat ? RANK[c] >= RANK[cat] : c !== 'none')) continue;

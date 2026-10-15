@@ -525,3 +525,29 @@ def test_a_number_right_only_by_its_band_is_tagged_apart():
     assert RL._agrees_by_band(e, "diameter_mm", InputValue(value=14.0), ">8 mm")
     assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=9.0), "9 mm")          # equal: verified
     assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=7.0), "<6 mm")         # wrong: not ok at all
+
+
+def test_taps_to_ready_add_one_tick_per_decisive_guess_left_on_the_card(toy_entry):
+    """Spec 2026-10-14 §9.4: the questionnaire card is ready after its answers plus one ✓ per decisive pre-filled or
+    assumed value it still shows (never a read value, never a scope doubt: taps() already counts confirming it)."""
+    s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "prefilled", ["x"]),
+                           "size": Drafted(InputValue(value=7.0), "7 mm", "read")})
+    lab = _label(kind=("solid", None), size=("7", None), risk=(None, "high"), margin=(None, None))
+    assert RL.taps(toy_entry, s, lab, patient={}) == (1, "ct6")          # risk answered
+    assert RL.taps_to_ready(toy_entry, s, lab, patient={}) == 2          # + ✓ on the decisive pre-filled type
+    read = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "read"),
+                              "size": Drafted(InputValue(value=7.0), "7 mm", "read")})
+    assert RL.taps_to_ready(toy_entry, read, lab, patient={}) == 1       # nothing guessed: no ✓
+
+
+def test_an_excluded_card_has_no_tick_in_taps_to_ready(toy):
+    """The real card shows no Check zone once the pack does not apply: taps_to_ready equals taps."""
+    from tests.test_library_pack_preview import _elig
+    e = _elig(toy)
+    s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "prefilled", ["x"]),
+                           "size": Drafted(InputValue(value=7.0), "7 mm", "read"),
+                           "known_cancer": Drafted(InputValue(value=True), "Yes", "read")})
+    lab = _label(kind=("solid", None), size=("7", None), risk=(None, "high"), margin=(None, None), known_cancer=("Yes", None))
+    n, outcome = RL.taps(e, s, lab, patient={})
+    assert outcome == "does_not_apply"
+    assert RL.taps_to_ready(e, s, lab, patient={}) == n

@@ -120,4 +120,26 @@ describe('scope doubt leads the card (ruling)', () => {
 		expect(significant(p)).toBe(true);
 		expect(unresolved(one(p), {}, {})).toHaveLength(1);
 	});
+
+	it('seen re-opens when only the "If it applies" outcome changes (final review M-4)', () => {
+		const doubt = (headline: string, action: string) => preview({
+			proposal: null,
+			draft_outcome: outcome({ headline, action, category: 'workup' }),
+			draft: [draft({ input: 'prior_growth', label: 'Earlier imaging shows this nodule has grown', state: 'prefilled', value: 'Yes' })],
+			scope_doubt: ['prior_growth']
+		});
+		const p = doubt('Consider 3-month CT', 'CT at 3 months');
+		expect(unresolved(one(p), { [KEY]: verdictKey(p) }, {})).toEqual([]);
+		expect(unresolved(one(doubt('Consider 6-month CT', 'CT at 6 months')), { [KEY]: verdictKey(p) }, {})).toHaveLength(1);
+	});
+});
+
+describe('applied (spec 2026-10-14 §7.5)', () => {
+	const rec = (p: Preview, over = {}) => ({ key: KEY, finding_id: 'u1', pack: bts.key, version: 'v', bundle: 'b', source: 'BTS 2015', outcome: 'o', verdict: verdictKey(p), sentence: 's', text: 's', values: [], ...over });
+	it('an applied card clears for the outcome it applied; a changed outcome or a stale line blocks again', () => {
+		const p = workup();
+		expect(unresolved({ ...one(p), applied: { [KEY]: rec(p) } }, {}, {})).toEqual([]);
+		expect(unresolved({ ...one(workup('Consider tissue sampling')), applied: { [KEY]: rec(p) } }, {}, {})).toHaveLength(1);
+		expect(unresolved({ ...one(p), applied: { [KEY]: rec(p, { stale: 'values' }) } }, {}, {})).toHaveLength(1); // a stale line blocks
+	});
 });

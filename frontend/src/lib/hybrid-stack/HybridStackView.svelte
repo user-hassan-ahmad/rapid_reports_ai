@@ -11,7 +11,8 @@
 	import { coveredStructures, regionChips } from './subPills';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
-	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
+	import type { AppliedRec, StackItem, StackUnit, ValueChip, ViewRow } from './types';
+	import RecommendationsSection from './RecommendationsSection.svelte';
 	import ValueChips from './ValueChips.svelte';
 	import { openCount as openValueChips } from './values';
 
@@ -84,6 +85,9 @@
 		onNoteSuggest = () => {},
 		onNoteAccept = () => {},
 		onNoteDismiss = () => {},
+		recommendations = [],
+		onRecEdit = () => {},
+		onRecDelete = () => {},
 		onConfirm,
 		onDeleteRegion = () => {},
 		onAppend = () => {},
@@ -188,6 +192,10 @@
 		onNoteSuggest?: () => void;
 		onNoteAccept?: () => void;
 		onNoteDismiss?: () => void;
+		/** Applied guideline recommendations (spec 2026-10-14 §7): their own section below the Conclusion; [] hides it. */
+		recommendations?: AppliedRec[];
+		onRecEdit?: (key: string, text: string) => void;
+		onRecDelete?: (key: string) => void;
 		onConfirm: () => void;
 		/** The walkthrough's last step: Confirm, then Generate. Absent: the last step only confirms. */
 		onConfirmGenerate?: (() => void) | null;
@@ -1245,6 +1253,8 @@
 			</div>
 		{/if}
 	</section>
+
+	<RecommendationsSection lines={recommendations} onEdit={onRecEdit} onDelete={onRecDelete} />
 
 	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both. With anything that
 	     blocks Confirm still open, Confirm (or the "to check" chip) starts the walkthrough instead. -->

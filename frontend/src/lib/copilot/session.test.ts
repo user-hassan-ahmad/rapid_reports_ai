@@ -6,6 +6,7 @@ import { CopilotError, CopilotOff } from './api';
 import { assumption, card, draft, outcome, preview, result } from './cards/fixtures';
 import { CONCLUSION_DEBOUNCE_MS, CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
+import { CHANGED } from './applied';
 import { unresolved } from './gate';
 import { findingsText } from '$lib/hybrid-stack/regionState';
 import type { CalculateBody, CalculateResult, Card, Calculation, ConclusionCheckBody, ConclusionCheckResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
@@ -141,6 +142,25 @@ describe('session: matching', () => {
 		s.open(cardRef(nodule));
 		s.open(cardRef(nodule));
 		expect(n).toBe(0);
+		stop();
+	});
+
+	it('reopening a card whose result has landed neither republishes nor fetches again (final review C-1)', async () => {
+		await matchA();
+		s.open(cardRef(nodule));
+		for (const c of [...api.calls.open, ...api.calls.preview]) c.resolve(result(nodule, preview()));
+		await flush();
+		const view = state().views[cardRef(nodule)];
+		expect(view.loading).toBe(false);
+		expect(view.result).not.toBeNull();
+		const fetched = api.calls.open.length + api.calls.preview.length;
+		let n = 0;
+		const stop = s.state.subscribe(() => n++);
+		n = 0;
+		s.open(cardRef(nodule));
+		s.open(cardRef(nodule));
+		expect(n).toBe(0);
+		expect(api.calls.open.length + api.calls.preview.length).toBe(fetched);
 		stop();
 	});
 
@@ -865,7 +885,7 @@ describe('session: confirm gate', () => {
 	it('seen(ref) holds the verdict it was tapped on; a new case context resets seen and the checks', async () => {
 		await twoCards();
 		s.seen(cardRef(nodule));
-		expect(state().seen).toEqual({ [cardRef(nodule)]: 'workup|Consider PET-CT' });
+		expect(state().seen).toEqual({ [cardRef(nodule)]: 'workup|Consider PET-CT|' });
 		s.setContext({ scanType: 'CT chest', history: 'weight loss' });
 		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
 		expect(state().seen).toEqual({});
@@ -942,5 +962,197 @@ describe('session: confirm gate', () => {
 		await flush();
 		expect(Object.values(state().concl).filter((c) => c === 'workup')).toHaveLength(10);
 		expect(state().concl[cardRef(cards[10])]).toBeNull();
+	});
+});
+
+describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)', () => {
+	const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', finding_id: 'u1', finding: A });
+	const ref = cardRef(bts);
+	const rows = (kind = 'solid', size = '7 mm') => [
+		draft({ input: 'size', label: 'Size', state: 'read', value: size, quote: size }),
+		draft({ input: 'kind', label: 'Type', state: 'prefilled', value: kind, decisive: true, options: ['solid', 'subsolid', 'Not stated'] })
+	];
+	const ready = (over = {}) =>
+		result(bts, preview({ proposal: null, draft_outcome: outcome({ classification: 'BTS 2015 · Solid nodule 6-8 mm', recommendation: 'CT at 3 months.', headline: 'Solid nodule', action: 'CT at 3 months', category: 'surveillance' }), trace: { outcome: 'ct3' }, draft: rows(), ...over }));
+	const calcOk = (o: Partial<Calculation> = {}): Calculation => ({
+		outcome: 'ct3', result: outcome({ classification: 'BTS 2015 · Solid nodule 6-8 mm', recommendation: 'CT at 3 months.' }), exclusion: null, possible: [], needed: [], assumptions: [], trace: null, pack: 'bts-pulmonary-nodule@2015', bundle: 'b7', values: rows(), ...o
+	});
+	async function openedBts(r = ready()) {
+		await matchA([bts]);
+		s.open(ref);
+		api.calls.open[0].resolve(r);
+		await flush();
+	}
+	async function applied() {
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		api.calls.calculate.at(-1)!.resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+	}
+
+	it('Apply waits for the ✓ on a decisive pre-filled value, then writes one line from Calculate', async () => {
+		await openedBts();
+		s.apply(ref);
+		expect(api.calls.calculate).toHaveLength(0); // not ready: Type is not confirmed
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		expect(api.calls.calculate).toHaveLength(1);
+		expect(api.calls.calculate[0].body.values).toEqual({ size: '7 mm', kind: 'solid' });
+		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[ref]).toMatchObject({ key: ref, finding_id: 'u1', pack: 'bts-pulmonary-nodule', version: 'bts-pulmonary-nodule@2015', bundle: 'b7', source: 'BTS 2015', outcome: 'ct3', text: 'Solid nodule 6-8 mm: CT at 3 months (BTS 2015).' });
+		expect(state().applied?.[ref].values.find((v) => v.input === 'kind')?.state).toBe('confirmed');
+		expect(unresolved(state(), {}, {})).toEqual([]); // applied: the gate clears for this outcome
+	});
+
+	it('a re-read that changes a ticked value drops it', async () => {
+		await openedBts();
+		s.tick(ref, 'kind', 'solid');
+		s.edit(ref, 'size', '9 mm');
+		api.calls.preview[0].resolve(ready({ draft: rows('subsolid', '9 mm') }));
+		await flush();
+		s.apply(ref);
+		expect(api.calls.calculate).toHaveLength(0);
+	});
+
+	it('a card re-previewed while Calculate runs writes nothing', async () => {
+		await openedBts();
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		s.edit(ref, 'size', '7 mm');
+		api.calls.preview[0].resolve(ready());
+		await flush();
+		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[ref]).toBeUndefined();
+		expect(state().views[ref].applyError).toBe(CHANGED);
+	});
+
+	it('a failed Calculate writes nothing and says so', async () => {
+		await openedBts();
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		api.calls.calculate[0].reject(new CopilotError('http', 500));
+		await flush();
+		expect(state().applied?.[ref]).toBeUndefined();
+		expect(state().views[ref].applyError).toMatch(/^Couldn't apply/);
+	});
+
+	it('pick: with no question left, a complete candidate applies; chosen_from records N', async () => {
+		const cands = [
+			{ outcome: 'ct3', headline: 'CT at 3 months', category: 'surveillance' as const, proposal: outcome({ classification: 'BTS 2015 · Solid nodule', recommendation: 'CT at 3 months.' }) },
+			{ outcome: 'pet', headline: 'PET-CT', category: 'workup' as const, proposal: null }
+		];
+		await openedBts(ready({ draft_outcome: null, trace: null, candidates: cands, draft: rows().slice(0, 1) }));
+		s.apply(ref);
+		s.pick(ref, 'pet');
+		s.apply(ref);
+		expect(api.calls.calculate).toHaveLength(0); // nothing picked, then an incomplete pick
+		s.pick(ref, 'ct3');
+		s.apply(ref);
+		api.calls.calculate[0].resolve({ calculation: calcOk({ outcome: null, result: null, candidates: cands, values: rows().slice(0, 1) }), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[ref]).toMatchObject({ outcome: 'ct3', chosen_from: 2, text: 'Solid nodule: CT at 3 months (BTS 2015).' });
+	});
+
+	it('edit and remove change only that line; re-apply replaces it; a history edit keeps them, amber', async () => {
+		await openedBts();
+		await applied();
+		s.editApplied(ref, 'My wording.');
+		expect(state().applied?.[ref].text).toBe('My wording.');
+		await applied();
+		expect(Object.keys(state().applied ?? {})).toEqual([ref]);
+		expect(state().applied?.[ref].text).toBe('Solid nodule 6-8 mm: CT at 3 months (BTS 2015).');
+		s.removeApplied(ref);
+		expect(state().applied).toEqual({});
+		await applied();
+		s.setContext({ scanType: 'CT chest', history: 'new case' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS + 1);
+		expect(Object.keys(state().applied ?? {})).toEqual([ref]); // editing the history deletes nothing
+		expect(state().applied?.[ref].stale).toBe('values');
+	});
+
+	it('a value change marks the line "values"; a deleted finding marks it "finding"', async () => {
+		await openedBts();
+		await applied();
+		s.edit(ref, 'size', '9 mm');
+		api.calls.preview[0].resolve(ready({ draft: rows('solid', '9 mm') }));
+		await flush();
+		expect(state().applied?.[ref].stale).toBe('values');
+		s.round([], false, G);
+		await flush();
+		expect(state().applied?.[ref].stale).toBe('finding');
+	});
+
+	it('columns apply under their own keys', async () => {
+		const fl = card({ key: 'fleischner-pulmonary-nodule', name: 'Fleischner 2017', finding_id: 'u1', finding: A, siblings: ['bts-pulmonary-nodule'] });
+		await matchA([fl]);
+		s.open(cardRef(fl));
+		for (const c of api.calls.open) c.resolve(ready());
+		await flush();
+		const a = `${cardRef(fl)}#fleischner-pulmonary-nodule`;
+		const b = `${cardRef(fl)}#bts-pulmonary-nodule`;
+		for (const k of [a, b]) {
+			s.tick(k, 'kind', 'solid');
+			s.apply(k);
+			api.calls.calculate.at(-1)!.resolve({ calculation: calcOk(), ms: 3, error: null });
+			await flush();
+		}
+		expect(Object.keys(state().applied ?? {}).sort()).toEqual([a, b].sort());
+	});
+
+	it('a pick left from before the card reached an outcome does not block Apply', async () => {
+		await openedBts();
+		s.pick(ref, 'pet'); // as if picked while several outcomes remained
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		expect(api.calls.calculate).toHaveLength(1);
+		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[ref]?.outcome).toBe('ct3');
+	});
+
+	it('an outcome changed by answering a row that was asked at Apply makes the line stale and blocks the gate again', async () => {
+		const asked = [...rows(), draft({ input: 'g', label: 'G', state: 'asked' })];
+		await openedBts(ready({ draft: asked }));
+		await applied();
+		expect(state().applied?.[ref].stale).toBeUndefined();
+		s.edit(ref, 'g', 'yes');
+		api.calls.preview[0].resolve(ready({ draft: [...rows(), draft({ input: 'g', label: 'G', state: 'answered', value: 'yes' })], draft_outcome: outcome({ classification: 'BTS 2015 · Other', recommendation: 'PET-CT.', headline: 'Other', action: 'PET-CT', category: 'workup' }), trace: { outcome: 'pet' } }));
+		await flush();
+		expect(state().applied?.[ref].stale).toBe('values');
+		expect(unresolved(state(), {}, {}).map((u) => u.key)).toContain(ref);
+	});
+
+	it('a pick sent during an in-flight Apply does not change the view', async () => {
+		await openedBts();
+		s.tick(ref, 'kind', 'solid');
+		s.apply(ref);
+		s.pick(ref, 'pet');
+		expect(state().views[ref].pick).toBeUndefined();
+		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+	});
+
+	it("a '#' in the finding text does not confuse the stale check of a single card", async () => {
+		const H = 'Nodule #2 in the right lower lobe';
+		const hc = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', finding_id: 'u1', finding: H });
+		const us = [unit(1, H)];
+		s.round(us, true, G);
+		api.calls.match[0].resolve(matched([]));
+		await flush();
+		s.round(us, true, G);
+		api.calls.match[1].resolve(matched([hc]));
+		await flush();
+		const r = cardRef(hc);
+		s.open(r);
+		api.calls.open[0].resolve(result(hc, preview({ proposal: null, draft_outcome: outcome({ classification: 'BTS 2015 · Solid nodule 6-8 mm', recommendation: 'CT at 3 months.', headline: 'Solid nodule', action: 'CT at 3 months', category: 'surveillance' }), trace: { outcome: 'ct3' }, draft: rows() })));
+		await flush();
+		s.tick(r, 'kind', 'solid');
+		s.apply(r);
+		api.calls.calculate.at(-1)!.resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[r]).toBeDefined();
+		expect(state().applied?.[r].stale).toBeUndefined();
 	});
 });

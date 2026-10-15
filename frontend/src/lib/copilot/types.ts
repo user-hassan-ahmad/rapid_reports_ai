@@ -38,6 +38,7 @@ export interface Proposal {
 export interface OutcomeBrief { headline: string; action?: string; category?: ActionCategory | '' }
 /** types.py DecidingAnswer: one answer to the deciding question and where it leads. */
 export interface DecidingBranch { answer: string; headline: string; category?: ActionCategory | '' }
+export interface Candidate { outcome: string; headline: string; category?: ActionCategory | ''; proposal: Proposal | null }
 /** types.py Assumption: a value the draft assumes (never stated): an eligibility input in scope, or a visible sign
  *  absent. `decisive`: flipping it alone changes the outcome (null: not weighed: no tag). */
 export interface Assumption { input: string; label: string; value: string; decisive: boolean | null; kind: 'eligibility' | 'sign' }
@@ -46,8 +47,16 @@ export interface ExclusionReason { input: string; label: string; value: string; 
 export interface DecidingInput { input: string; label: string }
 export type ActionCategory = 'none' | 'surveillance' | 'workup' | 'refer' | 'info' | 'not_applicable'; // info: no management stated
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
-/** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
-export interface Ask { input: string; label: string; role?: string; [k: string]: unknown } // role: 'eligibility' | 'clinical' | …
+/** pack_preview._asks: one per missing input, in the tree's order (§7.4). */
+export interface Ask {
+	input: string;
+	label: string;
+	role?: string; // 'eligibility' | 'clinical' | …
+	options?: string[]; // display_options (not "Not stated")
+	definition?: { text: string; citation: Citation | null }; // citation() may return None
+	decides_between?: { outcome: string; classification: string; citation: Citation | null }[];
+	[k: string]: unknown;
+}
 export type ValueState = 'read' | 'prefilled' | 'assumed' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3
 export interface DraftValue {
 	// Task 3
@@ -94,6 +103,7 @@ export interface Preview {
 	exclusion_reason?: ExclusionReason | null; // does_not_apply: the one read or answered value behind it
 	deciding_input?: DecidingInput | null; // several outcomes remain: the input whose answer splits them most
 	deciding?: DecidingBranch[]; // its answers -> outcomes (at most 3)
+	candidates?: Candidate[]; // outcomes still possible, none once one is reached (spec 2026-10-14 §4.4)
 	/** Input ids of pre-filled values that would make the guideline not apply: never an exclusion until confirmed
 	 *  (Hassan's rule: nothing excludes silently); the card shows them prominently. */
 	scope_doubt?: string[];
@@ -144,6 +154,7 @@ export interface Calculation {
 	most_likely?: OutcomeBrief | null;
 	deciding_input?: DecidingInput | null;
 	deciding?: DecidingBranch[];
+	candidates?: Candidate[]; // outcomes still possible, none once one is reached (spec 2026-10-14 §4.4)
 	trace: Record<string, unknown> | null;
 	pack: string;
 	bundle: string;

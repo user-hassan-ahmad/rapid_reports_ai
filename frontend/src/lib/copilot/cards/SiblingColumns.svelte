@@ -13,6 +13,7 @@
 	import CardStatus from './CardStatus.svelte';
 	import { assumptionsOf, columnRef, columnTitles, scopeDoubts, verdictOf } from './format';
 	import VerdictPill from './VerdictPill.svelte';
+	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import PackBody from './PackBody.svelte';
 	import UnresolvedNote from './UnresolvedNote.svelte';
 	import type { Unresolved } from '../gate';
@@ -24,6 +25,11 @@
 		other = false,
 		layout = 'auto',
 		onEdit = undefined,
+		applyOn = false,
+		applied = {},
+		onTick = undefined,
+		onPick = undefined,
+		onApply = undefined,
 		unresolved = {},
 		onSeen = null,
 		onOpen,
@@ -41,6 +47,12 @@
 		onRetry: (ref: string) => void;
 		/** B2: each column answers on its own (ref = columnRef(card, key)); its result re-previews live. */
 		onEdit?: (ref: string, input: string, value: string) => void;
+		/** The Apply flag, and each column's applied recommendation by columnRef; ✓, pick and Apply bind like onEdit. */
+		applyOn?: boolean;
+		applied?: Record<string, AppliedRec>;
+		onTick?: (ref: string, input: string, value: string) => void;
+		onPick?: (ref: string, outcome: string | null) => void;
+		onApply?: (ref: string) => void;
 		/** Columns that block Confirm (§7.12 item 5), by columnRef: each carries its reason and "Seen, leave as is". */
 		unresolved?: Record<string, Unresolved>;
 		onSeen?: ((key: string) => void) | null;
@@ -97,6 +109,16 @@
 				onEdit={onEdit && (full || stacked) ? (input, value) => onEdit(columnRef(card, c.key), input, value) : null}
 				busy={cv.loading}
 				editError={cv.editError ?? null}
+				edits={cv.edits ?? {}}
+				ticks={cv.ticks ?? {}}
+				pick={cv.pick ?? null}
+				applying={!!cv.applying}
+				applyError={cv.applyError ?? null}
+				applied={applied[columnRef(card, c.key)] ?? null}
+				{applyOn}
+				onTick={onTick && (full || stacked) ? (input, value) => onTick(columnRef(card, c.key), input, value) : null}
+				onPick={onPick && (full || stacked) ? (outcome) => onPick(columnRef(card, c.key), outcome) : null}
+				onApply={onApply && (full || stacked) ? () => onApply(columnRef(card, c.key)) : null}
 			/>
 		{/if}
 	</div>

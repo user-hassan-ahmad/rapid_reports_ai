@@ -30,6 +30,7 @@ describe('the count tells the truth (§7.12 item 3)', () => {
 		});
 		render(PackCard, { card: bts, view: { ...closedView, open: true, result: result(bts, p) }, ...handlers() });
 		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
+		await page.getByRole('button', { name: /^Based on/ }).click(); // the not-needed line lives in the "Based on" region
 		const toggle = page.getByRole('button', { name: '4 not needed on this branch' });
 		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
 		await expect.element(page.getByText('Smoking history')).not.toBeVisible();

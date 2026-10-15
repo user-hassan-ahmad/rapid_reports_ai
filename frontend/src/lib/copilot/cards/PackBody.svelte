@@ -1,18 +1,28 @@
 <script lang="ts">
 	/**
-	 * An opened pack card's body (the simplified card, Hassan 2026-10-13: "No further imaging" four times on one
-	 * screen, and a Calculate button implied the top result could be stale). Top to bottom:
+	 * An opened pack card's body: the four-zone questionnaire (spec 2026-10-14 §4). Top to bottom:
 	 * 1. (the head, in PackCard: guideline · result pill · assumptions chip);
-	 * 2. the values: every input, editable, with its provenance badge; assumed first, then pre-filled, then read,
-	 *    then answered or changed, then still open; N/A hidden behind "+N not applicable";
-	 * 3. the result, ONCE and live: the draft outcome, re-previewed after each edit (no separate Calculate result):
-	 *    the headline, then only the recommendation text the action (in the pill) does not already say, then the
-	 *    classification clamped to two lines; with no outcome yet, the most likely outcome and what decides it;
-	 * 4. notes and source, collapsed.
+	 * 2. the status line (what stands between the card and a recommendation);
+	 * 3. Check: only the decisive guessed values (and scope doubts) the radiologist must affirm;
+	 * 4. "Based on": every other value, collapsed (editable, with provenance); N/A behind "+N not applicable";
+	 * 5. the answers so far, as chips, then ONE question at a time ("Not known" always offered);
+	 * 6. the result, once and live: the draft outcome (headline, what the recommendation adds, classification), or the
+	 *    candidates to pick from, then Apply when the Apply flag is on;
+	 * 7. notes and source, collapsed.
 	 * A card that does not apply leads with the specific reason; its values wait behind "values". `compact` (a
-	 * side-by-side sibling column) keeps the values and the result only. Apply is never offered.
+	 * side-by-side sibling column) shows the status line only when it can be acted on, keeps Based on collapsed, and
+	 * has no question or Apply unless the column is answerable (the parent binds the handlers).
 	 */
+	import type { AppliedRec } from '$lib/hybrid-stack/types';
+	import { verdictKey } from '../gate';
+	import { NOT_STATED } from '../state';
 	import type { OpenResult } from '../types';
+	import AnswerChips from './AnswerChips.svelte';
+	import CheckZone from './CheckZone.svelte';
+	import NextQuestion from './NextQuestion.svelte';
+	import ValueEdit from './ValueEdit.svelte';
+	import ResultZone from './ResultZone.svelte';
+	import { answeredChips, basedOn, checkItems, nextAsk, readiness, remaining, statusLine } from './questionnaire';
 	import Icon, { type IconName } from './Icon.svelte';
 	import {
 		allValueRows,
@@ -24,13 +34,13 @@
 		openQuestions,
 		recommendationBeyond,
 		scopeDoubts,
+		shownValue,
 		sourcesOf,
 		verdictOf,
 		type Verdict
 	} from './format';
 	import Reference from './Reference.svelte';
 	import ValueRow from './ValueRow.svelte';
-	import ValueEdit from './ValueEdit.svelte';
 
 	let {
 		result,
@@ -40,7 +50,17 @@
 		onEdit = null,
 		busy = false,
 		editError = null,
-		guideline = ''
+		guideline = '',
+		edits = {},
+		ticks = {},
+		pick = null,
+		applying = false,
+		applyError = null,
+		applied = null,
+		applyOn = false,
+		onTick = null,
+		onPick = null,
+		onApply = null
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -55,8 +75,18 @@
 		editError?: string | null;
 		/** The guideline's name, for the applicability warning. */
 		guideline?: string;
+		/** The card's answers (input → value; "Not stated" = Not known) and ticks (input → the value affirmed). */
+		edits?: Record<string, string>;
+		ticks?: Record<string, string>;
+		pick?: string | null;
+		applying?: boolean;
+		applyError?: string | null;
+		applied?: AppliedRec | null;
+		applyOn?: boolean;
+		onTick?: ((input: string, value: string) => void) | null;
+		onPick?: ((outcome: string | null) => void) | null;
+		onApply?: (() => void) | null;
 	} = $props();
-	let doubtEditing = $state<string | null>(null);
 
 	const p = $derived(result.preview);
 	const v = $derived(verdict === undefined ? verdictOf(p) : verdict);
@@ -92,6 +122,17 @@
 	// pre-filled values that would make the guideline not apply: never silent (Hassan's rule), shown first
 	const doubts = $derived(scopeDoubts(p));
 	const doubtIds = $derived(new Set(doubts.map((d) => d.input)));
+	const check = $derived(checkItems(p, ticks));
+	const next = $derived(nextAsk(p, edits));
+	const chips = $derived(answeredChips(p, edits));
+	const pickNow = $derived(p?.draft_outcome ? null : pick); // a leftover pick never counts once an outcome is reached
+	const blocker = $derived(readiness(p, edits, ticks, pickNow));
+	const status = $derived(statusLine(p, edits, ticks, pickNow));
+	const cands = $derived(p && !p.draft_outcome && !next && p.state !== 'does_not_apply' ? (p.candidates ?? []) : []);
+	const missing = $derived(chips.find((c) => c.value === NOT_STATED) ?? null);
+	const based = $derived(basedOn(p, check).map((d) => `${d.label} ${shownValue(d.value)}`).join(' · '));
+	let editingChip = $state<string | null>(null);
+	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
 </script>
 
 <div class="cp-pack-body" class:cp-compact={compact}>
@@ -99,34 +140,40 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
-		{#each doubts as d (d.input)}
-			<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
-				<p class="cp-p">
-					<Icon name="warn" size={13} />
-					<span><b>{d.label}: {d.value}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
-				</p>
-				{#if onEdit}
-					<div class="cp-doubt-actions">
-						{#if doubtEditing === d.input}
-							<ValueEdit
-								label={d.label}
-								value={d.value}
-								options={d.options}
-								onSave={(val) => {
-									doubtEditing = null;
-									onEdit?.(d.input, val);
-								}}
-								onCancel={() => (doubtEditing = null)}
-							/>
-						{:else}
-							<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
-							{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${d.value}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
-							<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/each}
+		{#if p.state === 'does_not_apply'}
+			{#each doubts as d (d.input)}
+				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
+					<p class="cp-p">
+						<Icon name="warn" size={13} />
+						<span><b>{d.label}: {shownValue(d.value)}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+					</p>
+					{#if onEdit}
+						<div class="cp-doubt-actions">
+							{#if doubtEditing === d.input}
+								<ValueEdit
+									label={d.label}
+									value={d.value}
+									options={d.options}
+									onSave={(val) => {
+										doubtEditing = null;
+										onEdit?.(d.input, val);
+									}}
+									onCancel={() => (doubtEditing = null)}
+								/>
+							{:else}
+								<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
+								{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${shownValue(d.value)}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
+								<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		{/if}
+		{#if p.state !== 'does_not_apply'}
+			{#if status && (blocker === 'question' || (applyOn && onTick))}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
+			<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
+		{/if}
 		<!-- 2. the values -->
 		{#if rows.length}
 			<section class="cp-values" aria-label="Values">
@@ -136,9 +183,11 @@
 						>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
 					>
 				{:else}
-					<div class="cp-label">Values</div>
+					<button type="button" class="cp-link cp-aux-toggle cp-based" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
+						>Based on: {based || 'the values'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>
 				{/if}
-				<ul class="cp-val-list" id="{uid}-values" hidden={!!v?.excluded && !showValues}>
+				<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
 					{#each shownRows as r (r.input)}
 						<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
 					{/each}
@@ -155,7 +204,7 @@
 				</ul>
 			</section>
 		{/if}
-		{#if notNeededList.length && !v?.excluded}
+		{#if notNeededList.length && !v?.excluded && showValues}
 			<section class="cp-not-needed" aria-label="Not needed on this branch">
 				<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNotNeeded} aria-controls="{uid}-not-needed" onclick={() => (showNotNeeded = !showNotNeeded)}
 					>{notNeededList.length} not needed on this branch <span class="cp-caret"><Icon name="chev" size={11} /></span></button
@@ -165,7 +214,11 @@
 				</ul>
 			</section>
 		{/if}
-		{#if questions.length && p.state !== 'does_not_apply'}
+		{#if p.state !== 'does_not_apply'}
+			{#if onEdit}<AnswerChips {chips} bind:editing={editingChip} onAnswer={onEdit} />{/if}
+			{#if next && onEdit}{#key next.input}<NextQuestion ask={next} remaining={remaining(p, edits)} bounded={p.bounded} onAnswer={onEdit} />{/key}{/if}
+		{/if}
+		{#if questions.length && p.state !== 'does_not_apply' && !onEdit}
 			<section class="cp-open-q" aria-label="Still open">
 				<div class="cp-label">Still open</div>
 				<ul class="cp-open-list">
@@ -209,7 +262,7 @@
 			<!-- a scope doubt leads the card; the drafted outcome stays, secondary (controller ruling 2026-10-14) -->
 			<p class="cp-p cp-if-applies" data-testid="cp-if-applies">{v.ifApplies}</p>
 		{/if}
-		{#if !decided && !v?.ifApplies && (likely || (branches.length && decidingQ))}
+		{#if !decided && !next && !v?.ifApplies && (likely || (branches.length && decidingQ))}
 			<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
 			     the full list stays behind "show all" -->
 			<section class="cp-likely" aria-label={likely ? 'Most likely' : 'What decides it'}>
@@ -242,12 +295,12 @@
 					</ul>
 				{/if}
 			</section>
-		{:else if !decided && p.state !== 'does_not_apply' && p.possible.length === 1}
+		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length === 1}
 			<section>
 				<div class="cp-label">Possible</div>
 				<p class="cp-p">{p.possible[0]}</p>
 			</section>
-		{:else if !decided && p.state !== 'does_not_apply' && p.possible.length > 1}
+		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length > 1}
 			<section class="cp-possible">
 				<button type="button" class="cp-link cp-possible-toggle" aria-expanded={showPossible} aria-controls="{uid}-possible" onclick={() => (showPossible = !showPossible)}
 					>{p.possible.length} outcomes still possible — {showPossible ? 'hide' : 'show'}</button
@@ -256,6 +309,11 @@
 					{#each p.possible as o, i (i)}<li>{o}</li>{/each}
 				</ul>
 			</section>
+		{/if}
+
+		{#if p.state !== 'does_not_apply'}
+			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError}
+				onPick={applyOn ? onPick : null} {onApply} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
 		{/if}
 
 		<!-- 4. notes and source, collapsed -->
@@ -554,6 +612,10 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 6px;
+	}
+	.cp-status {
+		font-size: 0.8125rem;
+		color: var(--rv-muted);
 	}
 	.cp-edit-error {
 		font-size: 0.8125rem;

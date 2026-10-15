@@ -14,7 +14,7 @@
 	 * A row with a quote or reasons is focusable (keyboard, or a tap) and shows them in a bubble; screen readers get
 	 * them as its description.
 	 */
-	import { WHY_EXAM, type ValueRow } from './format';
+	import { WHY_EXAM, shownValue, type ValueRow } from './format';
 	import ValueEdit from './ValueEdit.svelte';
 
 	/** `onEdit` (Slice B2) makes the value changeable: a "Change" button opens ValueEdit in place. N/A never is. */
@@ -61,11 +61,11 @@
 		{:else if row.state === 'asked'}
 			<span class="cp-muted">not stated</span>
 		{:else if row.state === 'assumed'}
-			<b class="cp-assumed-val">{row.value}</b>
+			<b class="cp-assumed-val">{shownValue(row.value)}</b>
 		{:else if prefilled}
-			<b class="cp-prefill">{row.value}</b>
+			<b class="cp-prefill">{shownValue(row.value)}</b>
 		{:else if row.value}
-			<b>{row.value}</b>
+			<b>{shownValue(row.value)}</b>
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}

@@ -25,6 +25,17 @@ describe('inline edit', () => {
 		await expect.element(page.getByRole('combobox')).not.toBeInTheDocument();
 	});
 
+	it('an option id: the menu shows words, keeps the stored id as the value and saves it', async () => {
+		const onEdit = show(row({ input: 'growth', label: 'Growth', value: 'diameter_stable', options: ['diameter_stable', 'diameter_clear_growth'] }));
+		await page.getByRole('button', { name: 'Change Growth' }).click();
+		const select = page.getByRole('combobox', { name: 'Answer for Growth' });
+		const opts = [...(select.element() as HTMLSelectElement).options];
+		expect(opts.map((o) => o.value)).toEqual(['diameter_stable', 'diameter_clear_growth']);
+		expect(opts.map((o) => o.textContent)).toEqual(['Diameter stable', 'Diameter clear growth']);
+		await select.selectOptions('diameter_clear_growth');
+		expect(onEdit).toHaveBeenCalledWith('growth', 'diameter_clear_growth');
+	});
+
 	it('a free value: a text box that saves on Enter; Escape cancels without saving', async () => {
 		const onEdit = show(row({ input: 'size', label: 'Size', value: '2.2 cm', options: [] }));
 		await page.getByRole('button', { name: 'Change Size' }).click();

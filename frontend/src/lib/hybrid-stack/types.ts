@@ -116,6 +116,25 @@ export interface AssumedResult {
 }
 export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' | 'skip' | 'not_assessed' }
 export interface DraftResult { text: string; ms: number; error: string | null }
+/** One value behind an applied recommendation (spec 2026-10-14 §7.2): `state` is the card's, or 'confirmed' when ticked. */
+export interface AppliedValue { input: string; value: string; state: string; quote?: string }
+/** A recommendation the radiologist applied from a guideline card (spec 2026-10-14 §7.2). */
+export interface AppliedRec {
+	key: string; // the gate key: card ref, or `<card ref>#<pack key>` for a column
+	finding_id: string;
+	pack: string; // pack key
+	version: string; // Calculation.pack, else the card's version
+	bundle: string;
+	source: string; // the guideline's display name, as written in the line
+	outcome: string;
+	verdict: string; // verdictKey(preview) at Apply
+	chosen_from?: number;
+	sentence: string; // as written at Apply
+	text: string; // as it stands (edited by hand or not)
+	values: AppliedValue[];
+	stale?: 'values' | 'finding';
+}
+
 export interface GateRecord {
 	confirmed_at: string;
 	conclusion_text: string;
@@ -138,6 +157,7 @@ export interface GateRecord {
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
+	recommendations?: AppliedRec[]; // guideline recommendations applied from a card (spec 2026-10-14 §7.2)
 	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)
 	units_hash: string;
 	/** findingsHash of the units sent at Confirm (incl. the live tail): the server refuses a stale gate. */

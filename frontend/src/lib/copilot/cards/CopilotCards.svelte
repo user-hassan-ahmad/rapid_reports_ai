@@ -5,9 +5,10 @@
 <script lang="ts">
 	/**
 	 * The Copilot's card list, presentational: groups (exam first, then one per finding) of cards, each drawn by
-	 * kind. It takes state and callbacks and never calls the API; the session store (A6) owns requests. Slice A is
-	 * read-only throughout: no inputs, no Calculate, no Apply.
+	 * kind. It takes state and callbacks and never calls the API; the session store (A6) owns requests. Without handlers
+	 * (Slice A) a card is read-only; with them it answers, ticks, picks and, behind the Apply flag, applies.
 	 */
+	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import RailSkeleton from '$lib/rail/RailSkeleton.svelte';
 	import { cardRef, kindOf, quiet, type Group } from '../state';
 	import type { Card } from '../types';
@@ -32,6 +33,11 @@
 		onRetryMatch,
 		onOther,
 		onEdit = undefined,
+		applyOn = false,
+		applied = {},
+		onTick = undefined,
+		onPick = undefined,
+		onApply = undefined,
 		unresolved = [],
 		onSeen = undefined
 	}: {
@@ -50,6 +56,12 @@
 		onOther(): void;
 		/** Slice B2: inline edit on pack cards (session.edit). Absent: read-only. */
 		onEdit?: (ref: string, input: string, value: string) => void;
+		/** The Apply flag; the applied recommendations by card or column ref; the questionnaire's ✓, pick and Apply. */
+		applyOn?: boolean;
+		applied?: Record<string, AppliedRec>;
+		onTick?: (ref: string, input: string, value: string) => void;
+		onPick?: (ref: string, outcome: string | null) => void;
+		onApply?: (ref: string) => void;
 		/** The cards blocking Confirm (gate.unresolved, §7.12 item 5), keyed by card ref or column ref. */
 		unresolved?: Unresolved[];
 		/** "Seen, leave as is" (session.seen). */
@@ -70,9 +82,9 @@
 		<QuietLine card={c} result={v.result} busy={v.loading} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
-			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} unresolved={blocking} onSeen={onSeen ?? null} {...handlers} />
+			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {applyOn} {applied} {onTick} {onPick} {onApply} unresolved={blocking} onSeen={onSeen ?? null} {...handlers} />
 		{:else}
-			<PackCard card={c} view={v} {other} {onEdit} unresolved={blocking[cardRef(c)] ?? null} onSeen={onSeen ?? null} {...handlers} />
+			<PackCard card={c} view={v} {other} {onEdit} {applyOn} applied={applied[cardRef(c)] ?? null} {onTick} {onPick} {onApply} unresolved={blocking[cardRef(c)] ?? null} onSeen={onSeen ?? null} {...handlers} />
 		{/if}
 	{:else}
 		<ReadOnlyCard card={c} {kind} view={v} {other} {...handlers} />

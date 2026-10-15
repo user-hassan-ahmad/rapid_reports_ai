@@ -30,7 +30,7 @@ from ....report_reconcile import QWEN
 from .. import jev as J
 from .. import preview as P
 from .. import registry as R
-from ..types import (Assumption, Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
+from ..types import (Assumption, Branch, Calculation, Candidate, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
                      ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
                      Source)
 from . import dates as DT
@@ -609,6 +609,22 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
     return [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
 
 
+def _candidates(e: Entry, t: engine.Trace, sources: list[dict]) -> list[Candidate]:
+    """The outcomes still possible, in the trace's order, each with its sentence when it renders complete (spec
+    2026-10-14 §4.4). None once an outcome is reached; never does_not_apply (an exclusion is not applied). None also when the trace is unbounded: an unknown
+    number feeds a formula, so `possible` over-approximates and a pick could apply an outcome the case cannot reach."""
+    if t.outcome is not None or not t.bounded:
+        return []
+    out = []
+    for oid in t.possible:
+        o = e.outcome(oid) if oid != DOES_NOT_APPLY else None
+        if o is None:
+            continue
+        out.append(Candidate(outcome=oid, headline=o.headline or engine.PH.sub("…", engine.render(e, t, o.classification)),
+                             category=o.category or "", proposal=_outcome_text(e, t, sources, oid)))
+    return out
+
+
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
            degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
            doubt: list[str] | None = None, signs: dict[str, InputValue] | None = None,
@@ -636,6 +652,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
                    assumptions=list(assumed or []), assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
                    most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
+                   candidates=_candidates(e, t, sources),
                    exclusion_reason=reason if t.outcome == DOES_NOT_APPLY else None,
                    exclusion=exclusion, state=state, possible=possible, bounded=t.bounded,
                    asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
@@ -776,28 +793,33 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
                 dv.decisive = _decisive(e, t, base, dv.input, signs.get(dv.input) or t.assumed[dv.input], ev, True)
                 assumed.append(Assumption(input=dv.input, label=dv.label, value=dv.value, decisive=dv.decisive,
                                           kind="sign" if dv.input in signs else "eligibility"))
+            elif dv.state == "prefilled" and dv.input not in doubt and dv.input in base:
+                # spec 2026-10-14 §6.1: only a decisive pre-filled value goes to the card's Check zone
+                dv.decisive = _decisive(e, t, base, dv.input, base[dv.input], ev, True)
     return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt, signs,
                   possible, likely, reason, assumed)
 
 
 def _decisive(e: Entry, t: engine.Trace, base: dict[str, InputValue], k: str, cur: InputValue, ev: "_Evals",
               assume: bool) -> bool | None:
-    """Whether flipping this one assumed value to any other answer changes the outcome (so it must be confirmed at
-    Apply; a non-decisive assumption needs no confirmation). None when not weighed: an unbounded result, or over the
-    evaluation cap."""
+    """Whether flipping this one assumed or pre-filled value to any other answer changes the outcome (so it must be
+    confirmed at Apply; a non-decisive one needs no confirmation). None when not weighed: an unbounded result, over the
+    evaluation cap, or a free number with nothing to flip to (spec 2026-10-14 §6.1: unknown errs to affirm)."""
     if not t.bounded:
         return None
     i = e.input(k)
     # an assumed band (a number that may also feed a formula) is weighed over its own bands
     cands = ([InputValue(band=b.id) for b in _all_bands(e, i)] if cur.band is not None
              else [_answer(e, i, label) for label in display_options(e, i)])
+    cands = [v for v in cands if v is not None and not _same_shown(e, i, v, cur)]
+    if not cands:
+        return None
     for v in cands:
-        if v is None or _same_shown(e, i, v, cur):
-            continue
         r = ev({**base, k: v}, assume)
         if r is None:
             return None
-        if r.outcome != t.outcome:
+        # with no outcome yet, a guess that changes which outcomes remain shapes the pick: decisive too (review I4)
+        if r.outcome != t.outcome or (t.outcome is None and set(r.possible) != set(t.possible)):
             return True
     return False
 
@@ -993,7 +1015,8 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
             logger.error("[library.calculate] %s exclusion reason failed: %s", e.key, ex)
         text = _exclusion_text(e, t, sources, reason, text)
     out = Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
-                      possible=_possible(e, t), needed=list(t.needed), values=used, scope_doubt=doubt,
+                      possible=_possible(e, t), candidates=_candidates(e, t, sources), needed=list(t.needed), values=used,
+                      scope_doubt=doubt,
                       trace=t.model_dump(mode="json") if t.outcome is not None else None, pack=e.key, bundle=bundle)
     try:                                              # the extras fail open: the bare Calculation stands (M2)
         ev = _Evals(e)

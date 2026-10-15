@@ -113,6 +113,7 @@ export function findingsText(units: StackUnit[], groups: string[], extra: Map<st
 }
 
 const ANSWERED = 'Answered by the radiologist:';
+const SELECTED_RECS = 'Recommendations (selected by the radiologist):'; // = backend hybrid_stack/session_rules.SELECTED_RECS
 const ASSUMED = 'Assumed normal (confirmed by the radiologist):';
 
 /** What Generate receives in a stack session (checklist spec §7): answers only. The radiologist's sentences, the
@@ -145,6 +146,9 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 		...gate.remainder_normal.filter((r) => !gate.assumed[r]?.length).map((r) => `remainder of ${r}`)];
 	if (named.length) parts.push(`Confirmed normal (not dictated; confirmed by the radiologist): ${named.join('; ')}.`);
 	if (gate.conclusion_text.trim()) parts.push(`Conclusion (confirmed by the radiologist): ${gate.conclusion_text.trim()}`);
+	// Applied guideline recommendations (spec 2026-10-14 §7.3): the line the shared recommendations rule places
+	const recs = (gate.recommendations ?? []).map((r) => r.text.trim()).filter(Boolean);
+	if (recs.length) parts.push(`${SELECTED_RECS} ${recs.join(' ')}`);
 	if (gate.removed.length) parts.push(`DO NOT ASSERT (removed by the radiologist): ${gate.removed.join(' ')}`);
 	return parts.filter(Boolean).join('\n\n');
 }
