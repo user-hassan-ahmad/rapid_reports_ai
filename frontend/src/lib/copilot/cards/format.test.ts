@@ -191,14 +191,13 @@ describe('shownValue: a stored option id shown as words', () => {
 
 import { pillWord, restates } from './format';
 describe('calmer card helpers', () => {
-	it('restates: equal after the guideline prefix, or the headline plus fewer than four words', () => {
+	it('restates: only an exact repeat of the headline (after the guideline prefix) is hidden', () => {
+		expect(restates('BTS 2015 · Clear growth on diameter measurement', 'Clear growth on diameter measurement')).toBe(true);
 		expect(restates('BTS 2015 · Solid nodule', 'solid nodule')).toBe(true);
-		expect(restates('Solid nodule 6-8 mm', 'Solid nodule')).toBe(false); // a size is never hidden
-		expect(restates('part-solid nodule 6 mm', 'Solid nodule')).toBe(false); // substring trap
-		expect(restates('part-solid nodule', 'Solid nodule')).toBe(false); // whole words only
-		expect(restates('Clear growth on diameter', 'Clear growth')).toBe(true);
-		expect(restates('Grade 2 · Solid nodule 6 mm', 'Solid nodule 6 mm')).toBe(true);
-		expect(restates('Solid nodule 6-8 mm in a current smoker', 'Solid nodule')).toBe(false);
+		expect(restates('BTS 2015 · Clear growth on diameter measurement', 'Clear growth')).toBe(false);
+		expect(restates('BTS 2015 · Solid nodule 6-8 mm', 'Solid nodule')).toBe(false);
+		expect(restates('BTS 2015 · part-solid nodule', 'Solid nodule')).toBe(false);
+		expect(restates('BTS 2015 · Solid nodule 6-8 mm in a current smoker', 'Solid nodule')).toBe(false);
 		expect(restates('', 'x')).toBe(false);
 	});
 	it('pillWord: the category word for a decided outcome; none for the states that already read as words', () => {

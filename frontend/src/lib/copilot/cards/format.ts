@@ -331,21 +331,12 @@ export function pillWord(v: Verdict | null | undefined): string | null {
 	return PILL_WORD[v.category] ?? null;
 }
 
-/** The classification line only restates the headline: with the guideline prefix ("X · ") dropped, equal ignoring
- *  case, or containing the headline while adding fewer than four words. */
+/** The classification line repeats the headline exactly: after the guideline display prefix ("X · ", the
+ *  classification's only) it equals the headline, ignoring case, punctuation and spacing. Anything more (a size, a
+ *  qualifier) keeps the line. */
 export function restates(classification: string, headline: string): boolean {
-	const strip = (s: string) => s.replace(/^.*? · /, '').trim().replace(/[.;:,]+$/, '').toLowerCase();
-	const c = strip(classification);
-	const h = strip(headline);
-	if (!c || !h) return false;
-	if (c === h) return true;
-	// never hide a size or number the headline does not carry ("6-8 mm", "Grade 2")
-	const nums = (s: string) => s.match(/\d+(?:\.\d+)?/g) ?? [];
-	const hn = new Set(nums(h));
-	if (nums(c).some((n) => !hn.has(n))) return false;
-	// whole words only: "part-solid nodule" does not contain "solid nodule"
-	const cw = c.split(/\s+/);
-	const hw = h.split(/\s+/);
-	const at = cw.findIndex((_, i) => hw.every((w, k) => cw[i + k] === w));
-	return at >= 0 && cw.length - hw.length < 4;
+	const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+	const c = norm(classification.replace(/^.*? · /, ''));
+	const h = norm(headline);
+	return !!c && !!h && c === h;
 }
