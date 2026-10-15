@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 NA_PREFIX = "Values not provided"
 VALUE_MISSING = "value_missing"
+VALUE_SAID_ELSEWHERE = "value_said_elsewhere"   # Jev: already said in other words, so not written back (quiet note)
 VALUE_CHECK_UNAVAILABLE = "value_check_unavailable"   # the backstop could not run: never a silent failure
 _NA_LINE = re.compile(r"(?im)^[ \t]*(?:[-*•][ \t]*)?values not provided\b[^\n]*\n?")
 
@@ -176,7 +177,7 @@ def _section_aliases(st) -> dict:
 
 
 async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes: dict,
-                         conveys=None) -> Tuple[str, List[dict], List[str]]:
+                         conveys=None, rec: Optional[dict] = None) -> Tuple[str, List[dict], List[str]]:
     """A value the gate filled from the dictation never vanishes (P3 2026-10-15): (the report with each missing
     value's dictated sentence written back, the insertion edits, the items the report now holds). `quotes`: item ->
     {"sentence": the dictated sentence holding the value, "region": its scratchpad region}
@@ -186,8 +187,10 @@ async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes
     chip), no region, a region no headed report section is named for, a region naming the conclusion, or a report
     without headers. A sentence already in the report word for word is not written again. Before writing, the quick
     path's duplicate check (`conveys`, default report_review.already_conveyed: Jev) asks whether the report already
-    says each sentence in other words: said, it is not written and the item is held (no flag); the check failing
-    writes nothing and keeps every such flag (fail closed). Run before write_missing. Never raises: on any error the
+    says each sentence in other words: said, it is not written and the item is held (no value_missing flag; it goes
+    in rec["said_elsewhere"] for a quiet note, so a wrong answer never loses the value without trace); the check
+    failing writes nothing and keeps every such flag (fail closed). A sentence two chips share is written once.
+    Run before write_missing. Never raises: on any error the
     report comes back as it was."""
     try:
         from . import report_review as rr
@@ -224,9 +227,13 @@ async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes
                 logger.warning("[template.required_values] restore duplicate check failed (%s: %s)",
                                type(e).__name__, str(e)[:200])
                 todo, said = [], []
-        edits = []
+        edits, elsewhere = [], []
         for (item, sent, want), dup in zip(todo, said):
             if dup:
+                held.append(item)
+                elsewhere.append({"item": item, "sentence": sent})
+                continue
+            if _present(sent, _NA_LINE.sub("", text)):   # already written for another chip from the same sentence
                 held.append(item)
                 continue
             spans = rr.section_spans(text, report_sections(text, sheet))
@@ -236,6 +243,8 @@ async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes
             text = _append(text, hit[0], hit[1], sent)
             edits.append({"type": "insertion", "sentence": sent})
             held.append(item)
+        if rec is not None:
+            rec["said_elsewhere"] = elsewhere
         logger.info("[template.required_values] restored=%d held=%d", len(edits), len(held))
         return text, edits, [i for i in missing if i in held]
     except Exception as e:  # noqa: BLE001 -- never break Generate

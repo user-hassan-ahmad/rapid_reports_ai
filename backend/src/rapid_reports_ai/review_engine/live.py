@@ -203,7 +203,8 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
     return items, log
 
 
-_FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing"}
+_FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing",
+               "value_said_elsewhere"}   # the last: a quiet note (cls info), never a flag to act on
 _FLAG_LABEL = {
     "undictated_number": "Number not in the dictation: {text}",
     "value_missing": "Required value not in the report: {text}",

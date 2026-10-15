@@ -831,4 +831,10 @@ async def test_a_value_said_in_other_words_or_unchecked_is_not_written_back(monk
     assert "Ejection fraction 47%" not in out["report_content"]
     assert "Values not provided" not in out["report_content"]
     assert not (out["quality_check"].get("applied_edits") or [])
-    assert any(f.get("text") == "LVEF" for f in out["quality_check"].get("review") or []) is flagged
+    review = out["quality_check"].get("review") or []
+    assert any(f.get("kind") == "value_missing" and f.get("text") == "LVEF" for f in review) is flagged
+    notes = [f for f in review if f.get("kind") == "value_said_elsewhere"]
+    assert notes == ([] if flagged else [{"kind": "value_said_elsewhere", "severity": "low", "text": "LVEF",
+                                          "sentence": "Ejection fraction 47%.",
+                                          "message": "LVEF judged already in the report in other words; not added: "
+                                                     "Ejection fraction 47%."}])

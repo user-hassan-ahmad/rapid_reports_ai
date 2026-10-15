@@ -507,6 +507,22 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 's1');
 	});
 
+	it('a value_said_elsewhere note is a quiet muted line, never a value flag', async () => {
+		const note = item({
+			id: 'v1',
+			kind: 'value_said_elsewhere',
+			cls: 'info',
+			lane: 'accuracy',
+			section: null,
+			anchor: null,
+			label: 'LVEF judged already in the report in other words'
+		});
+		await mount(response({ items: [...ITEMS, note] }));
+		const el = rail()!.querySelector<HTMLElement>('[data-rv-item="v1"]')!;
+		expect(el.getAttribute('data-rv-variant')).toBe('note');
+		expect(el.classList.contains('rv-muted')).toBe(true);
+	});
+
 	it('a dismissed structure_not_mentioned note is not shown', async () => {
 		const note = item({ id: 's2', kind: 'structure_not_mentioned', cls: 'info', status: 'dismissed', label: 'Not mentioned: LMS' });
 		await mount(response({ items: [...ITEMS, note] }));

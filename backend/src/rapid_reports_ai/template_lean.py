@@ -30,7 +30,8 @@ from .template_brief import _scores
 from .template_context_rules import (decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences,
                                      without_habits)
 from .hybrid_stack.template import norm_key
-from .template_required_values import apply_required_values, backstop, restore_values, values_applied, write_missing
+from .template_required_values import (VALUE_SAID_ELSEWHERE, apply_required_values, backstop, restore_values,
+                                       values_applied, write_missing)
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
 
@@ -564,9 +565,13 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
             # before the line is written, so a written-back sentence never sits on (or is stripped with) that line
             before = final
             final, edits, vrec["restored"] = await restore_values(final, sheet, vrec["backstop"]["missing"],
-                                                                  (stack or {}).get("values_quotes") or {})
+                                                                  (stack or {}).get("values_quotes") or {}, rec=vrec)
             back = {norm_key(x) for x in vrec["restored"]}
             flags = [f for f in flags if norm_key(f["text"]) not in back]
+            # judged already said in other words: not written, and a quiet note instead of the value_missing flag
+            flags += [{"kind": VALUE_SAID_ELSEWHERE, "severity": "low", "text": e["item"], "sentence": e["sentence"],
+                       "message": f"{e['item']} judged already in the report in other words; not added: {e['sentence']}"}
+                      for e in vrec.get("said_elsewhere") or []]
             if edits:   # shown on the rail as pre-applied insertions, like the check's own
                 quality = {**(quality or {"enabled": False})}
                 quality.setdefault("pre_edit_report", before)

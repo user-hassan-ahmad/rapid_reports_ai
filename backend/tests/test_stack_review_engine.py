@@ -54,3 +54,14 @@ def test_template_parts_reads_confirmed_normals_from_the_candidate(db_session, t
     cand = {"stack": True, "assumed_confirmed": ["LMS: Normal.", "RCA: Normal."]}
     parts = E.template_parts(db_session, row, cand)
     assert parts["assumed_normals"] == ["LMS: Normal.", "RCA: Normal."] and parts["generation_sheet_hash"] == "h"
+
+
+def test_a_value_said_in_other_words_is_a_quiet_info_item():
+    """Re-check 2026-10-15: Jev judged a filled value already said in other words, so nothing was written back. A
+    quiet info note keeps a trace, never the value_missing flag."""
+    inp = _inp(review=[{"kind": "value_said_elsewhere", "severity": "low", "text": "LVEF",
+                        "sentence": "Ejection fraction 47%.",
+                        "message": "LVEF judged already in the report; not added: Ejection fraction 47%."}])
+    items = live.check_flag_items(inp, "run1")
+    assert [i.kind for i in items] == ["value_said_elsewhere"]
+    assert items[0].cls == "info" and items[0].edit is None and items[0].status == "open"

@@ -396,3 +396,20 @@ async def test_restore_fails_closed_when_the_duplicate_check_errors():
     out, edits, restored = await restore_values(report, CMR, ["LVEF", "RVEF"], quotes,
                                                 conveys=_said(error=RuntimeError("jev down")))
     assert out == report and edits == [] and restored == ["RVEF"]   # verbatim there: no flag; LVEF keeps its flag
+
+
+async def test_two_chips_from_one_sentence_write_it_once():
+    from rapid_reports_ai.template_required_values import restore_values
+    sent = "The LV is normal, LVEF 55%, LVEDV 150 ml."
+    quotes = {"LVEF": _q(sent, "LEFT VENTRICLE"), "LVEDV": _q(sent, "LEFT VENTRICLE")}
+    out, edits, restored = await restore_values(CMR_REPORT, CMR, ["LVEF", "LVEDV"], quotes, conveys=_said())
+    assert out.count(sent) == 1 and edits == [{"type": "insertion", "sentence": sent}]
+    assert restored == ["LVEF", "LVEDV"]
+
+
+async def test_a_value_judged_said_elsewhere_is_recorded_for_a_quiet_note():
+    from rapid_reports_ai.template_required_values import restore_values
+    rec = {}
+    quotes = {"LVEF": _q("LVEF 47%.", "LEFT VENTRICLE")}
+    await restore_values(CMR_REPORT, CMR, ["LVEF"], quotes, conveys=_said(True), rec=rec)
+    assert rec["said_elsewhere"] == [{"item": "LVEF", "sentence": "LVEF 47%."}]
