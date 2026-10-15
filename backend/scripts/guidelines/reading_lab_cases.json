@@ -1,0 +1,42 @@
+{
+  "_about": "Synthetic cases for reading_lab.py (hand-picked variants, planted truth; no production text). Sizes in mm.",
+  "sizes": [
+    {"id": "s-prior-after", "finding": "9 mm solid nodule in the right upper lobe, previously 6 mm.", "current": 9, "prior": 6},
+    {"id": "s-from-to", "finding": "Solid nodule in the right lower lobe has increased from 6 to 9 mm since the prior CT.", "current": 9, "prior": 6},
+    {"id": "s-shrunk", "finding": "The previously described 9 mm nodule in the lingula now measures 6 mm.", "current": 6, "prior": 9},
+    {"id": "s-two-lesions", "finding": "Two solid nodules in the right upper lobe measuring 6 mm and 9 mm.", "current": null, "prior": null},
+    {"id": "s-dims-prior", "finding": "Right upper lobe nodule 9 x 7 mm (previously 6 x 5 mm).", "current": 9, "prior": 6},
+    {"id": "s-aneurysm", "finding": "Infrarenal abdominal aortic aneurysm 4.8 cm, previously 4.5 cm in March 2025.", "current": 48, "prior": 45},
+    {"id": "s-component-stable", "finding": "Part-solid nodule 18 mm with a solid component of 7 mm, unchanged from 18 mm.", "current": 18, "prior": 18},
+    {"id": "s-cyst-dated-prior", "finding": "Left renal cyst 3.2 cm with a single thin septum; it measured 2.8 cm on the 2024 CT.", "current": 32, "prior": 28},
+    {"id": "s-two-priors", "finding": "Right upper lobe nodule now 9 mm; on the CT of 12/03/2025 it measured 6 mm, and 4 mm in 2023.", "current": 9, "prior": 6, "prior_also": [4]},
+    {"id": "s-sibling", "finding": "8 mm ground-glass nodule in the left upper lobe; a separate 4 mm solid nodule in the left lower lobe.", "current": null, "prior": null},
+    {"id": "s-duct", "finding": "Pancreatic cyst in the body measuring 15 mm, with a 3 mm main pancreatic duct.", "current": 15, "prior": null},
+    {"id": "s-stable-since", "finding": "Solid nodule 7 mm at the right base, stable since 2019 when it measured 7 mm.", "current": 7, "prior": 7}
+  ],
+  "dates": [
+    {"id": "d-referral-stray", "history": "Referred 02/10/2026 by GP with persistent cough.", "findings": "Comparison: CT chest 12/03/2025. 9 mm solid nodule right upper lobe, previously 6 mm.", "comparison": "12/03/2025"},
+    {"id": "d-single-not-comparison", "history": "Right upper lobectomy 14/01/2024 for adenocarcinoma.", "findings": "No prior imaging available for comparison. 6 mm solid nodule left lower lobe.", "comparison": null},
+    {"id": "d-several-priors", "history": "Nodule follow-up.", "findings": "Compared with the CTs of 12/03/2025 and 01/06/2023. 9 mm nodule right upper lobe.", "comparison": null},
+    {"id": "d-other-study-first", "history": "Abdominal pain.", "findings": "Ultrasound 05/05/2025 showed gallstones. 9 mm nodule in the right lower lobe, not present on the CT of 12/03/2025.", "comparison": "12/03/2025"},
+    {"id": "d-dob", "history": "DOB 04/07/1961. Follow-up of a nodule seen on CT 20/02/2025.", "findings": "8 mm solid nodule right upper lobe, previously 6 mm.", "comparison": "20/02/2025"},
+    {"id": "d-future-date", "history": "Nodule surveillance.", "findings": "Nodule previously 6 mm (CT 12/03/2025), now 9 mm. Biopsy planned for 30/10/2026.", "comparison": "12/03/2025"},
+    {"id": "d-two-priors-measured", "history": "Lung cancer screening.", "findings": "PET-CT of 01/08/2025 and CT of 12/03/2025 reviewed; the nodule measured 6 mm on the CT. Now 9 mm.", "comparison": "12/03/2025"},
+    {"id": "d-history-year", "history": "Previous breast cancer in 2015, treated.", "findings": "Comparison is made with CT 12/03/2025. 7 mm nodule unchanged.", "comparison": "12/03/2025"},
+    {"id": "d-reported", "history": "Nodule follow-up.", "findings": "The previous CT was reported on 12 March 2025. 7 mm nodule, unchanged.", "comparison": "12 March 2025"}
+  ],
+  "yesno": [
+    {"id": "y-spiculated", "scope": "lesion", "text": "Spiculated 12 mm solid nodule in the right upper lobe.", "label": "Spiculation", "draft": true, "stated": true},
+    {"id": "y-spic-silent", "scope": "lesion", "text": "12 mm solid nodule in the right upper lobe.", "label": "Spiculation", "draft": false, "stated": false},
+    {"id": "y-no-change-trap", "scope": "patient", "text": "No change in the nodule since the prior CT.", "label": "Prior CT available for comparison", "draft": true, "stated": true},
+    {"id": "y-no-prior", "scope": "patient", "text": "No prior imaging available for comparison.", "label": "Prior CT available for comparison", "draft": false, "stated": true},
+    {"id": "y-prior-implied", "scope": "patient", "text": "9 mm solid nodule in the right upper lobe, previously 6 mm.", "label": "Prior CT available for comparison", "draft": true, "stated": false},
+    {"id": "y-known-cancer", "scope": "patient", "text": "CLINICAL HISTORY: Known lung cancer, on surveillance.", "label": "Known malignancy", "draft": true, "stated": true},
+    {"id": "y-hedged-cancer", "scope": "patient", "text": "CLINICAL HISTORY: ?previous malignancy, awaiting records.", "label": "Known malignancy", "draft": true, "stated": false},
+    {"id": "y-cancer-silent", "scope": "patient", "text": "CLINICAL HISTORY: Cough for six weeks.", "label": "Known malignancy", "draft": false, "stated": false},
+    {"id": "y-solid-negated", "scope": "lesion", "text": "Simple unilocular cyst 35 mm with no solid component.", "label": "Solid component", "draft": false, "stated": true},
+    {"id": "y-solid-implied", "scope": "lesion", "text": "Simple unilocular cyst 35 mm.", "label": "Solid component", "draft": false, "stated": false},
+    {"id": "y-never-smoked", "scope": "patient", "text": "CLINICAL HISTORY: Never smoked.", "label": "Smoking history", "draft": false, "stated": true},
+    {"id": "y-ascites-negated", "scope": "lesion", "text": "Complex left adnexal mass 60 mm. No ascites.", "label": "Ascites", "draft": false, "stated": true}
+  ]
+}
