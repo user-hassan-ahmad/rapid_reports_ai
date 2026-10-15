@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	export type IconName = 'check' | 'clock' | 'search' | 'alert' | 'slash' | 'open' | 'dot' | 'exam' | 'warn' | 'info' | 'chev';
+	export type IconName = 'check' | 'clock' | 'search' | 'alert' | 'slash' | 'open' | 'dot' | 'exam' | 'warn' | 'info' | 'chev' | 'edit';
 </script>
 
 <script lang="ts">
@@ -25,6 +25,8 @@
 		<rect x="4" y="5" width="16" height="14" rx="2" /><path d="M8 10h8M8 14h5" />
 	{:else if name === 'chev'}
 		<path d="M9 6l6 6-6 6" />
+	{:else if name === 'edit'}
+		<path d="M4 20l1-4L16.5 4.5l3 3L8 19z" /><path d="M14 7l3 3" />
 	{:else if name === 'info'}
 		<circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5" /><path d="M12 7.6v.1" />
 	{:else if name === 'warn'}

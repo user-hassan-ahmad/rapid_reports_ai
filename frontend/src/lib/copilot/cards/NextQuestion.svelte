@@ -8,14 +8,14 @@
 	import type { Ask } from '../types';
 	import { NOT_KNOWN, optionLabel } from './format';
 
-	let { ask, remaining, bounded = true, onAnswer }: { ask: Ask; remaining: number; bounded?: boolean; onAnswer: (input: string, value: string) => void } = $props();
+	let { ask, onAnswer }: { ask: Ask; onAnswer: (input: string, value: string) => void } = $props();
 	let typed = $state('');
 	const options = $derived((ask.options ?? []).filter((o) => o !== NOT_STATED));
 	const between = $derived([...new Set((ask.decides_between ?? []).map((d) => d.classification).filter(Boolean))]);
 </script>
 
 <section class="cp-question" aria-label="Next question" data-testid="cp-question">
-	<p class="cp-p"><b>{ask.label}</b>{#if remaining > 1}<span class="cp-muted"> · {bounded ? '' : 'up to '}{remaining - 1} more</span>{/if}</p>
+	<p class="cp-p"><b>{ask.label}</b></p>
 	{#if ask.definition?.text}<p class="cp-p cp-muted cp-q-def">{ask.definition.text}</p>{/if}
 	<div class="cp-q-answers" role="group" aria-label={`Answer ${ask.label}`}>
 		{#each options as o (o)}<button type="button" class="rv-btn" onclick={() => onAnswer(ask.input, o)}>{optionLabel(o)}</button>{/each}

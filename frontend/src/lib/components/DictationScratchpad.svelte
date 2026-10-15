@@ -40,6 +40,8 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import { applyOn } from '$lib/copilot/flag';
+	import { activeFindingOf, findingNumbers, firstCardRef, touch, trackOpen } from '$lib/copilot/markers';
+	import FindingConnector from './FindingConnector.svelte';
 	import { recommendationsForGate, recommendationsKey, staleBlocks } from '$lib/copilot/applied';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
 	import { mountCopilot } from '$lib/copilot/mount';
@@ -360,6 +362,13 @@
 	let copilot: CopilotSession | null = null;
 	const copilotApply = applyOn(); // spec 2026-10-14 §7.6: Hassan's browser only (localStorage rr_copilot_apply = '1')
 	let copilotState: Readable<CopilotState | null> = noCopilot;
+	// Finding markers (numbered in the rail and the scratchpad margin): the finding hovered/focused on either side, else
+	// the one whose card was opened last, is active (both lines highlighted, a faint connector between them).
+	let hoverFinding: string | null = null;
+	let openOrder: string[] = [];
+	$: findingMarks = copilotActive && $copilotState?.on ? findingNumbers($copilotState.groups) : {};
+	$: openOrder = trackOpen(openOrder, Object.entries($copilotState?.views ?? {}).filter(([, v]) => v.open).map(([k]) => k));
+	$: activeFinding = copilotActive && $copilotState?.on ? activeFindingOf(hoverFinding, openOrder, $copilotState.groups) : null;
 	$: copilotActive = stackCopilot && hybridStack && stackView;
 	$: if (copilotActive && !copilot) startCopilot();
 	else if (!copilotActive && copilot) stopCopilot();
@@ -435,8 +444,15 @@
 			document.querySelector('[data-testid="recommendations"]')?.scrollIntoView({ block: 'nearest' });
 			return;
 		}
+		copilot?.expand(key); // a guideline collapsed as "may not apply" opens before it is revealed
 		const ref = guidelinesUnresolved.find((u) => u.key === key)?.card ?? key;
+		openOrder = touch(openOrder, ref); // the revealed card's finding is the active one, even if the card was already open
 		void copilotRail?.reveal(ref);
+	}
+	// A scratchpad marker was used: reveal that finding's first card in the rail (the same path as the walkthrough).
+	function openFinding(id: string): void {
+		const ref = $copilotState ? firstCardRef($copilotState.groups, id) : null;
+		if (ref) openGuideline(ref);
 	}
 	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
 	// a field to type or dictate with a button to draft it).
@@ -2903,6 +2919,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
+							{findingMarks} findingGutter={!!copilotActive} onFindingOpen={openFinding} {activeFinding} onFindingHover={(id) => (hoverFinding = id)}
 							recommendations={recsNow} onRecEdit={(k, t) => copilot?.editApplied(k, t)} onRecDelete={(k) => copilot?.removeApplied(k)}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={[...placedChecks, ...sideNow]} notReported={stackTemplateId ? {} : struckNow} sideFailed={assumedSnap?.side_failed ? (assumedSnap.side_asks?.length ? 'kept' : 'plain') : null} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
@@ -2963,8 +2980,12 @@
 		onTick={copilot.tick}
 		onPick={copilot.pick}
 		onApply={copilot.apply}
+		onExpand={copilot.expand}
+		{activeFinding}
+		onFindingHover={(id) => (hoverFinding = id)}
 		bind:this={copilotRail}
 	/>
+	<FindingConnector active={activeFinding} />
 {/if}
 </div>
 

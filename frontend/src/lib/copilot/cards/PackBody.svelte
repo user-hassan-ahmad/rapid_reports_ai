@@ -22,7 +22,9 @@
 	import NextQuestion from './NextQuestion.svelte';
 	import ValueEdit from './ValueEdit.svelte';
 	import ResultZone from './ResultZone.svelte';
-	import { answeredChips, basedOn, checkItems, nextAsk, readiness, remaining, statusLine } from './questionnaire';
+	import { answeredChips, checkItems, collapsedReason, collapsible, nextAsk, readiness, remaining } from './questionnaire';
+	import CollapsedRow from './CollapsedRow.svelte';
+	import type { Unresolved } from '../gate';
 	import Icon, { type IconName } from './Icon.svelte';
 	import {
 		allValueRows,
@@ -32,8 +34,8 @@
 		decidingQuestion,
 		notNeededRows,
 		openQuestions,
-		recommendationBeyond,
 		scopeDoubts,
+		restates,
 		shownValue,
 		sourcesOf,
 		verdictOf,
@@ -60,7 +62,11 @@
 		applyOn = false,
 		onTick = null,
 		onPick = null,
-		onApply = null
+		onApply = null,
+		expanded = undefined,
+		onExpand = null,
+		unresolved = null,
+		onSeen = null
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -86,6 +92,12 @@
 		onTick?: ((input: string, value: string) => void) | null;
 		onPick?: ((outcome: string | null) => void) | null;
 		onApply?: (() => void) | null;
+		/** A card that may not apply is collapsed to one row; the view owns whether it is open (the gate opens it). */
+		expanded?: boolean;
+		onExpand?: ((open: boolean) => void) | null;
+		/** The gate blocks Confirm on this guideline: its one note sits above the result. */
+		unresolved?: Unresolved | null;
+		onSeen?: ((key: string) => void) | null;
 	} = $props();
 
 	const p = $derived(result.preview);
@@ -98,13 +110,17 @@
 	const decided = $derived(!!v && v.category !== 'open' && !v.tentative);
 	const longText = $derived(!!v && v.classification.length > 110);
 	// an exclusion worded by its outcome (§7.12 item 1) says what to do instead; a generic one has no action
-	const recText = $derived(v ? (v.excluded ? v.action : recommendationBeyond(v.action, v.recommendation)) : '');
+	// the opened card's pill is only the category word, so the verdict carries the whole recommendation
+	const recText = $derived(v ? (v.excluded ? v.action : v.recommendation || v.action) : '');
 	// asked inputs that cannot change the outcome wait behind "N not needed on this branch" (§7.12 item 3)
 	// (a card that does not apply keeps them in its values list: nothing there can change the outcome)
 	const notNeededIds = $derived(new Set(v?.excluded ? [] : notNeededRows(p).map((r) => r.input)));
 	const notNeededList = $derived(rows.filter((r) => notNeededIds.has(r.input)));
 	let showNotNeeded = $state(false);
 	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable' && !notNeededIds.has(r.input)));
+	// the footer's "All values used": today's full list, not-applicable rows excluded; a card that does not apply keeps its own toggle
+	const valueCount = $derived(shownRows.filter((r) => !!r.value).length); // values actually used: shown, with a value
+	const anyRows = $derived(!v?.excluded && rows.length > 0);
 	const naRows = $derived(rows.filter((r) => r.state === 'not_applicable'));
 	let showNa = $state(false);
 	let showValues = $state(false);
@@ -127,25 +143,179 @@
 	const chips = $derived(answeredChips(p, edits));
 	const pickNow = $derived(p?.draft_outcome ? null : pick); // a leftover pick never counts once an outcome is reached
 	const blocker = $derived(readiness(p, edits, ticks, pickNow));
-	const status = $derived(statusLine(p, edits, ticks, pickNow));
 	const cands = $derived(p && !p.draft_outcome && !next && p.state !== 'does_not_apply' ? (p.candidates ?? []) : []);
-	const missing = $derived(chips.find((c) => c.value === NOT_STATED) ?? null);
-	const based = $derived(basedOn(p, check).map((d) => `${d.label} ${shownValue(d.value)}`).join(' · '));
 	let editingChip = $state<string | null>(null);
 	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
+	let localOpen = $state(false); // without a view (onExpand), the body keeps its own open state
+	const canCollapse = $derived(collapsible(p));
+	const isOpen = $derived(onExpand ? !!expanded : !!expanded || localOpen);
+	const collapsed = $derived(canCollapse && !isOpen);
+	const toggle = () => (onExpand ? onExpand(!isOpen) : (localOpen = !localOpen));
+	const reason = $derived(p && canCollapse ? collapsedReason(p, v?.headline ?? '') : null);
+	const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+	// the recommendation slot: an outcome, a scope doubt's "if it applies", or the likeliest outcome and what decides it
+	const likelyBlock = $derived(!decided && !next && !v?.ifApplies && (!!likely || (branches.length > 0 && !!decidingQ)));
+	const slotHasRec = $derived(decided || !!v?.ifApplies || likelyBlock);
+	// provisional while the card is not ready (values can be ticked: Apply on) or rests on values not dictated
+	// (otherwise), or no outcome yet: the amber dashed border cue and one ◐ line, never a fade
+	const unconfirmed = $derived(check.filter((c) => !c.affirmed).length);
+	const canTick = $derived(applyOn && !!onTick);
+	const provisionalCue = $derived(blocker === 'question' || (canTick ? blocker !== null : check.length > 0));
+	const provisional = $derived.by(() => {
+		if (blocker === 'question') return 'Provisional — answer the question above to settle it';
+		if (!provisionalCue) return '';
+		if (!canTick) return `Rests on ${plural(check.length, 'value', 'values')} not stated in your dictation — check them below`;
+		if (blocker === 'check') return `Provisional — confirm the ${plural(unconfirmed, 'value', 'values')} below to use it`;
+		if (blocker === 'pick') return 'Provisional — choose the outcome that fits below';
+		return 'Provisional — answer the open question below to use it';
+	});
+	// the question slot holds only the questions the card asked (now or answered: an "answered" row, or still in asks)
+	const askChips = $derived(chips.filter((c) => p?.draft?.find((d) => d.input === c.input)?.state === 'answered' || !!p?.asks.some((a) => a.input === c.input)));
+	const missing = $derived(askChips.find((c) => c.value === NOT_STATED) ?? null);
+	let slotH = $state(0);
+	let heldH = $state(0); // the slot keeps the height of the question it showed, so the recommendation never jumps
+	$effect(() => {
+		if (next && slotH) heldH = slotH;
+		else if (!next && askChips.length === 0) heldH = 0; // nothing asked or answered: no gap left behind
+	});
+	const questionLabel = $derived(`QUESTION ${askChips.length + 1} OF ${p?.bounded === false ? 'UP TO ' : ''}${askChips.length + remaining(p, edits)}`);
 </script>
+
+{#snippet verdictBlock(vv: Verdict, cue: boolean)}
+	<section
+		class="cp-verdict"
+		class:cp-rec-provisional={cue}
+		style:--cp-cat={categoryColor(vv.category)}
+		style:--cp-cat-text={categoryText(vv.category)}
+		data-cat={vv.category}
+		data-testid={vv.excluded ? 'cp-exclusion' : undefined}
+		aria-label="Verdict"
+		aria-busy={busy}
+	>
+		<p class="cp-p cp-headline">{vv.headline}</p>
+		<!-- the pill is only the category word: the whole recommendation (the action and its later steps) shows here -->
+		{#if recText}<p class="cp-p cp-recommendation">{recText}</p>{/if}
+		{#if vv.excluded && vv.classification && vv.classification !== vv.headline}
+			<!-- does not apply: the specific reason leads; the generic exclusion text waits behind "full reason" -->
+			<button type="button" class="rv-btn rv-btn-ghost cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
+				>{showMore ? 'hide full reason' : 'full reason'}</button
+			>
+			<p class="cp-p cp-classification" id="{uid}-cls" hidden={!showMore}>{vv.classification}</p>
+		{:else if vv.classification && vv.classification !== vv.headline && !restates(vv.classification, vv.headline)}
+			<p class="cp-p cp-classification" class:cp-clamp={longText && !showMore && !compact} id="{uid}-cls">{vv.classification}</p>
+			{#if longText && !compact}
+				<button type="button" class="rv-btn rv-btn-ghost cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
+					>{showMore ? 'less' : 'more'}</button
+				>
+			{/if}
+		{/if}
+		<p class="cp-p cp-onvalues" aria-live="polite">{#if busy}Updating on the new values…{/if}</p>
+	</section>
+{/snippet}
+
+{#snippet valueList()}
+	<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
+		{#each shownRows as r (r.input)}
+			<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
+		{/each}
+		{#if naRows.length}
+			{#if showNa}
+				{#each naRows as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
+			{/if}
+			<li class="cp-na-toggle">
+				<button type="button" class="rv-btn rv-btn-ghost" aria-expanded={showNa} onclick={() => (showNa = !showNa)}
+					>{showNa ? 'hide not applicable' : `+${naRows.length} not applicable`}</button
+				>
+			</li>
+		{/if}
+	</ul>
+	{#if notNeededList.length && !v?.excluded && showValues}
+		<section class="cp-not-needed" aria-label="Not needed on this branch">
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showNotNeeded} aria-controls="{uid}-not-needed" onclick={() => (showNotNeeded = !showNotNeeded)}
+				>{notNeededList.length} not needed on this branch <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+			>
+			<ul class="cp-val-list" id="{uid}-not-needed" hidden={!showNotNeeded}>
+				{#each notNeededList as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
+			</ul>
+		</section>
+	{/if}
+{/snippet}
+
+<!-- a card that does not apply keeps its own "values" toggle, out of the way -->
+{#snippet valuesBlock()}
+	{#if rows.length}
+		<section class="cp-values" aria-label="Values">
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
+				>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+			>
+			{@render valueList()}
+		</section>
+	{/if}
+{/snippet}
+
+{#snippet footer()}
+	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed) || anyRows}
+	<div class="cp-aux">
+		{#if anyRows}
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-values-btn" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}>{showValues ? 'Hide values' : valueCount > 0 ? `All values used · ${valueCount}` : 'All values'}</button>
+		{/if}
+		{#if decided && v && !compact}
+			{#if v.caveats.length}
+				<div class="cp-notes" class:cp-aux-open={showNotes}>
+					<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showNotes} aria-controls="{uid}-notes" onclick={() => (showNotes = !showNotes)}
+						>{v.caveats.length} {v.caveats.length === 1 ? 'note' : 'notes'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>
+					<ul class="cp-note-list" id="{uid}-notes" hidden={!showNotes}>
+						{#each v.caveats as c, i (i)}
+							<li>
+								<button type="button" class="cp-note" class:cp-note--open={openNote === i} aria-expanded={openNote === i} onclick={() => (openNote = openNote === i ? null : i)}
+									>{c}</button
+								>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+			{#if src.short}
+				<div class="cp-source" class:cp-aux-open={showSource}>
+					<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showSource} aria-controls="{uid}-src" onclick={() => (showSource = !showSource)}
+						>{src.short}{#if src.more}<span class="cp-muted cp-src-more">+{src.more}</span>{/if}
+						<span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>
+					<ul class="cp-src-list" id="{uid}-src" hidden={!showSource}>
+						{#each src.full as s, i (i)}<li>{s}</li>{/each}
+					</ul>
+				</div>
+			{/if}
+		{/if}
+		{#if !compact && result.reference && !collapsed}
+			<Reference reference={result.reference} />
+		{/if}
+	</div>
+	{#if anyRows}<div class="cp-values-open">{@render valueList()}</div>{/if}
+	{/if}
+	{#if p?.degraded}
+		<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
+	{/if}
+{/snippet}
 
 <div class="cp-pack-body" class:cp-compact={compact}>
 	{#if !p}
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
+		{#if !compact && result.reference}<Reference reference={result.reference} />{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
+		{#if collapsed && reason}
+			<CollapsedRow {reason} {guideline} onConfirm={onEdit} onToggle={toggle} controls="{uid}-body" />
+		{:else}
+		{#if canCollapse}<button type="button" class="rv-btn rv-btn-ghost cp-hide-details" aria-expanded="true" aria-controls="{uid}-body" onclick={toggle}>Hide details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>{/if}
+		<div id="{uid}-body" class="cp-body-inner">
 		{#if p.state === 'does_not_apply'}
 			{#each doubts as d (d.input)}
 				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
 					<p class="cp-p">
 						<Icon name="warn" size={13} />
-						<span><b>{d.label}: {shownValue(d.value)}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+						<span><b>{d.label}: {shownValue(d.value)}</b> (probably from your dictation) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
 					</p>
 					{#if onEdit}
 						<div class="cp-doubt-actions">
@@ -169,191 +339,109 @@
 					{/if}
 				</div>
 			{/each}
-		{/if}
-		{#if p.state !== 'does_not_apply'}
-			{#if status && (blocker === 'question' || (applyOn && onTick))}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
-			<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
-		{/if}
-		<!-- 2. the values -->
-		{#if rows.length}
-			<section class="cp-values" aria-label="Values">
-				{#if v?.excluded}
-					<!-- a card that does not apply keeps its values out of the way -->
-					<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-						>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
-					>
-				{:else}
-					<button type="button" class="cp-link cp-aux-toggle cp-based" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-						>Based on: {based || 'the values'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
-					>
-				{/if}
-				<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
-					{#each shownRows as r (r.input)}
-						<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
-					{/each}
-					{#if naRows.length}
-						{#if showNa}
-							{#each naRows as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
-						{/if}
-						<li class="cp-na-toggle">
-							<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNa} onclick={() => (showNa = !showNa)}
-								>{showNa ? 'hide not applicable' : `+${naRows.length} not applicable`}</button
-							>
-						</li>
-					{/if}
-				</ul>
-			</section>
-		{/if}
-		{#if notNeededList.length && !v?.excluded && showValues}
-			<section class="cp-not-needed" aria-label="Not needed on this branch">
-				<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNotNeeded} aria-controls="{uid}-not-needed" onclick={() => (showNotNeeded = !showNotNeeded)}
-					>{notNeededList.length} not needed on this branch <span class="cp-caret"><Icon name="chev" size={11} /></span></button
-				>
-				<ul class="cp-val-list" id="{uid}-not-needed" hidden={!showNotNeeded}>
-					{#each notNeededList as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
-				</ul>
-			</section>
-		{/if}
-		{#if p.state !== 'does_not_apply'}
-			{#if onEdit}<AnswerChips {chips} bind:editing={editingChip} onAnswer={onEdit} />{/if}
-			{#if next && onEdit}{#key next.input}<NextQuestion ask={next} remaining={remaining(p, edits)} bounded={p.bounded} onAnswer={onEdit} />{/key}{/if}
-		{/if}
-		{#if questions.length && p.state !== 'does_not_apply' && !onEdit}
-			<section class="cp-open-q" aria-label="Still open">
-				<div class="cp-label">Still open</div>
-				<ul class="cp-open-list">
-					{#each questions as q, i (i)}<li>{q}</li>{/each}
-				</ul>
-			</section>
-		{/if}
-
-		<!-- 3. the result, once and live -->
-		{#if decided && v}
-			<section
-				class="cp-verdict"
-				style:--cp-cat={categoryColor(v.category)}
-				style:--cp-cat-text={categoryText(v.category)}
-				data-cat={v.category}
-				data-testid={v.excluded ? 'cp-exclusion' : undefined}
-				aria-label="Verdict"
-				aria-busy={busy}
-			>
-				<p class="cp-p cp-headline">{v.headline}</p>
-				<!-- the action is in the pill; here only what the recommendation adds to it (later steps, conditions) -->
-				{#if recText}<p class="cp-p cp-recommendation">{recText}</p>{/if}
-				{#if v.excluded && v.classification && v.classification !== v.headline}
-					<!-- does not apply: the specific reason leads; the generic exclusion text waits behind "full reason" -->
-					<button type="button" class="cp-link cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
-						>{showMore ? 'hide full reason' : 'full reason'}</button
-					>
-					<p class="cp-p cp-classification" id="{uid}-cls" hidden={!showMore}>{v.classification}</p>
-				{:else if v.classification && v.classification !== v.headline}
-					<p class="cp-p cp-classification" class:cp-clamp={longText && !showMore && !compact} id="{uid}-cls">{v.classification}</p>
-					{#if longText && !compact}
-						<button type="button" class="cp-link cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
-							>{showMore ? 'less' : 'more'}</button
-						>
-					{/if}
-				{/if}
-				<p class="cp-p cp-onvalues" aria-live="polite">{busy ? 'Updating on the new values…' : 'On these values'}</p>
-			</section>
-		{/if}
-		{#if v?.ifApplies}
-			<!-- a scope doubt leads the card; the drafted outcome stays, secondary (controller ruling 2026-10-14) -->
-			<p class="cp-p cp-if-applies" data-testid="cp-if-applies">{v.ifApplies}</p>
-		{/if}
-		{#if !decided && !next && !v?.ifApplies && (likely || (branches.length && decidingQ))}
-			<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
-			     the full list stays behind "show all" -->
-			<section class="cp-likely" aria-label={likely ? 'Most likely' : 'What decides it'}>
-				{#if likely}
-				<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category || 'neutral')} style:--cp-cat-text={categoryText(likely.category || 'neutral')}>
-					<Icon name={icon[likely.category || 'neutral']} size={13} />
-					<span>Most likely: <b>{likely.headline}</b></span>
-					{#if underAssumptions}<span class="cp-chip cp-chip-warn">⚠ under assumptions</span>{/if}
-				</p>
-				{/if}
-				{#if branches.length && decidingQ}
-					<div class="cp-depends">
-						<p class="cp-p">Depends on {decidingQ}</p>
-						<ul class="cp-branches">
-							{#each branches as b, i (i)}
-								<li style:--cp-cat-text={categoryText(b.category || 'neutral')}>
-									<span class="cp-branch-answer">{b.answer}</span><span class="cp-muted" aria-hidden="true">→</span><span class="cp-sr-only">:</span>
-									<b>{b.headline}</b>
-								</li>
-							{/each}
-						</ul>
-					</div>
-				{/if}
-				{#if p.possible.length > 1}
-					<button type="button" class="cp-link cp-possible-toggle" aria-expanded={showPossible} aria-controls="{uid}-possible" onclick={() => (showPossible = !showPossible)}
-						>{showPossible ? 'hide all' : `show all ${p.possible.length}`}</button
-					>
-					<ul class="cp-list cp-possible-list" id="{uid}-possible" hidden={!showPossible}>
-						{#each p.possible as o, i (i)}<li>{o}</li>{/each}
+			<!-- a card that does not apply keeps today's order: its values behind "values", then why -->
+			{@render valuesBlock()}
+			{#if decided && v}{@render verdictBlock(v, false)}{/if}
+			{@render footer()}
+		{:else}
+			<!-- 1. QUESTION: the deciding question leads; answered, its slot becomes the answered line and the recommendation below updates in place -->
+			{#if onEdit && (askChips.length || next)}
+				<section class="cp-sect cp-qslot" data-testid="cp-section" aria-label="Question" bind:clientHeight={slotH} style:min-height={!next && heldH ? `${heldH}px` : undefined}>
+					{#if next}<div class="cp-sect-label" data-testid="cp-section-label">{questionLabel}</div>{/if}
+					<AnswerChips chips={askChips} bind:editing={editingChip} onAnswer={onEdit} />
+					{#if next}{#key next.input}<NextQuestion ask={next} onAnswer={onEdit} />{/key}{/if}
+				</section>
+			{/if}
+			{#if questions.length && !onEdit}
+				<section class="cp-open-q" aria-label="Still open">
+					<div class="cp-label">Still open</div>
+					<ul class="cp-open-list">
+						{#each questions as q, i (i)}<li>{q}</li>{/each}
 					</ul>
-				{/if}
-			</section>
-		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length === 1}
-			<section>
-				<div class="cp-label">Possible</div>
-				<p class="cp-p">{p.possible[0]}</p>
-			</section>
-		{:else if !decided && !cands.length && p.state !== 'does_not_apply' && p.possible.length > 1}
-			<section class="cp-possible">
-				<button type="button" class="cp-link cp-possible-toggle" aria-expanded={showPossible} aria-controls="{uid}-possible" onclick={() => (showPossible = !showPossible)}
-					>{p.possible.length} outcomes still possible — {showPossible ? 'hide' : 'show'}</button
-				>
-				<ul class="cp-list cp-possible-list" id="{uid}-possible" hidden={!showPossible}>
-					{#each p.possible as o, i (i)}<li>{o}</li>{/each}
-				</ul>
-			</section>
-		{/if}
+				</section>
+			{/if}
 
-		{#if p.state !== 'does_not_apply'}
-			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError}
-				onPick={applyOn ? onPick : null} {onApply} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
-		{/if}
+			<!-- 2. RECOMMENDATION: what the card would tell the report, cued (dashed border, ◐ line) while it is provisional -->
+			{#if slotHasRec || next || cands.length || p.possible.length}
+				<section class="cp-sect" data-testid="cp-section" aria-label="Recommendation">
+					<div class="cp-sect-label" data-testid="cp-section-label">RECOMMENDATION</div>
+					{#if decided && v}
+						{@render verdictBlock(v, provisionalCue)}
+					{:else if v?.ifApplies}
+						<p class="cp-p cp-if-applies" class:cp-rec-provisional={provisionalCue} data-testid="cp-if-applies">{v.ifApplies}</p>
+					{:else if likelyBlock}
+						<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
+						     the full list stays behind "show all" -->
+						<section class="cp-likely" class:cp-rec-provisional={provisionalCue} aria-label={likely ? 'Most likely' : 'What decides it'}>
+							{#if likely}
+							<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category || 'neutral')} style:--cp-cat-text={categoryText(likely.category || 'neutral')}>
+								<Icon name={icon[likely.category || 'neutral']} size={13} />
+								<span>Most likely: <b>{likely.headline}</b></span>
+								{#if underAssumptions}<span class="cp-chip cp-chip-warn">⚠ under assumptions</span>{/if}
+							</p>
+							{/if}
+							{#if branches.length && decidingQ}
+								<div class="cp-depends">
+									<p class="cp-p">Depends on {decidingQ}</p>
+									<ul class="cp-branches">
+										{#each branches as b, i (i)}
+											<li style:--cp-cat-text={categoryText(b.category || 'neutral')}>
+												<span class="cp-branch-answer">{b.answer}</span><span class="cp-muted" aria-hidden="true">→</span><span class="cp-sr-only">:</span>
+												<b>{b.headline}</b>
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
+							{#if p.possible.length > 1}
+								<button type="button" class="rv-btn rv-btn-ghost cp-possible-toggle" aria-expanded={showPossible} aria-controls="{uid}-possible" onclick={() => (showPossible = !showPossible)}
+									>{showPossible ? 'hide all' : `show all ${p.possible.length}`}</button
+								>
+								<ul class="cp-list cp-possible-list" id="{uid}-possible" hidden={!showPossible}>
+									{#each p.possible as o, i (i)}<li>{o}</li>{/each}
+								</ul>
+							{/if}
+						</section>
+					{:else if !cands.length && p.possible.length === 1}
+						<p class="cp-p">{p.possible[0]}</p>
+					{:else if !cands.length && p.possible.length > 1}
+						<section class="cp-possible">
+							<button type="button" class="rv-btn rv-btn-ghost cp-possible-toggle" aria-expanded={showPossible} aria-controls="{uid}-possible" onclick={() => (showPossible = !showPossible)}
+								>{p.possible.length} outcomes still possible — {showPossible ? 'hide' : 'show'}</button
+							>
+							<ul class="cp-list cp-possible-list" id="{uid}-possible" hidden={!showPossible}>
+								{#each p.possible as o, i (i)}<li>{o}</li>{/each}
+							</ul>
+						</section>
+					{:else if next}
+						<p class="cp-p cp-no-rec cp-rec-provisional">No recommendation yet — {plural(remaining(p, edits), 'question', 'questions')} to answer</p>
+					{:else if cands.length}
+						<p class="cp-p cp-no-rec">{applyOn && onPick ? 'Choose the outcome that fits below' : `${cands.length} outcomes are still possible — see below`}</p>
+					{/if}
+					{#if provisional && !(cands.length && !slotHasRec && !next && blocker === 'pick')}<p class="cp-p cp-provisional" data-testid="cp-provisional">◐ {provisional}</p>{/if}
+				</section>
+			{/if}
 
-		<!-- 4. notes and source, collapsed -->
-		{#if decided && v && !compact && (v.caveats.length || src.short)}
-			<div class="cp-aux">
-				{#if v.caveats.length}
-					<div class="cp-notes">
-						<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNotes} aria-controls="{uid}-notes" onclick={() => (showNotes = !showNotes)}
-							>{v.caveats.length} {v.caveats.length === 1 ? 'note' : 'notes'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
-						>
-						<ul class="cp-note-list" id="{uid}-notes" hidden={!showNotes}>
-							{#each v.caveats as c, i (i)}
-								<li>
-									<button type="button" class="cp-note" class:cp-note--open={openNote === i} aria-expanded={openNote === i} onclick={() => (openNote = openNote === i ? null : i)}
-										>{c}</button
-									>
-								</li>
-							{/each}
-						</ul>
-					</div>
-				{/if}
-				{#if src.short}
-					<div class="cp-source">
-						<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showSource} aria-controls="{uid}-src" onclick={() => (showSource = !showSource)}
-							>{src.short}{#if src.more}<span class="cp-muted cp-src-more">+{src.more}</span>{/if}
-							<span class="cp-caret"><Icon name="chev" size={11} /></span></button
-						>
-						<ul class="cp-src-list" id="{uid}-src" hidden={!showSource}>
-							{#each src.full as s, i (i)}<li>{s}</li>{/each}
-						</ul>
-					</div>
-				{/if}
-			</div>
+			<!-- 3. WHAT THIS RESTS ON: the values the radiologist did not dictate (every other value waits behind the footer's "All values used") -->
+			{#if check.length}
+				<section class="cp-sect" data-testid="cp-section" aria-label="What this rests on">
+					<div class="cp-sect-label" data-testid="cp-section-label">WHAT THIS RESTS ON</div>
+					<p class="cp-p cp-muted cp-rests-note" data-testid="cp-rests-note">
+						Not verified in your dictation. {applyOn && onTick ? 'Confirm each one, or change it.' : 'Change any that are wrong.'}
+					</p>
+					<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
+				</section>
+			{/if}
+
+			<!-- 4. YOUR REPORT: the outcome pick, the gate note, Apply to report and Not in this report -->
+			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError} {unresolved}
+				onPick={applyOn ? onPick : null} {onApply} {onSeen} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
+
+			<!-- 5. notes and sources: a quiet footer -->
+			{@render footer()}
 		{/if}
-		{#if p.degraded}
-			<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
+		</div>
 		{/if}
-	{/if}
-	{#if !compact && result.reference}
-		<Reference reference={result.reference} />
 	{/if}
 </div>
 
@@ -427,18 +515,39 @@
 		align-self: flex-start;
 		font-size: 0.75rem;
 	}
+	/* the busy note is for screen readers: the live region stays in the tree, off screen */
 	.cp-onvalues {
-		font-size: 0.6875rem;
-		color: var(--rv-muted);
-		opacity: 0.85;
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
 	}
-
+	.cp-body-inner {
+		display: contents;
+	}
 	/* ── 2–3. notes and source: two quiet lines ── */
+	/* notes, sources and Reference: one wrapping row of small buttons; an open one takes the full row */
 	.cp-aux {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 6px;
 		font-size: 0.8125rem;
+	}
+	.cp-aux > :global(*) {
+		min-width: 0;
+	}
+	.cp-aux-open {
+		flex: 1 1 100%;
+	}
+	.cp-values-open {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 	}
 	.cp-aux-toggle {
 		align-self: flex-start;
@@ -581,11 +690,17 @@
 		border-top: 0;
 	}
 	/* the result follows the values under a rule */
-	.cp-values + .cp-verdict,
-	.cp-values + .cp-likely,
-	.cp-open-q + .cp-verdict {
-		padding-top: 10px;
-		border-top: 1px solid var(--rv-border);
+	/* provisional: fully legible, marked by a dashed left border (and the ◐ line beneath) */
+	.cp-rec-provisional {
+		border-left: 2px dashed var(--rv-amber-line);
+		padding-left: 8px;
+	}
+	.cp-provisional {
+		font-size: 0.8125rem;
+		color: var(--rv-amber-text);
+	}
+	.cp-rests-note {
+		font-size: 0.8125rem;
 	}
 	.cp-doubt {
 		display: flex;
@@ -612,10 +727,6 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 6px;
-	}
-	.cp-status {
-		font-size: 0.8125rem;
-		color: var(--rv-muted);
 	}
 	.cp-edit-error {
 		font-size: 0.8125rem;

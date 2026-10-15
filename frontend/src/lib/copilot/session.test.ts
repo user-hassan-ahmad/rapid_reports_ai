@@ -1156,3 +1156,29 @@ describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)',
 		expect(state().applied?.[r].stale).toBeUndefined();
 	});
 });
+
+describe('session: expand (a collapsed guideline the gate opens)', () => {
+	const fl = card({ key: 'fleischner-pulmonary-nodule', name: 'Fleischner 2017', finding_id: 'u1', finding: A, siblings: ['bts-pulmonary-nodule'] });
+	it('sets expanded on a card ref and on a column ref; false collapses again', async () => {
+		const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', finding_id: 'u1', finding: A });
+		await matchA([bts]);
+		s.open(cardRef(bts));
+		api.calls.open[0].resolve(result(bts, preview({})));
+		await flush();
+		expect(state().views[cardRef(bts)].expanded).toBeFalsy();
+		s.expand(cardRef(bts));
+		expect(state().views[cardRef(bts)].expanded).toBe(true);
+		s.expand(cardRef(bts), false);
+		expect(state().views[cardRef(bts)].expanded).toBe(false);
+	});
+	it('a column ref expands that column only', async () => {
+		await matchA([fl]);
+		s.open(cardRef(fl));
+		for (const c of api.calls.open) c.resolve(result(fl, preview({})));
+		await flush();
+		const col = `${cardRef(fl)}#bts-pulmonary-nodule`;
+		s.expand(col);
+		expect(state().views[cardRef(fl)].columns?.['bts-pulmonary-nodule']?.expanded).toBe(true);
+		expect(state().views[cardRef(fl)].columns?.['fleischner-pulmonary-nodule']?.expanded).toBeFalsy();
+	});
+});

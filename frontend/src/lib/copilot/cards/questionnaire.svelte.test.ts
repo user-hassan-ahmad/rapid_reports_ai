@@ -27,22 +27,23 @@ function show(p: Preview, props: Record<string, unknown> = {}) {
 describe('the questionnaire card', () => {
 	it('Check holds the decisive pre-filled value; ✓ ticks it; Apply waits for it', async () => {
 		const h = show(reached());
-		await expect.element(page.getByTestId('cp-status')).toHaveTextContent('Check 1 value to apply');
-		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Type: solid');
+		await expect.element(page.getByTestId('cp-provisional')).toHaveTextContent('Provisional — confirm the 1 value below to use it');
+		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Type');
+		expect(document.querySelector('[data-testid="cp-check-item"] .cp-check-answer')!.textContent).toBe('solid');
 		await expect.element(page.getByRole('button', { name: 'Apply' })).toBeDisabled();
 		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
 		expect(h.onTick).toHaveBeenCalledWith('kind', 'solid');
 	});
 
-	it('ticked: "confirmed by you", Apply enabled and sends', async () => {
+	it('ticked: "Confirmed" replaces the ✓, Apply enabled and sends', async () => {
 		const h = show(reached(), { ticks: { kind: 'solid' } });
-		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('confirmed by you');
+		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Confirmed');
 		await page.getByRole('button', { name: 'Apply' }).click();
 		expect(h.onApply).toHaveBeenCalled();
 	});
 
 	it('a scope doubt keeps Confirm (an answer) and Change', async () => {
-		const h = show(reached({ scope_doubt: ['kind'] }));
+		const h = show(reached({ scope_doubt: ['kind'] }), { expanded: true, onExpand: vi.fn() });
 		await expect.element(page.getByTestId('cp-scope-doubt')).toHaveTextContent('would make BTS 2015 not apply');
 		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
 		expect(h.onEdit).toHaveBeenCalledWith('kind', 'solid');
@@ -54,7 +55,7 @@ describe('the questionnaire card', () => {
 		const h = show(p);
 		await expect.element(page.getByTestId('cp-question')).toHaveTextContent('Growth');
 		await expect.element(page.getByTestId('cp-question')).toHaveTextContent('Decides between: CT at 3 months · PET-CT');
-		await expect.element(page.getByTestId('cp-status')).toHaveTextContent('2 questions to a recommendation');
+		expect(document.querySelector('[data-testid="cp-section-label"]')!.textContent).toBe('QUESTION 1 OF 2');
 		await page.getByRole('button', { name: 'Not known' }).click();
 		expect(h.onEdit).toHaveBeenCalledWith('g', 'Not stated');
 		await page.getByRole('button', { name: 'Yes' }).click();
@@ -82,9 +83,9 @@ describe('the questionnaire card', () => {
 		await expect.element(page.getByTestId('cp-apply')).not.toBeInTheDocument();
 	});
 
-	it('the values wait behind "Based on"', async () => {
+	it('the values wait behind the footer button "All values used"', async () => {
 		show(reached());
-		const t = page.getByRole('button', { name: /^Based on: Size 7 mm/ });
+		const t = page.getByRole('button', { name: /^(All values used|Hide values)/ });
 		await expect.element(t).toHaveAttribute('aria-expanded', 'false');
 		await t.click();
 		await expect.element(t).toHaveAttribute('aria-expanded', 'true');
@@ -116,7 +117,7 @@ describe('the questionnaire card', () => {
 
 	it('an excluded card keeps its scope-doubt banner', async () => {
 		const p = preview({ state: 'does_not_apply', proposal: null, scope_doubt: ['kind'], draft: [draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', options: ['solid', 'subsolid'] })] });
-		show(p);
+		show(p, { expanded: true, onExpand: vi.fn() });
 		await expect.element(page.getByTestId('cp-scope-doubt')).toHaveTextContent('would make');
 	});
 

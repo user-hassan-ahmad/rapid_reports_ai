@@ -13,6 +13,7 @@
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { AppliedRec, StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import RecommendationsSection from './RecommendationsSection.svelte';
+	import FindingMarker from '$lib/copilot/cards/FindingMarker.svelte';
 	import ValueChips from './ValueChips.svelte';
 	import { SIDE_KIND, type NotReported } from './sides';
 	import { openCount as openValueChips } from './values';
@@ -91,6 +92,11 @@
 		recommendations = [],
 		onRecEdit = () => {},
 		onRecDelete = () => {},
+		findingMarks = {},
+		findingGutter = false,
+		onFindingOpen = () => {},
+		activeFinding = null,
+		onFindingHover = () => {},
 		onConfirm,
 		onDeleteRegion = () => {},
 		onAppend = () => {},
@@ -205,6 +211,16 @@
 		recommendations?: AppliedRec[];
 		onRecEdit?: (key: string, text: string) => void;
 		onRecDelete?: (key: string) => void;
+		/** Guideline finding ids (`u<unit>` | `u<unit>.<part>`) to their rail number: a numbered marker in the margin of that
+		 *  unit's line; {} (Copilot off) shows none. A part's id marks its unit's line (parts render as one line). */
+		findingMarks?: Record<string, number>;
+		/** Copilot is on: reserve the marker gutter on finding lines from the start, so text never re-wraps when the match lands. */
+		findingGutter?: boolean;
+		/** The marker button was used: reveal this finding's card in the rail. */
+		onFindingOpen?: (id: string) => void;
+		/** The finding being looked at on either side: its line gets a faint highlight (no layout shift). */
+		activeFinding?: string | null;
+		onFindingHover?: (id: string | null) => void;
 		onConfirm: () => void;
 		/** The walkthrough's last step: Confirm, then Generate. Absent: the last step only confirms. */
 		onConfirmGenerate?: (() => void) | null;
@@ -276,6 +292,18 @@
 	const flatRows = (rows: ViewRow[]): ViewRow[] => rows.flatMap((r) => [r, ...flatRows(r.children)]);
 	// Lines in the order they are shown, for the walkthrough's top-to-bottom order.
 	const shownLines = $derived(flatRows([...(technique?.rows ?? []), ...shown.flatMap((g) => g.rows), ...conclusionRows]));
+	// The first SHOWN row of each unit id carries the finding's marker (a unit that renders as several rows gets one, and
+	// one whose first row sits in a hidden group gets it on its first visible row).
+	const markedRows = $derived.by(() => {
+		const seen = new Set<number>();
+		const out = new Set<ViewRow>();
+		for (const r of shownLines) if (!seen.has(r.unitId)) { seen.add(r.unitId); out.add(r); }
+		return out;
+	});
+	const isFinding = (r: ViewRow) => {
+		const u = units.find((x) => x.id === r.unitId);
+		return !!u && (u.abnormal || !!u.parts?.some((p) => p.abnormal));
+	};
 	const onLine = (c: CheckFlag, r: ViewRow) => r.text.includes(c.quote) || (!!c.other && r.text.includes(c.other));
 	/** The line a check's card opens on: its quote's line, else the other half's. */
 	const cardLine = (c: CheckFlag) => shownLines.find((r) => r.text.includes(c.quote)) ?? shownLines.find((r) => onLine(c, r)) ?? null;
@@ -889,10 +917,16 @@
 {/snippet}
 
 {#snippet line(r: ViewRow, nested: boolean)}
+	{@const fids = Object.keys(findingMarks).filter((id) => id === `u${r.unitId}` || id.startsWith(`u${r.unitId}.`))}
+	{@const lit = !!activeFinding && fids.includes(activeFinding)}
 	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
 	     sentence fades in where it belongs with a soft highlight that fades out. -->
-	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}
-		onmouseleave={() => { if (!walking) hoverOff(); }}>
+	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : lit ? 'bg-violet-400/[0.07]' : ''}" in:fade={{ duration: ms }}
+		data-finding-line={fids.length ? fids.join(' ') : undefined} data-finding-active={fids.length ? String(lit) : undefined}
+		onmouseenter={() => { if (fids.length) onFindingHover(fids[0]); }}
+		onmouseleave={() => { if (fids.length) onFindingHover(null); if (!walking) hoverOff(); }}
+		onfocusin={() => { if (fids.length) onFindingHover(fids[0]); }}
+		onfocusout={(e) => { const host = (e.target as Element | null)?.closest('[data-finding-line]'); if (fids.length && !(host && e.relatedTarget instanceof Node && host.contains(e.relatedTarget))) onFindingHover(null); }}>
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
 				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
@@ -932,6 +966,13 @@
 				<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
 			{/if}
 		</div>
+		{#if (findingGutter && isFinding(r)) || (fids.length && markedRows.has(r))}
+			<!-- Right edge of the line (the side nearest the rail): in the flow, so it never overlaps the text or the edit
+			     and delete controls, and never sits outside the scroller. Reserved from the start while Copilot is on. -->
+			<span class="mt-1 flex min-w-[16px] shrink-0 gap-0.5" data-finding-gutter={findingGutter ? '' : undefined}>
+				{#if fids.length && markedRows.has(r)}{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} onOpen={onFindingOpen} />{/each}{/if}
+			</span>
+		{/if}
 	</li>
 {/snippet}
 

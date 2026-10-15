@@ -13,10 +13,10 @@
 	import type { ActionCategory, Card } from '../types';
 	import CardStatus from './CardStatus.svelte';
 	import AssumedChip from './AssumedChip.svelte';
-	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
+	import { assumptionsOf, categoryColor, pillWord, scopeDoubts, verdictOf } from './format';
+	import { assumedUnticked, collapsible } from './questionnaire';
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import PackBody from './PackBody.svelte';
-	import UnresolvedNote from './UnresolvedNote.svelte';
 	import type { Unresolved } from '../gate';
 	import VerdictPill from './VerdictPill.svelte';
 	import { errorOf, type CardView } from './view';
@@ -39,7 +39,8 @@
 		onSeen = null,
 		onOpen,
 		onClose,
-		onRetry
+		onRetry,
+		onExpand = null
 	}: {
 		card: Card;
 		view: CardView;
@@ -58,12 +59,14 @@
 		onTick?: ((ref: string, input: string, value: string) => void) | null;
 		onPick?: ((ref: string, outcome: string | null) => void) | null;
 		onApply?: ((ref: string) => void) | null;
-		/** The card blocks Confirm (§7.12 item 5): its reason and "Seen, leave as is" lead the body. */
+		/** The card blocks Confirm (§7.12 item 5): its note and "Seen, leave as is" sit above the result. */
 		unresolved?: Unresolved | null;
 		onSeen?: ((key: string) => void) | null;
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
+		/** A card that may not apply is collapsed to one row; this opens or collapses it (view.expanded). */
+		onExpand?: ((ref: string, open: boolean) => void) | null;
 	} = $props();
 
 	const ref = $derived(cardRef(card));
@@ -71,15 +74,21 @@
 	const err = $derived(errorOf(view));
 	const assumed = $derived(assumptions ?? assumptionsOf(p));
 	const verdict = $derived(verdictOf(p, { headline, action, category }));
+	// the head's assumptions chip leaves while the open body shows them in Check (a collapsed row does not)
+	const assumedHead = $derived(assumptions ?? assumedUnticked(p, view.ticks ?? {}));
+	// (only a preview with a draft has a Check zone to duplicate)
+	const bodyShown = $derived(view.open && !!p?.draft?.length && !(collapsible(p) && !view.expanded));
+	// an open card collapsed to its "does this apply?" row says it once there, not in chips on the head
+	const collapsedOpen = $derived(view.open && collapsible(p) && !view.expanded);
 	const hint = $derived(!view.open && err && err !== 'unavailable' ? "Couldn't open · open to retry" : null);
 </script>
 
 {#snippet aside()}
 	<span class="cp-head-marks">
-		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} />{/if}
-		{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
+		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} text={collapsedOpen ? (p?.state === 'does_not_apply' ? "Doesn't apply" : 'Not applied') : view.open ? pillWord(verdict) : null} title={view.open ? null : verdict.pill} />{/if}
+		{#if scopeDoubts(p).length && !collapsedOpen}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
 		<!-- the applicability chip already says why the card is check_first: no second "check first" -->
-		<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />
+		{#if !bodyShown && !collapsedOpen}<AssumedChip assumed={assumedHead} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
 	</span>
 {/snippet}
 
@@ -89,7 +98,6 @@
 
 {#snippet body()}
 	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
-	{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
 	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
 	{#if !err && view.result}
 		<PackBody
@@ -110,6 +118,10 @@
 			onTick={onTick ? (input, value) => onTick(ref, input, value) : null}
 			onPick={onPick ? (outcome) => onPick(ref, outcome) : null}
 			onApply={onApply ? () => onApply(ref) : null}
+			expanded={!!view.expanded}
+			onExpand={onExpand ? (open) => onExpand(ref, open) : null}
+			{unresolved}
+			{onSeen}
 		/>
 	{/if}
 {/snippet}

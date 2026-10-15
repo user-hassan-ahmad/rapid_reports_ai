@@ -85,6 +85,8 @@ export interface CopilotSession {
 	other(): void;
 	/** "Seen, leave as is" on a card or sibling column (gate key): held until its verdict changes. */
 	seen(ref: string): void;
+	/** Opens (or collapses) a guideline that is collapsed because it may not apply; the gate opens it. */
+	expand(ref: string, open?: boolean): void;
 	/** The radiologist affirms a guessed value (spec §6.2): kept only while that value stands. */
 	tick(ref: string, input: string, value: string): void;
 	/** Picks one of the outcomes still possible (null clears it). */
@@ -902,6 +904,13 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const t = targets(snapshot()).find((x) => x.key === ref);
 			if (!t) return;
 			seen = { ...seen, [ref]: verdictKey(t.preview) };
+			publish();
+		},
+		expand(ref, open = true) {
+			if (!live()) return;
+			const t = targetOf(ref);
+			if (!t) return;
+			t.set({ expanded: open });
 			publish();
 		},
 		tick,

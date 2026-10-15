@@ -14,7 +14,7 @@
 	 * A row with a quote or reasons is focusable (keyboard, or a tap) and shows them in a bubble; screen readers get
 	 * them as its description.
 	 */
-	import { WHY_EXAM, shownValue, type ValueRow } from './format';
+	import { WHY_EXAM, displayValue, type ValueRow } from './format';
 	import ValueEdit from './ValueEdit.svelte';
 
 	/** `onEdit` (Slice B2) makes the value changeable: a "Change" button opens ValueEdit in place. N/A never is. */
@@ -61,11 +61,11 @@
 		{:else if row.state === 'asked'}
 			<span class="cp-muted">not stated</span>
 		{:else if row.state === 'assumed'}
-			<b class="cp-assumed-val">{shownValue(row.value)}</b>
+			<b class="cp-assumed-val">{displayValue(row.value, row.basis)}</b>
 		{:else if prefilled}
-			<b class="cp-prefill">{shownValue(row.value)}</b>
+			<b class="cp-prefill">{displayValue(row.value, row.basis)}</b>
 		{:else if row.value}
-			<b>{shownValue(row.value)}</b>
+			<b>{displayValue(row.value, row.basis)}</b>
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}
@@ -82,14 +82,14 @@
 		{#if row.byExam && !editing}
 			<span class="cp-chip cp-val-chip">set by the exam</span>
 		{/if}
-		{#if prefilled && !editing}
+		{#if prefilled && !row.byExam && !row.basis && !editing}
 			<!-- no native title: the row's own bubble shows the reasons (a title showed them twice, Hassan 2026-10-13) -->
-			<span class="cp-chip cp-val-chip cp-chip-why">pre-filled</span>
+			<span class="cp-chip cp-val-chip cp-chip-why">probably from your dictation</span>
 		{/if}
 		{#if editable && !editing}
 			<button
 				type="button"
-				class="cp-link cp-val-change"
+				class="rv-btn rv-btn-ghost cp-val-change"
 				aria-label={`${row.state === 'asked' ? 'Answer' : 'Change'} ${row.label}`}
 				onclick={(e) => (e.stopPropagation(), (editing = true))}>{row.state === 'asked' ? 'Answer' : 'Change'}</button
 			>
@@ -98,7 +98,7 @@
 	{#if described}
 		<span class="cp-quote" id={descId}>
 			{#if row.quote}<span class="cp-quote-text">“{row.quote}”</span>{/if}
-			{#if prefilled}<span class="cp-why">Pre-filled: {reasons}</span>{/if}
+			{#if prefilled}<span class="cp-why">Not verified: {reasons}</span>{/if}
 		</span>
 	{/if}
 </li>

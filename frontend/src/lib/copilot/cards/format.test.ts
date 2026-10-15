@@ -188,3 +188,36 @@ describe('shownValue: a stored option id shown as words', () => {
 		expect(verdictOf(p)?.headline).toBe('Check: Growth — Diameter clear growth');
 	});
 });
+
+import { pillWord, restates } from './format';
+describe('calmer card helpers', () => {
+	it('restates: only an exact repeat of the headline (after the guideline prefix) is hidden', () => {
+		expect(restates('BTS 2015 · Clear growth on diameter measurement', 'Clear growth on diameter measurement')).toBe(true);
+		expect(restates('BTS 2015 · Solid nodule', 'solid nodule')).toBe(true);
+		expect(restates('BTS 2015 · Clear growth on diameter measurement', 'Clear growth')).toBe(false);
+		expect(restates('BTS 2015 · Solid nodule 6-8 mm', 'Solid nodule')).toBe(false);
+		expect(restates('BTS 2015 · part-solid nodule', 'Solid nodule')).toBe(false);
+		expect(restates('BTS 2015 · Solid nodule 6-8 mm in a current smoker', 'Solid nodule')).toBe(false);
+		expect(restates('', 'x')).toBe(false);
+	});
+	it('pillWord: the category word for a decided outcome; none for the states that already read as words', () => {
+		const v = (category: string, over = {}) => ({ category, pill: 'x', recommendation: '', headline: '', action: '', classification: '', caveats: [], citations: [], ...over }) as never;
+		expect(pillWord(v('none'))).toBe('No action');
+		expect(pillWord(v('surveillance'))).toBe('Follow-up');
+		expect(pillWord(v('workup'))).toBe('Investigate');
+		expect(pillWord(v('not_applicable', { excluded: true }))).toBeNull();
+		expect(pillWord(v('workup', { tentative: true }))).toBeNull();
+		expect(pillWord(v('open'))).toBeNull();
+		expect(pillWord(v('not_applicable'))).toBeNull(); // an outcome's own not_applicable keeps its action text
+	});
+});
+
+import { displayValue } from './format';
+describe('displayValue: durations as months', () => {
+	it('60 days or more is months, with the date when the basis names one; under 60 stays', () => {
+		expect(displayValue('120 days', 'from the CT of 12 Mar 2025')).toBe('4 months (since Mar 2025)');
+		expect(displayValue('90 days')).toBe('3 months');
+		expect(displayValue('59 days', 'from the CT of 12 Mar 2025')).toBe('59 days');
+		expect(displayValue('7 mm')).toBe('7 mm');
+	});
+});

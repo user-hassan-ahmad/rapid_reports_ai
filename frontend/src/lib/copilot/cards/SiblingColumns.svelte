@@ -11,11 +11,11 @@
 	import type { Card } from '../types';
 	import AssumedChip from './AssumedChip.svelte';
 	import CardStatus from './CardStatus.svelte';
-	import { assumptionsOf, columnRef, columnTitles, scopeDoubts, verdictOf } from './format';
+	import { columnRef, columnTitles, pillWord, scopeDoubts, verdictOf } from './format';
 	import VerdictPill from './VerdictPill.svelte';
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
+	import { assumedUnticked, collapsible } from './questionnaire';
 	import PackBody from './PackBody.svelte';
-	import UnresolvedNote from './UnresolvedNote.svelte';
 	import type { Unresolved } from '../gate';
 	import { closedView, errorOf, type CardView, type ColumnView } from './view';
 
@@ -30,6 +30,7 @@
 		onTick = undefined,
 		onPick = undefined,
 		onApply = undefined,
+		onExpand = undefined,
 		unresolved = {},
 		onSeen = null,
 		onOpen,
@@ -53,6 +54,8 @@
 		onTick?: (ref: string, input: string, value: string) => void;
 		onPick?: (ref: string, outcome: string | null) => void;
 		onApply?: (ref: string) => void;
+		/** Opens or collapses a column that may not apply (view.expanded), by columnRef. */
+		onExpand?: (ref: string, open: boolean) => void;
 		/** Columns that block Confirm (§7.12 item 5), by columnRef: each carries its reason and "Seen, leave as is". */
 		unresolved?: Record<string, Unresolved>;
 		onSeen?: ((key: string) => void) | null;
@@ -72,7 +75,9 @@
 	const CARD_CHROME_PX = 34; // the GlCard body's left and right padding
 	const stacked = $derived(layout === 'stacked' || (layout === 'auto' && width > 0 && (width - CARD_CHROME_PX) / cols.length < MIN_COLUMN_PX));
 	// stacked: every guideline at full width, one under the other, none chosen (§7.1); columns: a title expands one
-	const shown = $derived(!stacked && chosen ? cols.filter((c) => c.key === chosen) : cols);
+	// applicable guidelines first, those that may not apply (collapsed rows) after them; otherwise in pack order
+	const ordered = $derived([...cols.filter((c) => !collapsible(colView(c.key).result?.preview)), ...cols.filter((c) => collapsible(colView(c.key).result?.preview))]);
+	const shown = $derived(!stacked && chosen ? ordered.filter((c) => c.key === chosen) : ordered);
 </script>
 
 {#snippet column(c: { key: string; title: string }, full: boolean)}
@@ -81,13 +86,15 @@
 	<div class="cp-col" class:cp-col--stacked={stacked} data-key={c.key}>
 		{#if stacked}
 			{@const p = cv.result?.preview ?? null}
-			{@const assumed = assumptionsOf(p)}
+			{@const assumed = assumedUnticked(p, cv.ticks ?? {})}
+			{@const collapsedCol = collapsible(p) && !cv.expanded}
+			{@const bodyShown = !!p?.draft?.length && !collapsedCol}
 			<div class="cp-col-line">
 				<span class="cp-col-name">{c.title}</span>
 				<span class="cp-col-marks">
-					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} />{/if}
-					{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
-					<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />
+					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} text={collapsedCol ? (p?.state === 'does_not_apply' ? "Doesn't apply" : 'Not applied') : pillWord(verdictOf(p))} />{/if}
+					{#if scopeDoubts(p).length && !collapsedCol}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
+					{#if !bodyShown && !collapsedCol}<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />{/if}
 				</span>
 			</div>
 		{:else}
@@ -99,7 +106,6 @@
 				onclick={() => (chosen = chosen === c.key ? null : c.key)}>{c.title}</button
 			>
 		{/if}
-		{#if unresolved[columnRef(card, c.key)]}<UnresolvedNote item={unresolved[columnRef(card, c.key)]} {onSeen} />{/if}
 		<CardStatus loading={cv.loading && !cv.result} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
 		{#if !err && cv.result}
 			<PackBody
@@ -119,6 +125,10 @@
 				onTick={onTick && (full || stacked) ? (input, value) => onTick(columnRef(card, c.key), input, value) : null}
 				onPick={onPick && (full || stacked) ? (outcome) => onPick(columnRef(card, c.key), outcome) : null}
 				onApply={onApply && (full || stacked) ? () => onApply(columnRef(card, c.key)) : null}
+				expanded={!!cv.expanded}
+				onExpand={onExpand ? (open) => onExpand(columnRef(card, c.key), open) : null}
+				unresolved={unresolved[columnRef(card, c.key)] ?? null}
+				{onSeen}
 			/>
 		{/if}
 	</div>
@@ -142,9 +152,9 @@
 			{@const vd = verdictOf(cp)}
 			<!-- the same marks as the open column line: a collapsed card never hides a doubt or an assumption -->
 			<span class="cp-sib-pill"
-				><span class="cp-muted">{c.title}</span>{#if vd}<VerdictPill verdict={vd} busy={colView(c.key).loading && !!colView(c.key).result} />{/if}
+				><span class="cp-muted">{c.title}</span>{#if vd}<VerdictPill verdict={vd} busy={colView(c.key).loading && !!colView(c.key).result} title={vd.pill} />{/if}
 				{#if scopeDoubts(cp).length}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
-				<AssumedChip assumed={assumptionsOf(cp)} checkFirst={cp?.state === 'check_first' && !scopeDoubts(cp).length} /></span
+				<AssumedChip assumed={assumedUnticked(cp, colView(c.key).ticks ?? {})} checkFirst={cp?.state === 'check_first' && !scopeDoubts(cp).length} /></span
 			>
 		{/each}
 	</div>
