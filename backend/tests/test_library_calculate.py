@@ -566,3 +566,31 @@ def test_a_free_number_with_nothing_to_flip_to_is_not_weighed(toy):
     t = E.evaluate(e, base)
     assert t.outcome == "none"
     assert PP._decisive(e, t, base, "age", base["age"], PP._Evals(e), False) is None
+
+
+# Spec 2026-10-14 §4.4: several outcomes left with no question: the radiologist may pick one with a complete sentence
+def test_candidates_list_the_outcomes_still_possible_with_their_sentence_when_complete(toy, toy_entry):
+    import copy
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                     # noqa: E731
+    s = PP.Settlement(values={"kind": R("solid", "solid"), "size": R(7.0, "7 mm")})
+    p = PP.finish(toy_entry, s, {}, None, [])                                     # risk unknown: ct12 or ct6
+    assert p.draft_outcome is None and [c.outcome for c in p.candidates] == ["ct12", "ct6"]
+    assert all(c.proposal is None for c in p.candidates)                          # both texts cite {risk}
+    assert [c.headline for c in p.candidates] == ["Solid nodule, low risk", "Solid nodule, high risk"]
+    raw = copy.deepcopy(toy)
+    next(o for o in raw["outcomes"] if o["id"] == "ct6")["classification"] = "solid nodule {size_band}, high risk"
+    e = Entry.model_validate(raw)
+    p = PP.finish(e, s, {}, None, [])
+    by = {c.outcome: c for c in p.candidates}
+    assert by["ct12"].proposal is None and by["ct6"].proposal.recommendation == "CT at 6 months"
+    assert by["ct6"].proposal.classification.endswith("solid nodule 6-8 mm, high risk")
+    c = PP.calculate(e, s, {"kind": "solid", "size": "7 mm"}, None, [], "b1")
+    assert c.outcome is None and [x.outcome for x in c.candidates] == ["ct12", "ct6"]
+
+
+def test_no_candidates_once_an_outcome_is_reached_or_excluded(toy_entry):
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                     # noqa: E731
+    s = PP.Settlement(values={"kind": R("solid", "solid"), "size": R(7.0, "7 mm")})
+    assert PP.finish(toy_entry, s, {"risk": "high"}, None, []).candidates == []
+    assert PP.calculate(toy_entry, s, {"kind": "solid", "size": "7 mm", "risk": "high"}, None, [], "b1").candidates == []

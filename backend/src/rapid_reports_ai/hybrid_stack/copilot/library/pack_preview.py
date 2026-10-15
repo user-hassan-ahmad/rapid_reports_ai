@@ -30,7 +30,7 @@ from ....report_reconcile import QWEN
 from .. import jev as J
 from .. import preview as P
 from .. import registry as R
-from ..types import (Assumption, Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
+from ..types import (Assumption, Branch, Calculation, Candidate, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
                      ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
                      Source)
 from . import dates as DT
@@ -609,6 +609,21 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
     return [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
 
 
+def _candidates(e: Entry, t: engine.Trace, sources: list[dict]) -> list[Candidate]:
+    """The outcomes still possible, in the trace's order, each with its sentence when it renders complete (spec
+    2026-10-14 §4.4). None once an outcome is reached; never does_not_apply (an exclusion is not applied)."""
+    if t.outcome is not None:
+        return []
+    out = []
+    for oid in t.possible:
+        o = e.outcome(oid) if oid != DOES_NOT_APPLY else None
+        if o is None:
+            continue
+        out.append(Candidate(outcome=oid, headline=o.headline or engine.PH.sub("…", engine.render(e, t, o.classification)),
+                             category=o.category or "", proposal=_outcome_text(e, t, sources, oid)))
+    return out
+
+
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
            degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
            doubt: list[str] | None = None, signs: dict[str, InputValue] | None = None,
@@ -636,6 +651,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
                    assumptions=list(assumed or []), assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
                    most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
+                   candidates=_candidates(e, t, sources),
                    exclusion_reason=reason if t.outcome == DOES_NOT_APPLY else None,
                    exclusion=exclusion, state=state, possible=possible, bounded=t.bounded,
                    asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
@@ -998,7 +1014,8 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
             logger.error("[library.calculate] %s exclusion reason failed: %s", e.key, ex)
         text = _exclusion_text(e, t, sources, reason, text)
     out = Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
-                      possible=_possible(e, t), needed=list(t.needed), values=used, scope_doubt=doubt,
+                      possible=_possible(e, t), candidates=_candidates(e, t, sources), needed=list(t.needed), values=used,
+                      scope_doubt=doubt,
                       trace=t.model_dump(mode="json") if t.outcome is not None else None, pack=e.key, bundle=bundle)
     try:                                              # the extras fail open: the bare Calculation stands (M2)
         ev = _Evals(e)
