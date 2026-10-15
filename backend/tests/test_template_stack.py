@@ -51,17 +51,33 @@ def test_conclusion_and_removed_sentences_are_carried():
 
 def test_dictated_findings_win_over_a_removed_sentence():
     """Fidelity Q3: a DO NOT ASSERT line never removes or rewords a FINDINGS statement, even one about the same
-    structure under another name or with a value; it forbids only the removed wording where nothing dictated says it."""
+    structure; it forbids only the removed wording where nothing dictated says it."""
     b = stack_brief(LEAN, "", ["No pericardial effusion."])
-    removed = b.split("## Removed by the Radiologist", 1)[1]
-    rule = removed.split('- DO NOT ASSERT: "', 1)[0]
-    assert "every statement in the findings input" in rule.lower() and "same structure" in rule
+    head, removed = b.split("## Removed by the Radiologist\n", 1)
+    rule, bullets = removed.split('- DO NOT ASSERT: "', 1)
+    assert rule.strip() and not rule.lstrip().startswith("-")          # the rule sits between heading and bullets
+    assert rule.startswith("FINDINGS statements always win") and "Dictated findings" not in rule
+    assert "same structure" in rule and "whether it names that structure differently or adds a value" in rule
     assert "never removes, shortens or rewords" in rule and "where no FINDINGS statement says it" in rule
 
 
+def test_the_findings_inputs_own_do_not_assert_line_is_not_a_statement():
+    rule = stack_brief(LEAN, "", ["X."]).split("## Removed by the Radiologist\n", 1)[1].split("- DO NOT ASSERT", 1)[0]
+    assert "except its own DO NOT ASSERT line" in rule
+    assert "DO NOT ASSERT line excepted" in g.VERIFICATION_CHECKLIST_STACK
+
+
+def test_each_findings_statement_keeps_its_own_words():
+    rule = stack_brief(LEAN, "", ["X."]).split("## Removed by the Radiologist\n", 1)[1].split("- DO NOT ASSERT", 1)[0]
+    assert "written in its own words" in rule and "removed sentence's wording is never used to express it" in rule
+
+
 def test_the_stack_checklist_lets_dictated_findings_win():
-    line = next(l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if "DO NOT ASSERT" in l)
-    assert "in any wording" in line and "FINDINGS statement" in line and "same structure" in line
+    lines = [l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if "DO NOT ASSERT" in l or "same structure" in l]
+    no_assert = next(l for l in lines if l.startswith("- No DO NOT ASSERT statement"))
+    stays = next(l for l in lines if l.startswith("- Every FINDINGS statement stays"))
+    assert "in any wording" in no_assert and "unless a FINDINGS statement says it" in no_assert
+    assert "same structure" in stays and "own words" in stays and "same structure" not in no_assert
 
 
 def test_no_conclusion_or_removals_no_sections():

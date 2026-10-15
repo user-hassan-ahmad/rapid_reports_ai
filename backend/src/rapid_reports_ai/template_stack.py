@@ -40,10 +40,12 @@ MISSING_VALUES_RULE = (
 # must never resolve "every FINDINGS statement appears" against "no DO NOT ASSERT statement appears" by dropping a
 # dictated statement about the same structure (fidelity track Q3, 2026-10-15).
 REMOVED_RULE = (
-    "The radiologist removed these default sentences. Dictated findings always win: every statement in the FINDINGS "
-    "input appears with its meaning unchanged, even one about the same structure as a removed sentence, under "
-    "another name or with a value. A DO NOT ASSERT line never removes, shortens or rewords a FINDINGS statement; it "
-    "forbids only the removed sentence itself, in any wording, where no FINDINGS statement says it.")
+    "FINDINGS statements always win over these removed sentences. Every statement in the FINDINGS input except its "
+    "own DO NOT ASSERT line appears with its meaning unchanged, even one about the same structure as a removed "
+    "sentence, whether it names that structure differently or adds a value. Each FINDINGS statement is written in "
+    "its own words: a removed sentence's wording is never used to express it. A DO NOT ASSERT line never removes, "
+    "shortens or rewords a FINDINGS statement; it forbids only the removed sentence itself, in any wording, where no "
+    "FINDINGS statement says it.")
 
 
 def _strip(sheet: str) -> List[str]:
