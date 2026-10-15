@@ -138,13 +138,23 @@ def empty() -> dict:
 _SALT = re.compile(r"[0-9a-f]{8}")
 
 
+def _well_formed(uid, e) -> bool:
+    """A stored unit rebind and the confirms can read: a known kind and prefix, identity values str or list[str], a
+    str text_hash and (when present) a str text."""
+    if not (isinstance(uid, str) and isinstance(e, dict) and e.get("kind") in KINDS
+            and uid.startswith(PREFIX[e["kind"]]) and isinstance(e.get("identity"), dict)
+            and isinstance(e.get("text_hash"), str) and isinstance(e.get("text", ""), str)):
+        return False
+    return all(isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))
+               for v in e["identity"].values())
+
+
 def load(raw) -> dict:
-    """A stored registry (a deep copy, its salt kept), or an empty one when absent or unreadable (never raises)."""
+    """A stored registry (a deep copy, its salt kept), or an empty one when absent or unreadable (never raises). A
+    malformed unit (_well_formed) is dropped: its lines get new uids, never a crash (end review I2)."""
     if not isinstance(raw, dict) or not isinstance(raw.get("units"), dict):
         return empty()
-    good = {u: e for u, e in raw["units"].items()
-            if isinstance(u, str) and isinstance(e, dict) and e.get("kind") in KINDS
-            and isinstance(e.get("identity"), dict) and u.startswith(PREFIX[e["kind"]])}
+    good = {u: e for u, e in raw["units"].items() if _well_formed(u, e)}
     out = {"v": REGISTRY_VERSION, "units": copy.deepcopy(good)}
     if isinstance(raw.get("salt"), str) and _SALT.fullmatch(raw["salt"]):
         out["salt"] = raw["salt"]

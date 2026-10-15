@@ -1950,7 +1950,7 @@ async def normal_confirm_endpoint(
     row.template_config = {**cfg, "normal_confirms": {**confirms, group.id: rec}}
     flag_modified(row, "template_config")
     db.commit()
-    return {"success": True, "confirm": rec, "state": tnc.VALID}
+    return {"success": True, "confirm": rec, "state": tnc.confirm_state(group, rec, cfg.get("line_registry"))}
 
 
 @app.delete("/api/templates/{template_id}")

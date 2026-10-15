@@ -113,7 +113,7 @@ def test_units_lists_every_line_bound_unit_parents_first():
 
 def test_load_drops_malformed_units_and_never_raises():
     assert tlr.load(None) == tlr.empty() and tlr.load("x") == tlr.empty()
-    raw = {"v": 1, "units": {"n_aaaaaa": {"kind": "normal", "identity": {}}, "bad": {"kind": "normal", "identity": {}},
+    raw = {"v": 1, "units": {"n_aaaaaa": {"kind": "normal", "identity": {}, "text_hash": "sha256:x"}, "bad": {"kind": "normal", "identity": {}},
                              "g_bbbbbb": {"kind": "nope", "identity": {}}, "f_cccccc": "x"}, "salt": "0a1b2c3d"}
     assert list(tlr.load(raw)["units"]) == ["n_aaaaaa"] and tlr.load(raw)["salt"] == "0a1b2c3d"
     assert "salt" not in tlr.load({**raw, "salt": "not hex!"})
@@ -442,3 +442,25 @@ def test_the_same_structure_under_another_side_never_shares_a_slot():
         "NORMAL [left kidney]", "NORMAL [right kidney]")
     _, rep = _bind(b, reg)
     assert normal in rep["gone"]
+
+
+# ── a malformed stored registry never breaks a save (end review I2) ──────────────────────────────────────────────
+
+@pytest.mark.parametrize("unit", [
+    {"kind": "section", "identity": {"name": 5}, "status": "live", "text_hash": "sha256:x"},
+    {"kind": "rule", "identity": {"items": 7}, "status": "live", "text_hash": "sha256:x"},
+    {"kind": "rule", "identity": {"items": ["a", 3]}, "status": "live", "text_hash": "sha256:x"},
+    {"kind": "section", "identity": {"name": "TECHNIQUE"}, "status": "live"},
+    {"kind": "section", "identity": {"name": "TECHNIQUE"}, "status": "live", "text_hash": 3},
+    {"kind": "section", "identity": {"name": "TECHNIQUE"}, "status": "live", "text_hash": "sha256:x", "text": 4},
+])
+def test_load_drops_a_unit_with_malformed_identity_values_or_no_text_hash(unit):
+    uid = tlr.PREFIX[unit["kind"]] + "aaaaaa"
+    assert tlr.load({"v": 1, "units": {uid: unit}})["units"] == {}
+    reg, rep = tlr.rebind({"v": 1, "units": {uid: unit}}, _st(LEDGER_SHEET), now="T")   # never raises
+    assert uid not in reg["units"] and rep["gone"] == []
+
+
+def test_load_keeps_a_well_formed_unit():
+    reg = tlr.rebind(None, _st(LEDGER_SHEET), now="T")[0]
+    assert tlr.load(reg)["units"] == reg["units"]

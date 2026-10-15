@@ -95,3 +95,15 @@ def test_a_renamed_group_is_stale_even_when_every_sentence_carried():
         assert (g2.id, g2.units) == (g.id, g.units)                   # every sentence identical, every uid kept
         assert all(reg2["units"][u]["text_hash"] == reg["units"][u]["text_hash"] for u in g.units)
         assert tnc.confirm_state(g2, rec, reg2) == "stale"
+
+
+def test_a_unit_without_text_hash_is_never_confirmable_and_never_crashes():
+    reg = _reg(LEDGER_SHEET)
+    g = _groups(LEDGER_SHEET, reg)[0]
+    bad = {**reg, "units": {**reg["units"], g.units[0]: {k: v for k, v in reg["units"][g.units[0]].items()
+                                                         if k != "text_hash"}}}
+    rec = tnc.record(g, bad, sheet_rev=1, sheet_hash="h", user_id="u")
+    assert g.units[0] not in rec["units"]
+    assert tnc.confirm_state(g, rec, bad) == tnc.STALE
+    good = tnc.record(g, reg, sheet_rev=1, sheet_hash="h", user_id="u")
+    assert tnc.confirm_state(g, good, bad) == tnc.STALE

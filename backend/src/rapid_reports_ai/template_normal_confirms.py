@@ -106,9 +106,9 @@ def groups(st, sheet: str, registry) -> List[Group]:
 
 def record(group: Group, registry, *, sheet_rev: int, sheet_hash: str, user_id: str,
            now: Optional[str] = None) -> dict:
-    """The confirm record of one group, its units' text_hash read from the stored registry."""
-    units = tlr.load(registry)["units"]
-    return {"group": group.id, "label": group.label, "units": {u: units[u]["text_hash"] for u in group.units},
+    """The confirm record of one group, its units' text_hash read from the stored registry. A unit the registry
+    cannot vouch for (absent or malformed) is left out, so the record is never valid (confirm_state)."""
+    return {"group": group.id, "label": group.label, "units": _hashes(group, registry),
             "sheet_rev": sheet_rev, "sheet_hash": sheet_hash, "group_name": group.name, "user_id": user_id,
             "at": now or datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
@@ -120,9 +120,14 @@ def confirm_state(group: Optional[Group], rec: Optional[dict], registry) -> str:
         return MISSING
     if group is None or rec.get("group_name") != group.name:   # a renamed paragraph or section (decision 5)
         return STALE
-    units = tlr.load(registry)["units"]
-    now = {u: units[u]["text_hash"] for u in group.units if units.get(u, {}).get("status") == "live"}
+    now = _hashes(group, registry)
     return VALID if len(now) == len(group.units) and rec.get("units") == now else STALE
+
+
+def _hashes(group: Group, registry) -> Dict[str, str]:
+    """{uid: text_hash} of the group's units that are live and well formed in `registry` (tlr.load drops the rest)."""
+    units = tlr.load(registry)["units"]
+    return {u: units[u]["text_hash"] for u in group.units if units.get(u, {}).get("status") == "live"}
 
 
 def confirm_states(st, sheet: str, registry, confirms) -> Dict[str, str]:

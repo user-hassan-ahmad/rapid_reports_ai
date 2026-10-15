@@ -449,3 +449,18 @@ async def test_persist_strips_client_server_written_keys_and_keeps_the_stored_on
     stored = {**first, "uncertain": [{"uid": "kept"}], "normal_confirms": {"g": {"kept": True}}}
     again = await S.persist_sheet(client, stored, "chat", now="T")
     assert again.config["uncertain"] == [{"uid": "kept"}] and again.config["normal_confirms"] == {"g": {"kept": True}}
+
+
+async def test_a_registry_error_starts_a_fresh_registry_and_never_fails_the_save(no_jev, monkeypatch):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    real = tlr.rebind
+
+    def boom(registry, st, carried=None, *, now=None):
+        if tlr.load(registry)["units"]:
+            raise TypeError("malformed registry")
+        return real(registry, st, carried, now=now)
+    monkeypatch.setattr(tlr, "rebind", boom)
+    edited = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n', "")
+    p = await S.persist_sheet(_cfg(edited), first, "chat", now="T")
+    assert p.outcome.status == "saved" and p.config["sheet_rev"] == 2
+    assert len(p.config["line_registry"]["units"]) == 9 and len(p.report["new"]) == 9

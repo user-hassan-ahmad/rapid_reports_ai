@@ -338,8 +338,11 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
     previous = stored.get("skill_sheet") or ""
     registry = tlr.load(stored.get("line_registry"))
     if origin == "rebuild" and ledger:
-        logger.info("[line-registry] rebuild resolution %s", tla.uid_share(ledger, config.get("skill_sheet") or "",
-                                                                          registry))
+        try:   # a logged metric: never fails the save
+            logger.info("[line-registry] rebuild resolution %s",
+                        tla.uid_share(ledger, config.get("skill_sheet") or "", registry))
+        except Exception as e:
+            logger.error("[line-registry] rebuild resolution failed: %s: %s", type(e).__name__, str(e)[:200])
     out = await vet_sheet(config.get("skill_sheet") or "", origin=origin, previous=previous, ledger=ledger,
                           registry=registry)
     if out.status == "refused":
@@ -354,7 +357,12 @@ async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Ori
     report: dict = {}
     if tsg.is_grammar_sheet(out.sheet):
         st = tsg.parse_sheet(out.sheet, mode="template").structure
-        registry, report = tlr.rebind(registry, st, out.carried, now=now)
+        try:
+            registry, report = tlr.rebind(registry, st, out.carried, now=now)
+        except Exception as e:   # a registry code cannot read never makes a template unsaveable (end review I2)
+            logger.error("[line-registry] rebind failed, starting a fresh registry: %s: %s", type(e).__name__,
+                         str(e)[:200])
+            registry, report = tlr.rebind(None, st, None, now=now)
         cfg["line_registry"] = registry
         if ledger is not None:
             cfg["decisions"] = tla.stamp_uids(out.ledger, st, registry)
