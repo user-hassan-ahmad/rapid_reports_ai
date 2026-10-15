@@ -224,7 +224,7 @@ describe('buttons, not bare links', () => {
 	it('the toggles are buttons in the card style', async () => {
 		const p = reached({ draft_outcome: outcome({ ...rec(), caveats: ['A note'], citations: [{ source: 'S1', title: 'Guideline', edition: '2017', page: 3 }] }) });
 		show(p, { ticks: { kind: 'solid' } });
-		for (const name of [/^Read from your dictation/, /note/, /Guideline/]) await expect.element(page.getByRole('button', { name }).first()).toHaveClass('rv-btn');
+		for (const name of [/^All values used/, /note/, /Guideline/]) await expect.element(page.getByRole('button', { name }).first()).toHaveClass('rv-btn');
 		expect(document.querySelectorAll('.cp-link').length).toBe(0);
 		cleanup();
 		show(preview({ ...reached(), scope_doubt: ['kind'], state: 'check_first' }));
@@ -289,24 +289,6 @@ describe('clarity polish', () => {
 		await expect.element(page.getByRole('button', { name: 'Correct: Growth' })).toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: "That's not right — apply BTS 2015" })).toHaveAttribute('aria-label', "That's not right — apply BTS 2015");
 		expect(page.getByRole('button', { name: 'Show details' }).element().querySelector('svg')).toBeNull();
-	});
-
-	it('the values toggle has two lines: read from the dictation, then the non-decisive guesses', async () => {
-		const p = reached({
-			draft: [
-				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
-				draft({ input: 'phase', label: 'Phase', state: 'prefilled', value: 'unenhanced', by: 'exam', decisive: false }),
-				draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false }),
-				draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', decisive: true })
-			]
-		});
-		show(p);
-		const t = page.getByRole('button', { name: /^Read from your dictation/ }).element();
-		const lines = [...t.querySelectorAll('.cp-based-line')].map((e) => e.textContent!.trim());
-		expect(lines).toEqual(['Read from your dictation: Size 7 mm; Set by the exam: Phase unenhanced', 'Also used (not decisive): Smoker No']);
-		cleanup();
-		show(reached({ draft: [draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false })] }));
-		await expect.element(page.getByRole('button', { name: /^Also used \(not decisive\): Smoker No/ })).toBeInTheDocument();
 	});
 
 	it('notes, sources and Reference share one wrapping row', async () => {
@@ -376,25 +358,6 @@ describe('the Check rows', () => {
 });
 
 describe('clarity round 2', () => {
-	it('the values toggle puts "Answered by you" first, never under "Also used (not decisive)"', async () => {
-		const p = reached({
-			draft: [
-				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
-				draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false }),
-				draft({ input: 'g', label: 'Growth', state: 'answered', value: 'Yes' })
-			]
-		});
-		show(p);
-		const lines = [...page.getByRole('button', { name: /^Answered by you/ }).element().querySelectorAll('.cp-based-line')].map((e) => e.textContent!.trim());
-		expect(lines).toEqual(['Answered by you: Growth Yes', 'Read from your dictation: Size 7 mm', 'Also used (not decisive): Smoker No']);
-	});
-
-	it('the toggle\'s chevron stays inline at the end of its last line', async () => {
-		show(reached({ draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' })] }));
-		const caret = page.getByRole('button', { name: /^Read from your dictation/ }).element().querySelector('.cp-caret')!;
-		expect(caret.parentElement!.classList.contains('cp-based-line')).toBe(true);
-	});
-
 	it('a pack card with no preview still shows its Reference', async () => {
 		const ref = { summary: [{ id: 's1', text: 'A summary line', citation: {} as never }], definitions: [], tables: [], pitfalls: [] };
 		render(PackBody, { result: result(bts, null, { reference: ref as never }), guideline: 'BTS 2015' });
@@ -417,13 +380,66 @@ describe('clarity round 2', () => {
 	});
 
 	it('no empty footer row when there is nothing to put in it', async () => {
-		show(reached({ draft_outcome: outcome({ ...rec(), citations: [], caveats: [] }) }));
+		show(reached({ draft: [], draft_outcome: outcome({ ...rec(), citations: [], caveats: [] }) }));
 		expect(document.querySelector('.cp-aux')).toBeNull();
 	});
 
 	it('a read-only column still shows "Confirmed" for a ticked value', async () => {
 		render(PackBody, { result: result(bts, reached()), guideline: 'BTS 2015', applyOn: true, ticks: { kind: 'solid' } });
 		await expect.element(page.getByTestId('cp-confirmed')).toHaveTextContent('Confirmed');
+	});
+});
+
+describe('values behind one footer button', () => {
+	const vp = (over = {}) =>
+		reached({
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
+				draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false }),
+				draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', decisive: true }),
+				draft({ input: 'side', label: 'Side', state: 'not_applicable' })
+			],
+			...over
+		});
+
+	it('the summary box is gone: no lines of provenance between the sections', async () => {
+		show(vp());
+		expect(document.querySelector('.cp-based-line')).toBeNull();
+		await expect.element(page.getByRole('button', { name: /^Read from your dictation/ })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /^Also used/ })).not.toBeInTheDocument();
+	});
+
+	it('the footer button counts the value rows (not-applicable excluded), sits first, and expands and collapses the list', async () => {
+		show(vp({ draft_outcome: outcome({ ...rec(), caveats: ['A note'] }) }));
+		const btn = page.getByRole('button', { name: 'All values used · 3' });
+		await expect.element(btn).toHaveAttribute('aria-expanded', 'false');
+		expect(document.querySelector('.cp-aux')!.firstElementChild).toBe(btn.element());
+		const list = document.getElementById(btn.element().getAttribute('aria-controls')!)!;
+		expect(list.hidden).toBe(true);
+		await btn.click();
+		await expect.element(page.getByRole('button', { name: 'Hide values' })).toHaveAttribute('aria-expanded', 'true');
+		expect(list.hidden).toBe(false);
+		await page.getByRole('button', { name: 'Hide values' }).click();
+		expect(list.hidden).toBe(true);
+	});
+
+	it('Change still works inside the list', async () => {
+		const h = show(vp());
+		await page.getByRole('button', { name: 'All values used · 3' }).click();
+		await page.getByRole('button', { name: 'Change Size' }).click();
+		await page.getByRole('textbox', { name: 'Answer for Size' }).fill('8 mm');
+		await page.getByRole('button', { name: 'Save' }).click();
+		expect(h.onEdit).toHaveBeenCalledWith('size', '8 mm');
+	});
+
+	it('no value rows, no button; an excluded card keeps its own "values" toggle', async () => {
+		show(reached({ draft: [] }));
+		await expect.element(page.getByRole('button', { name: /^All values used/ })).not.toBeInTheDocument();
+		cleanup();
+		const ex = preview({ state: 'does_not_apply', proposal: null, exclusion: outcome({ headline: 'Outside', classification: 'x', category: 'not_applicable' }), draft: [draft({ input: 'g', label: 'Growth', state: 'read', value: 'Yes' })] });
+		show(ex, { expanded: true, onExpand: vi.fn() });
+		await expect.element(page.getByRole('button', { name: /^values/ })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /^All values used/ })).not.toBeInTheDocument();
 	});
 });
 

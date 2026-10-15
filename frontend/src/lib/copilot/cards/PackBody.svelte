@@ -22,7 +22,7 @@
 	import NextQuestion from './NextQuestion.svelte';
 	import ValueEdit from './ValueEdit.svelte';
 	import ResultZone from './ResultZone.svelte';
-	import { answeredChips, basedOn, checkItems, collapsedReason, collapsible, nextAsk, readiness, remaining } from './questionnaire';
+	import { answeredChips, checkItems, collapsedReason, collapsible, nextAsk, readiness, remaining } from './questionnaire';
 	import CollapsedRow from './CollapsedRow.svelte';
 	import type { Unresolved } from '../gate';
 	import Icon, { type IconName } from './Icon.svelte';
@@ -119,6 +119,8 @@
 	const notNeededList = $derived(rows.filter((r) => notNeededIds.has(r.input)));
 	let showNotNeeded = $state(false);
 	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable' && !notNeededIds.has(r.input)));
+	// the footer's "All values used": today's full list, not-applicable rows excluded; a card that does not apply keeps its own toggle
+	const valueCount = $derived(v?.excluded ? 0 : rows.filter((r) => r.state !== 'not_applicable').length);
 	const naRows = $derived(rows.filter((r) => r.state === 'not_applicable'));
 	let showNa = $state(false);
 	let showValues = $state(false);
@@ -142,18 +144,6 @@
 	const pickNow = $derived(p?.draft_outcome ? null : pick); // a leftover pick never counts once an outcome is reached
 	const blocker = $derived(readiness(p, edits, ticks, pickNow));
 	const cands = $derived(p && !p.draft_outcome && !next && p.state !== 'does_not_apply' ? (p.candidates ?? []) : []);
-	// the toggle names where the other values came from, on two lines: read from the dictation (or set by the exam),
-	// then the guesses that do not decide the outcome (and the answers the radiologist gave)
-	const basedLines = $derived.by(() => {
-		const list = basedOn(p, check);
-		const part = (head: string, rs: typeof list) => (rs.length ? `${head}: ${rs.map((d) => `${d.label} ${displayValue(d.value, d.basis ?? '')}`).join(' · ')}` : '');
-		const guess = (d: (typeof list)[number]) => (d.state === 'prefilled' || d.state === 'assumed') && d.by !== 'exam';
-		const line1 = [part('Read from your dictation', list.filter((d) => d.state === 'read' && d.by !== 'exam')), part('Set by the exam', list.filter((d) => d.by === 'exam'))].filter(Boolean).join('; ');
-		const line2 = part('Also used (not decisive)', list.filter(guess));
-		// the radiologist's own answers are the strongest provenance: their own line, first
-		const mine = part('Answered by you', list.filter((d) => d.state === 'answered' || d.state === 'edited'));
-		return [mine, line1, line2].filter(Boolean);
-	});
 	let editingChip = $state<string | null>(null);
 	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
 	let localOpen = $state(false); // without a view (onExpand), the body keeps its own open state
@@ -223,36 +213,22 @@
 	</section>
 {/snippet}
 
-{#snippet valuesBlock()}
-	{#if rows.length}
-		<section class="cp-values" aria-label="Values">
-			{#if v?.excluded}
-				<!-- a card that does not apply keeps its values out of the way -->
-				<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-					>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
-				>
-			{:else}
-				<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-based" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-					>{#each basedLines as l, i (l)}<span class="cp-based-line">{l}{#if i === basedLines.length - 1} <span class="cp-caret"><Icon name="chev" size={11} /></span>{/if}</span>{/each}{#if !basedLines.length}<span class="cp-based-line">Values used <span class="cp-caret"><Icon name="chev" size={11} /></span></span>{/if}</button
-				>
+{#snippet valueList()}
+	<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
+		{#each shownRows as r (r.input)}
+			<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
+		{/each}
+		{#if naRows.length}
+			{#if showNa}
+				{#each naRows as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
 			{/if}
-			<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
-				{#each shownRows as r (r.input)}
-					<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
-				{/each}
-				{#if naRows.length}
-					{#if showNa}
-						{#each naRows as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
-					{/if}
-					<li class="cp-na-toggle">
-						<button type="button" class="rv-btn rv-btn-ghost" aria-expanded={showNa} onclick={() => (showNa = !showNa)}
-							>{showNa ? 'hide not applicable' : `+${naRows.length} not applicable`}</button
-						>
-					</li>
-				{/if}
-			</ul>
-		</section>
-	{/if}
+			<li class="cp-na-toggle">
+				<button type="button" class="rv-btn rv-btn-ghost" aria-expanded={showNa} onclick={() => (showNa = !showNa)}
+					>{showNa ? 'hide not applicable' : `+${naRows.length} not applicable`}</button
+				>
+			</li>
+		{/if}
+	</ul>
 	{#if notNeededList.length && !v?.excluded && showValues}
 		<section class="cp-not-needed" aria-label="Not needed on this branch">
 			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showNotNeeded} aria-controls="{uid}-not-needed" onclick={() => (showNotNeeded = !showNotNeeded)}
@@ -265,9 +241,24 @@
 	{/if}
 {/snippet}
 
+<!-- a card that does not apply keeps its own "values" toggle, out of the way -->
+{#snippet valuesBlock()}
+	{#if rows.length}
+		<section class="cp-values" aria-label="Values">
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
+				>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+			>
+			{@render valueList()}
+		</section>
+	{/if}
+{/snippet}
+
 {#snippet footer()}
-	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed)}
+	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed) || valueCount > 0}
 	<div class="cp-aux">
+		{#if valueCount > 0}
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-values-btn" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}>{showValues ? 'Hide values' : `All values used · ${valueCount}`}</button>
+		{/if}
 		{#if decided && v && !compact}
 			{#if v.caveats.length}
 				<div class="cp-notes" class:cp-aux-open={showNotes}>
@@ -301,6 +292,7 @@
 			<Reference reference={result.reference} />
 		{/if}
 	</div>
+	{#if valueCount > 0}<div class="cp-values-open">{@render valueList()}</div>{/if}
 	{/if}
 	{#if p?.degraded}
 		<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
@@ -430,7 +422,7 @@
 				</section>
 			{/if}
 
-			<!-- 3. WHAT THIS RESTS ON: the values the radiologist did not dictate, then every other value used -->
+			<!-- 3. WHAT THIS RESTS ON: the values the radiologist did not dictate (every other value waits behind the footer's "All values used") -->
 			{#if check.length}
 				<section class="cp-sect" data-testid="cp-section" aria-label="What this rests on">
 					<div class="cp-sect-label" data-testid="cp-section-label">WHAT THIS RESTS ON</div>
@@ -438,10 +430,7 @@
 						Not verified in your dictation. {applyOn && onTick ? 'Confirm each one, or change it.' : 'Change any that are wrong.'}
 					</p>
 					<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
-					{@render valuesBlock()}
 				</section>
-			{:else}
-				{@render valuesBlock()}
 			{/if}
 
 			<!-- 4. YOUR REPORT: the outcome pick, the gate note, Apply to report and Not in this report -->
@@ -555,8 +544,10 @@
 	.cp-aux-open {
 		flex: 1 1 100%;
 	}
-	.cp-based-line {
-		display: block;
+	.cp-values-open {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
 	}
 	.cp-aux-toggle {
 		align-self: flex-start;

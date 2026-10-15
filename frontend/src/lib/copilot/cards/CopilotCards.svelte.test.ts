@@ -153,7 +153,7 @@ describe('CopilotCards', () => {
 		expect(at('Growth on prior imaging')).toBeLessThan(at('Benign adenoma'));
 		expect(at('Benign adenoma')).toBeLessThan(at('2.2 cm'));
 		await expect.element(page.getByText('set by the exam').first()).toBeInTheDocument();
-		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click(); // the values wait behind "Based on"
+		await page.getByRole('button', { name: /^(All values used|Hide values)/ }).click(); // the values wait behind "Based on"
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
 		const row = document.querySelector('.cp-val[tabindex]') as HTMLElement;
@@ -348,7 +348,7 @@ describe('CopilotCards', () => {
 		});
 		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
-		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
+		await page.getByRole('button', { name: /^(All values used|Hide values)/ }).click();
 		await page.getByRole('button', { name: 'Answer Brock risk' }).click();
 		await page.getByRole('combobox', { name: 'Answer for Brock risk' }).selectOptions('Under 10%');
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'brock', 'Under 10%');
@@ -424,7 +424,7 @@ describe('CopilotCards', () => {
 			draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' }), draft({ input: 'side', label: 'Solid component', state: 'not_applicable' })]
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
+		await page.getByRole('button', { name: /^(All values used|Hide values)/ }).click();
 		await expect.element(page.getByText('2.2 cm', { exact: true })).toBeInTheDocument();
 		expect(document.querySelector('.cp-recommendation')!.textContent).toBe('No further imaging required.'); // the pill is only 'No action'
 		expect(document.body.textContent).not.toContain('Solid component');
@@ -506,7 +506,7 @@ describe('CopilotCards', () => {
 		const zone = document.querySelector('[data-testid="cp-check"]')!;
 		expect(zone.contains(note.element())).toBe(true);
 		expect(zone.closest('[data-testid="cp-section"]')!.querySelector('[data-testid="cp-section-label"]')!.textContent).toBe('WHAT THIS RESTS ON');
-		await page.getByRole('button', { name: /^(Read from your dictation|Set by the exam|Also used|Values used)/ }).click();
+		await page.getByRole('button', { name: /^(All values used|Hide values)/ }).click();
 		const row = [...document.querySelectorAll('.cp-val')].find((e) => e.textContent!.includes('Maximum diameter'))!;
 		expect(row.classList.contains('cp-val--doubt')).toBe(true);
 		await page.getByRole('button', { name: 'Confirm Maximum diameter 35 mm' }).click();

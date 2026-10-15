@@ -83,9 +83,9 @@ describe('the questionnaire card', () => {
 		await expect.element(page.getByTestId('cp-apply')).not.toBeInTheDocument();
 	});
 
-	it('the values wait behind "Based on"', async () => {
+	it('the values wait behind the footer button "All values used"', async () => {
 		show(reached());
-		const t = page.getByRole('button', { name: /^Read from your dictation: Size 7 mm/ });
+		const t = page.getByRole('button', { name: /^(All values used|Hide values)/ });
 		await expect.element(t).toHaveAttribute('aria-expanded', 'false');
 		await t.click();
 		await expect.element(t).toHaveAttribute('aria-expanded', 'true');
