@@ -105,4 +105,4 @@ def test_pin_compares_only_the_bundle_version(monkeypatch, tmp_path, caplog, pin
 
 
 def test_the_repo_pin_names_the_bundle_version_then_the_private_commit():
-    assert PB.read_pin() == ("9c29622", "3ab958e")
+    assert PB.read_pin() == ("c895506", "c81ab0a")

@@ -33,6 +33,8 @@ export interface CheckFlag {
 	other: string | null;
 	suggestion: string;
 	unitId: number | null;
+	/** A check about a region rather than words ("Which side?"): shown in that region's card, else up top. */
+	region?: string | null;
 }
 
 /** Keep as dictated, skip an advisory one, or the suggestion replaced the words. */
@@ -85,6 +87,8 @@ export function checkLabel(kind: string): string {
 		case 'truncation': return 'Unfinished sentence';
 		case 'dangling_measurement': return 'A dimension missing?';
 		case 'laterality_conflict': return 'Sides as intended?';
+		case 'side_missing': return 'Which side?';
+		case 'side_unchecked': return 'Side check unavailable';
 		case 'measurement_mismatch': return 'Measurement as intended?';
 		case 'internal_contradiction': return 'Statements conflict';
 		case 'unit_anomaly': return 'Unit as intended?';

@@ -1,0 +1,125 @@
+// Paired normals (side brief 2026-10-14): a finding dictated on a paired structure without its side leaves out both
+// sides' normals and asks "Which side?" until a side is dictated (the next /assumed answer no longer asks). The ask is
+// a blocking dictation check placed in its region's card: Confirm walks to it; "Keep without side" answers it, pair by
+// pair (review F4). A failed side call keeps the last answer's open asks (review F2). In a region with findings, the
+// normals left out are listed, struck through, under a label that says why.
+import type { CheckAnswer, CheckFlag } from './checks';
+import type { AssumedSnap } from './items';
+import type { Dropped, SideAsk } from './types';
+
+export type { SideAsk };
+
+const norm = (s: string) => s.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
+
+export const SIDE_KIND = 'side_missing';
+const SEP = ' · ';
+const SIDE_MESSAGE = 'A finding here is dictated without its side. Neither side’s normal is reported until you dictate the side.';
+
+/** A pair's answer key: "Keep without side" is kept per pair, so a neighbouring pair joining the region's flag never
+ *  re-opens a pair already kept (review F4). */
+export const pairKey = (region: string, label: string) => `${SIDE_KIND}|${region}|${norm(label)}`;
+
+/** One blocking check per region, listing its pairs not yet kept without a side, in the order the asks came. */
+export function sideFlags(asks: SideAsk[], answers: Record<string, CheckAnswer> = {}): CheckFlag[] {
+	const by = new Map<string, string[]>();
+	for (const a of asks) if (answers[pairKey(a.region, a.label)] !== 'as_dictated') by.set(a.region, [...(by.get(a.region) ?? []), a.label]);
+	return [...by].map(([region, labels]) => ({
+		key: `${SIDE_KIND}|${region}`, kind: SIDE_KIND, blocking: true, tier: 2 as const,
+		message: SIDE_MESSAGE, quote: labels.join(SEP), other: null, suggestion: '', unitId: null, region
+	}));
+}
+
+export const HOLD_KIND = 'side_unchecked';
+const HOLD_MESSAGE = 'The side check could not run for this region. Confirm waits while it tries again. \u201cAs dictated\u201d reports both sides\u2019 normals for this region as they stand.';
+
+/** A hold's answer key: its region and that region's text, so any edit there holds it again (re-review 2 M1). */
+export const holdKey = (region: string, text: Record<string, string> = {}) => `${HOLD_KIND}|${region}|${norm(text[region] ?? '')}`;
+
+/** The side call failed (re-review N1): each region the server holds blocks Confirm until a retry answers it, or the
+ *  radiologist keeps the dictation as it is. A region already showing a "Which side?" question shows only that one:
+ *  one press per question (re-review 2 L1; answering it answers the hold too, see answerPairs). */
+export function holdFlags(regions: string[], text: Record<string, string> = {}, asked: CheckFlag[] = []): CheckFlag[] {
+	const open = new Set(asked.filter((f) => f.kind === SIDE_KIND).map((f) => f.region));
+	return regions.filter((r) => !open.has(r)).map((region) => ({ key: holdKey(region, text), kind: HOLD_KIND, blocking: true, tier: 2 as const,
+		message: HOLD_MESSAGE, quote: region, other: null, suggestion: '', unitId: null, region }));
+}
+
+/** The answer to a region flag, recorded on each pair it lists; and on the region's hold, when the side check failed
+ *  (`held`: the held regions and the text they were held for), since the hold was not shown beside it (L1). */
+export function answerPairs(flag: CheckFlag, how: CheckAnswer, held?: { regions: string[]; text: Record<string, string> }): Record<string, CheckAnswer> {
+	const out: Record<string, CheckAnswer> = Object.fromEntries(flag.quote.split(SEP).map((l) => [pairKey(flag.region ?? '', l), how]));
+	if (held && flag.region && held.regions.includes(flag.region)) out[holdKey(flag.region, held.text)] = how;
+	return out;
+}
+
+/** A failed side call (review F2): the last answer's open asks stay, and their sentences stay out of the report, so an
+ *  open ask never vanishes and lets Confirm through. Only an ask whose region's text is unchanged is carried: a region
+ *  the radiologist has since dictated into (the side, say) is the server's to hold (side_hold), never a stale question
+ *  (re-review N4). A good answer is taken as it is. */
+export function carrySides(prev: AssumedSnap | null, res: { assumed: Record<string, string[]>; dropped?: Dropped; side_asks?: SideAsk[] }, failed: boolean,
+	text: Record<string, string> = {}) {
+	const asks = res.side_asks ?? [];
+	const same = (r: string) => (prev?.region_text?.[r] ?? '') === (text[r] ?? '');
+	const old = (prev?.side_asks ?? []).filter((p) => same(p.region) && !asks.some((a) => a.region === p.region && norm(a.label) === norm(p.label)));
+	if (!failed || !old.length) return { assumed: res.assumed, dropped: res.dropped, side_asks: asks };
+	const assumed = { ...res.assumed };
+	const dropped: Dropped = { ...(res.dropped ?? {}) };
+	const carried = [...asks, ...old];
+	for (const a of carried) {
+		const out = new Set(a.sentences.map(norm));
+		if (assumed[a.region]) assumed[a.region] = assumed[a.region].filter((s) => !out.has(norm(s)));
+		const have = new Set((dropped[a.region] ?? []).map((d) => norm(d.sentence)));
+		dropped[a.region] = [...(dropped[a.region] ?? []), ...a.sentences.filter((s) => !have.has(norm(s))).map((sentence) => ({ sentence, reason: 'side' }))];
+	}
+	return { assumed, dropped, side_asks: carried };
+}
+
+/** How a "Which side?" ask ended, for the gate (review F5, re-review N4/N6):
+ *  - kept_without_side: "Keep without side" was pressed on a checked answer;
+ *  - kept_unchecked: it was pressed while the side check had failed (the ask was carried forward);
+ *  - open: the last answer still asks it (Confirm walks to it, so a gate seldom has one);
+ *  - sided: the last answer places the pair's finding on the right, the left or both (the side was dictated);
+ *  - gone: the last answer places no finding for the pair (the finding was removed or reworded away);
+ *  - unchecked: the last answer's side check failed, so how it ended is unknown. */
+export type SideEnding = 'kept_without_side' | 'kept_unchecked' | 'open' | 'sided' | 'gone' | 'unchecked';
+
+/** Every pair asked this session, with its last score and how it ended. */
+export function sideRecord(seen: Record<string, SideAsk>, snap: AssumedSnap | null, answers: Record<string, CheckAnswer>) {
+	const key = (a: { region: string; label: string }) => pairKey(a.region, a.label);
+	const open = new Set((snap?.side_asks ?? []).map(key));
+	const sided = new Set((snap?.side_choices ?? []).filter((c) => c.choice && c.choice !== 'no_side').map(key));
+	return Object.values(seen).map((a) => {
+		const k = key(a);
+		const failed = !!snap?.side_failed;
+		const ended: SideEnding = answers[k] === 'as_dictated' ? (failed && open.has(k) ? 'kept_unchecked' : 'kept_without_side')
+			: open.has(k) ? 'open' : failed ? 'unchecked' : sided.has(k) ? 'sided' : 'gone';
+		return { region: a.region, pair: a.label, score: a.score, answered_by: ended };
+	});
+}
+
+/** The gate's side per pair Jev placed a finding for, as the Confirm answer read it (bilateral fix). */
+export function sideChoices(snap: AssumedSnap | null) {
+	return (snap?.side_choices ?? []).filter((c) => !!c.choice).map((c) => ({ region: c.region, pair: c.label, choice: c.choice!, action: c.action }));
+}
+
+/** Why a normal is left out, as the struck line says it (review F7, re-review N5): a conflict, a bilateral finding, a
+ *  side not stated, or a side that could not be checked. */
+const WHY: Record<string, string> = {
+	contradicted: 'conflicts with dictation', both: 'bilateral finding', side: 'side not stated', side_unchecked: 'side not checked'
+};
+export type NotReported = Record<string, { why: string; sentences: string[] }[]>;
+
+/** Region -> the normals left out for one of those reasons, grouped by reason. Never a removed or a covered one. */
+export function notReported(snap: AssumedSnap | null, removed: string[]): NotReported {
+	const gone = new Set(removed.map(norm));
+	const out: NotReported = {};
+	for (const [r, xs] of Object.entries(snap?.dropped ?? {})) {
+		const groups = new Map<string, string[]>();
+		for (const d of xs) {
+			const why = WHY[d.reason];
+			if (why && !gone.has(norm(d.sentence))) groups.set(why, [...(groups.get(why) ?? []), d.sentence]);
+		}
+		if (groups.size) out[r] = [...groups].map(([why, sentences]) => ({ why, sentences }));
+	}
+	return out;
+}

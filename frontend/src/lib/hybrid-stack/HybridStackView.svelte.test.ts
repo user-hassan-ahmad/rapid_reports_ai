@@ -623,4 +623,47 @@ describe('HybridStackView v2', () => {
 		await r.rerender({ ...base(), units, recommendations: [] });
 		await expect.element(page.getByRole('region', { name: 'Recommendations' })).not.toBeInTheDocument();
 	});
+	// ── "Which side?" and the not-reported line (side brief 2026-10-14) ──
+	const sideAsk = (region = 'Kidneys') => ({ key: `side_missing|${region}|k`, kind: 'side_missing', blocking: true, tier: 2 as const,
+		message: 'A finding here is dictated without its side.', quote: 'The right/left kidney is normal.', other: null, suggestion: '', unitId: null, region });
+	it('a side-less finding asks "Which side?" in its region card and blocks Confirm until kept or a side is dictated', async () => {
+		const onCheckAnswer = vi.fn();
+		const onToggleMic = vi.fn();
+		const units = [u(0, 'A simple cyst in the kidney.', 'Kidneys', { abnormal: true })];
+		const props = { ...base(), units, onCheckAnswer, onToggleMic, conclusion: { kind: 'draft', text: 'Renal cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, checks: [sideAsk()] });
+		const card = page.getByRole('region', { name: 'Kidneys' });
+		await expect.element(card.getByText('Which side?')).toBeInTheDocument();
+		await expect.element(card.getByText(/The right\/left kidney is normal\./)).toBeInTheDocument();
+		await card.getByRole('button', { name: 'Dictate side' }).click();
+		expect(onToggleMic).toHaveBeenCalled();
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 1 of 1 · Which side?');
+		await card.getByRole('button', { name: 'Keep without side' }).click();
+		expect(onCheckAnswer).toHaveBeenCalledWith('side_missing|Kidneys|k', 'as_dictated');
+		// a side dictated: the next /assumed answer no longer asks, and Confirm returns by itself
+		r.rerender({ ...props, checks: [] });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('All checked');
+		await expect.element(page.getByText('Which side?')).not.toBeInTheDocument();
+	});
+	it('an ask whose region has no card shows up top', async () => {
+		const units = [u(0, 'A 2 cm liver cyst.', 'Liver', { abnormal: true })];
+		render(HybridStackView, { ...base(), units, checks: [sideAsk('Kidneys')], conclusion: { kind: 'draft', text: 'x', edited: false } as const, namedNormals: true });
+		await expect.element(page.getByRole('region', { name: 'Checks' }).getByText('Which side?')).toBeInTheDocument();
+	});
+	it('a region with findings lists the normals left out for conflicting with the dictation, struck through', async () => {
+		const units = [u(0, 'A 12 mm cyst in the left kidney.', 'Kidneys', { abnormal: true })];
+		render(HybridStackView, { ...base(), units, assumed: { Kidneys: ['The right kidney is normal.'] },
+			notReported: { Kidneys: [{ why: 'conflicts with dictation', sentences: ['The left kidney is normal.'] }, { why: 'side not stated', sentences: ['No right hydronephrosis.'] }],
+				Liver: [{ why: 'conflicts with dictation', sentences: ['The liver is normal.'] }] }, sideFailed: 'kept' });
+		const line = page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (conflicts with dictation)');
+		await expect.element(line).toBeInTheDocument();
+		const struck = page.getByText('The left kidney is normal.');
+		await expect.element(struck).toBeInTheDocument();
+		expect(struck.element().closest('s')).not.toBeNull();
+		await expect.element(page.getByText('The liver is normal.')).not.toBeInTheDocument();   // no card: nothing shown
+		// a side drop is not a conflict (review F7); a failed side check says so at the Confirm bar (review F2)
+		await expect.element(page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (side not stated)')).toBeInTheDocument();
+		await expect.element(page.getByText(/side check unavailable/)).toBeInTheDocument();
+	});
 });

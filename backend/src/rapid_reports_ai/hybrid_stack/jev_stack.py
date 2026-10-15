@@ -254,6 +254,64 @@ def normal_fate(c: RowCheck) -> str:
     return "flagged" if c.hedge >= HEDGE_MIN or c.contra >= OPTIONAL_MIN else "assumed"
 
 
+# ── Paired normals: which side is the finding on? (side brief 2026-10-14, hybrid_stack.sides) ─────────────────────
+# Asked for every pair in a region the dictation touches, NOT gated on contradiction: side lab run 1 (34 cases) showed
+# Jev, rightly, does not read a side-less finding as contradicting a sided negative for certain: it dropped one side
+# (8 cases) or neither (4: a side-less "Small pneumothorax." kept both sides' negatives). A choice (bilateral fix,
+# 2026-10-14): "both" lets code drop the side contradiction missed ("Both kidneys contain cysts" dropped one side).
+SIDE_CHOICES = ("none", "right", "left", "both", "no_side")
+# Re-review N7: P(no_side) must reach this to ask (the round-1 bar, restored); below it both normals are flagged amber.
+# Side lab runs 3-4: every no_side answer >= 0.66 except a neighbour over-ask (a10 ureter, 0.57), which this removes.
+SIDE_MIN = 0.6
+SIDE_QUESTION = {
+    "instructions": ("Does the DICTATION report an abnormal finding for the paired check these two STATEMENTS make (one "
+                     "statement for the right side, one for the left), and on which side? Only a finding for this check "
+                     "counts: a finding on a neighbouring structure, or the side given for a different finding, does "
+                     "not. STATEMENTS: {right} / {left}"),
+    "criteria": {
+        "none": ("No finding for this check: the dictation reports no abnormal finding for it (it is not mentioned, it "
+                 "is only said to be normal or absent, or the findings concern other structures or checks)."),
+        "right": ("Right side: the finding for this check is said to be on the right, in its own sentence or an earlier "
+                  "sentence about the same finding, or at a location that exists on the right only."),
+        "left": ("Left side: the finding for this check is said to be on the left, in its own sentence or an earlier "
+                 "sentence about the same finding, or at a location that exists on the left only."),
+        "both": "Both sides: the finding for this check is said to be bilateral or on both sides, or is given for each side.",
+        "no_side": "Side not given: a finding for this check is reported but no side is given for it anywhere in the dictation.",
+    },
+}
+
+
+SIDE_BATCH = 15   # pairs per Jev call (as normals.BATCH); batches run in parallel, so a sheet's 20 pairs never time out
+
+
+async def ask_sides(dictation: str, pairs: list[tuple[str, str]], transport=None) -> list[tuple[str, dict[str, float]]]:
+    """(choice, its probabilities) per (right, left) pair: none | right | left | both | no_side. SIDE_BATCH pairs per
+    call, calls in parallel (one round trip); any failed call fails the whole answer."""
+    if not pairs:
+        return []
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[tuple[str, str]]) -> list[tuple[str, dict[str, float]]]:
+        qs = {f"side_{start + i}": {"type": "choice", "instructions": SIDE_QUESTION["instructions"].format(right=r, left=l),
+                                    "criteria": SIDE_QUESTION["criteria"]} for i, (r, l) in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs}, key, TIMEOUT_S,
+                           transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[tuple[str, dict[str, float]]] = []
+        for i in range(len(chunk)):
+            # a missing or unknown answer fails the question (side_failed), never read as an answer
+            a = ans.get(f"side_{start + i}") or {}
+            if a.get("choice") not in SIDE_CHOICES:
+                raise ValueError("jev: incomplete answers")
+            probs = a.get("probabilities") if isinstance(a.get("probabilities"), dict) else {}
+            out.append((a["choice"], {k: round(float(probs.get(k) or 0.0), 3) for k in SIDE_CHOICES}))
+        return out
+
+    parts = await asyncio.gather(*(batch(k, pairs[k:k + SIDE_BATCH]) for k in range(0, len(pairs), SIDE_BATCH)))
+    return [x for p in parts for x in p]
+
+
 # ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────
 MATERIAL_MIN = 0.6  # 40 pairs: material 21/21 at >= 0.95 (5 size/unit corrections included), rewordings all <= 0.57
 STALE_MIN = 0.7     # 24 pairs: out of date 13/13 (lowest 0.74), still current 0/11 (highest 0.66)
