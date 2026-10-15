@@ -21,7 +21,7 @@ describe('FindingConnector', () => {
 			const r = render(FindingConnector, { active: null, minWidth: 0 });
 			expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
 			await r.rerender({ active: 'u1', minWidth: 0 });
-			await expect.poll(() => document.querySelector('[data-testid="finding-connector"] path')?.getAttribute('d') ?? '').toMatch(/^M 200 100 C /);
+			await expect.poll(() => document.querySelector('[data-testid="finding-connector"] path')?.getAttribute('d') ?? '').toMatch(/^M 36 208 C /);
 			const svg = document.querySelector('[data-testid="finding-connector"]')!;
 			expect(svg.getAttribute('aria-hidden')).toBe('true');
 			expect(getComputedStyle(svg).pointerEvents).toBe('none');
@@ -45,5 +45,21 @@ describe('FindingConnector', () => {
 			await new Promise((res) => setTimeout(res, 100));
 			expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
 		} finally { cleanup(); }
+	});
+	it('draws nothing while the marker is scrolled out of its own pane', async () => {
+		const cleanup = ends();
+		const pad = document.querySelector('[data-finding-mark="u1"]') as HTMLElement;
+		const pane = document.createElement('div');
+		Object.assign(pane.style, { position: 'fixed', left: '0', top: '250px', width: '120px', height: '100px', overflow: 'auto' });
+		pad.style.position = 'absolute';
+		pad.style.top = '-10px'; // inside the viewport but above the pane's top edge
+		pad.style.left = '10px';
+		pane.append(pad);
+		document.body.append(pane);
+		try {
+			render(FindingConnector, { active: 'u1', minWidth: 0 });
+			await new Promise((res) => setTimeout(res, 100));
+			expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
+		} finally { cleanup(); pane.remove(); }
 	});
 });

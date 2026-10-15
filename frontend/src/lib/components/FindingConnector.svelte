@@ -12,6 +12,14 @@
 	let d = $state<string | null>(null);
 	let frame = 0;
 
+	/** The nearest scrolling (or clipping) ancestor's rect: where the endpoint can actually be seen. */
+	function paneOf(el: HTMLElement): DOMRect | null {
+		for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+			const o = getComputedStyle(p);
+			if (/(auto|scroll|hidden|overlay)/.test(o.overflowX + o.overflowY)) return p.getBoundingClientRect();
+		}
+		return null;
+	}
 	const esc = (s: string) => s.replace(/["\\]/g, '\\$&');
 	function measure() {
 		frame = 0;
@@ -19,8 +27,11 @@
 		const mark = document.querySelector<HTMLElement>(`[data-finding-mark="${esc(active)}"]`);
 		const card = document.querySelector<HTMLElement>(`[data-finding-card="${esc(active)}"]`);
 		if (!mark || !card) { d = null; return; }
-		const head = card.querySelector<HTMLElement>('.cp-group-head') ?? card;
-		d = connectorPath(head.getBoundingClientRect(), mark.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight });
+		// the guideline card's header (not the group marker above it): the first card of the group
+		const first = card.querySelector<HTMLElement>('.cp-card') ?? card;
+		const head = first.querySelector<HTMLElement>('.gl-head') ?? first;
+		d = connectorPath(head.getBoundingClientRect(), mark.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight },
+			{ marker: paneOf(mark), card: paneOf(head) });
 	}
 	function schedule() { if (!frame) frame = requestAnimationFrame(measure); }
 
@@ -28,8 +39,9 @@
 		void active;
 		schedule();
 		if (!active) return;
+		// only the two containers that hold the ends (the scratchpad stack and the rail's card list), never this overlay
 		const mo = new MutationObserver(schedule);
-		mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+		for (const el of document.querySelectorAll('[data-testid="hybrid-stack"], [data-testid="copilot-cards"]')) mo.observe(el, { childList: true, subtree: true });
 		window.addEventListener('scroll', schedule, true);
 		window.addEventListener('resize', schedule);
 		return () => {

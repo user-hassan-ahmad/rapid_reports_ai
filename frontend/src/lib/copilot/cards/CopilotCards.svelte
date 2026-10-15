@@ -82,6 +82,11 @@
 	const shown = $derived(groups.filter((g) => g.cards.length));
 	const viewOf = (c: Card) => views[cardRef(c)] ?? closedView;
 	const handlers = $derived({ onOpen, onClose, onRetry });
+	/** Focus moved to another control inside the same element (no leave, so no flicker). */
+	const stays = (e: FocusEvent) => {
+		const host = (e.target as Element | null)?.closest('[data-finding-card]');
+		return !!host && e.relatedTarget instanceof Node && host.contains(e.relatedTarget);
+	};
 	const numbers = $derived(findingNumbers(groups));
 	const blocking = $derived(Object.fromEntries(unresolved.map((u) => [u.key, u])));
 </script>
@@ -119,7 +124,7 @@
 			<section class="cp-group" class:cp-active={!!g.finding && activeFinding === g.finding.id} aria-label={g.finding ? g.finding.text : 'This exam'}
 				data-finding-card={g.finding?.id}
 				onmouseenter={() => g.finding && onFindingHover?.(g.finding.id)} onmouseleave={() => g.finding && onFindingHover?.(null)}
-				onfocusin={() => g.finding && onFindingHover?.(g.finding.id)} onfocusout={() => g.finding && onFindingHover?.(null)}>
+				onfocusin={() => g.finding && onFindingHover?.(g.finding.id)} onfocusout={(e) => { if (g.finding && !stays(e)) onFindingHover?.(null); }}>
 				{#if g.finding}
 					<div class="gl-inline-label cp-group-head" title={g.finding.text}>
 						<FindingMarker n={numbers[g.finding.id]} id={g.finding.id} text={g.finding.text} side="rail" active={activeFinding === g.finding.id} />

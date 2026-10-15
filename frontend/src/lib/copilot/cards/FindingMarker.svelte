@@ -15,16 +15,14 @@
 	const data = $derived(side === 'rail' ? { 'data-finding-mark-rail': id } : { 'data-finding-mark': id });
 </script>
 
-<span
-	class="fm"
-	class:fm-active={active}
-	role="img"
-	aria-label={`Finding ${n}: ${text}`}
-	title={text}
-	{...data}
-	onmouseenter={() => onHover?.(id)}
-	onmouseleave={() => onHover?.(null)}>{n}</span
->
+{#if side === 'pad'}
+	<!-- Scratchpad end: focusable, so the keyboard reaches the same highlight as the mouse. -->
+	<button type="button" class="fm fm-btn" class:fm-active={active} aria-label={`Finding ${n}: ${text}`} title={text} {...data}
+		onmouseenter={() => onHover?.(id)} onmouseleave={() => onHover?.(null)}>{n}</button>
+{:else}
+	<span class="fm" class:fm-active={active} role="img" aria-label={`Finding ${n}: ${text}`} title={text} {...data}
+		onmouseenter={() => onHover?.(id)} onmouseleave={() => onHover?.(null)}>{n}</span>
+{/if}
 
 <style>
 	.fm {
@@ -43,6 +41,14 @@
 		color: rgb(196 181 253);
 		background: transparent;
 		cursor: default;
+	}
+	.fm-btn {
+		padding: 0;
+		cursor: pointer;
+	}
+	.fm-btn:focus-visible {
+		outline: 2px solid rgb(167 139 250 / 0.8);
+		outline-offset: 1px;
 	}
 	.fm-active {
 		background: rgb(167 139 250 / 0.25);

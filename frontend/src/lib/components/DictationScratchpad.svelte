@@ -40,7 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import { applyOn } from '$lib/copilot/flag';
-	import { activeFindingOf, findingNumbers, trackOpen } from '$lib/copilot/markers';
+	import { activeFindingOf, findingNumbers, touch, trackOpen } from '$lib/copilot/markers';
 	import FindingConnector from './FindingConnector.svelte';
 	import { recommendationsForGate, recommendationsKey, staleBlocks } from '$lib/copilot/applied';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
@@ -446,6 +446,7 @@
 		}
 		copilot?.expand(key); // a guideline collapsed as "may not apply" opens before it is revealed
 		const ref = guidelinesUnresolved.find((u) => u.key === key)?.card ?? key;
+		openOrder = touch(openOrder, ref); // the revealed card's finding is the active one, even if the card was already open
 		void copilotRail?.reveal(ref);
 	}
 	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,

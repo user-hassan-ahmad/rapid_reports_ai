@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeFindingOf, findingNumbers, trackOpen } from './markers';
+import { activeFindingOf, findingNumbers, touch, trackOpen } from './markers';
 import { cardRef } from './state';
 import { card } from './cards/fixtures';
 import type { Group } from './state';
@@ -27,5 +27,11 @@ describe('which finding is active', () => {
 	it('tracks opening order: closed refs drop out, newly opened go last', () => {
 		expect(trackOpen(['a', 'b'], ['b', 'c'])).toEqual(['b', 'c']);
 		expect(trackOpen([], ['x'])).toEqual(['x']);
+	});
+	it('revealing a card that is already open moves its finding to the front: touch puts the ref last', () => {
+		const order = [cardRef(ca), cardRef(cb)];
+		expect(activeFindingOf(null, order, groups)).toBe('u4');
+		expect(activeFindingOf(null, touch(order, cardRef(ca)), groups)).toBe('u1');
+		expect(touch([], 'x')).toEqual(['x']);
 	});
 });

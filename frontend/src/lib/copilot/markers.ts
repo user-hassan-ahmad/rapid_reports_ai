@@ -26,3 +26,8 @@ export function activeFindingOf(hover: string | null, openOrder: string[], group
 	}
 	return null;
 }
+
+/** Move a ref to the most recent position (a card revealed by the walkthrough, even one already open). */
+export function touch(order: string[], ref: string): string[] {
+	return [...order.filter((r) => r !== ref), ref];
+}

@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from '@vitest/browser/context';
 import CopilotCards from './CopilotCards.svelte';
 import { card } from './fixtures';
-import { cardRef, type Group } from '../state';
+import type { Group } from '../state';
 
 const f1 = { id: 'u1', unitId: 1, text: '9 mm solid nodule in the right upper lobe, previously 6 mm on the last study', region: 'LUNGS' };
 const f2 = { id: 'u4.1', unitId: 4, text: 'Simple renal cyst', region: 'KIDNEYS' };
@@ -24,7 +24,7 @@ describe('rail finding markers', () => {
 		await expect.element(page.getByLabelText(`Finding 2: ${f2.text}`)).toHaveTextContent('2');
 		expect(document.querySelectorAll('[data-finding-mark-rail]').length).toBe(2);
 		expect(document.querySelector('.cp-group-head')!.textContent).not.toContain('previously 6 mm');
-		expect(document.querySelector(`[data-finding-card="u1"]`)!.getAttribute('title') ?? document.querySelector('[data-finding-mark-rail="u1"]')!.getAttribute('title')).toContain('previously 6 mm');
+		expect(document.querySelector('[data-finding-mark-rail="u1"]')!.getAttribute('title')).toBe(f1.text);
 	});
 
 	it('hovering or focusing a group reports its finding; leaving reports null', async () => {
@@ -38,9 +38,20 @@ describe('rail finding markers', () => {
 	});
 
 	it('the active finding outlines its group', async () => {
-		render(CopilotCards, base({ activeFinding: 'u4.1', findingMarks: undefined }));
+		render(CopilotCards, base({ activeFinding: 'u4.1' }));
 		expect(document.querySelector('[data-finding-card="u4.1"]')!.classList.contains('cp-active')).toBe(true);
 		expect(document.querySelector('[data-finding-card="u1"]')!.classList.contains('cp-active')).toBe(false);
-		void cardRef;
+	});
+
+	it('moving focus between controls inside one group does not report a leave', async () => {
+		const onFindingHover = vi.fn();
+		render(CopilotCards, base({ onFindingHover }));
+		const g = document.querySelector('[data-finding-card="u1"]') as HTMLElement;
+		const inner = g.querySelector('.cp-card') as HTMLElement; // any element inside the group
+		onFindingHover.mockClear();
+		g.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: inner }));
+		expect(onFindingHover).not.toHaveBeenCalled();
+		g.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+		expect(onFindingHover).toHaveBeenLastCalledWith(null);
 	});
 });

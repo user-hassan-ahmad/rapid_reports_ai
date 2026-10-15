@@ -253,6 +253,17 @@
 				(g.name === OTHER && showsGroup(units, OTHER))
 		)
 	);
+	// The first row of each unit id carries the finding's marker (a unit that renders as several rows gets one).
+	const markedRows = $derived.by(() => {
+		const seen = new Set<number>();
+		const out = new Set<ViewRow>();
+		const walk = (r: ViewRow) => {
+			if (!seen.has(r.unitId)) { seen.add(r.unitId); out.add(r); }
+			r.children.forEach(walk);
+		};
+		[...(view.groups.find((g) => g.name === TECHNIQUE)?.rows ?? []), ...view.groups.flatMap((g) => g.rows)].forEach(walk);
+		return out;
+	});
 	const technique = $derived(view.groups.find((g) => g.name === TECHNIQUE));
 	const conclusionRows = $derived(view.groups.find((g) => g.name === CONCLUSION)?.rows ?? []);
 	const dictatedNormalWords = $derived(new Map(states.dictatedNormal.map((d) => [d.region, d.words])));
@@ -906,12 +917,9 @@
 	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : lit ? 'bg-violet-400/[0.07]' : ''}" in:fade={{ duration: ms }}
 		data-finding-line={fids.length ? fids.join(' ') : undefined} data-finding-active={fids.length ? String(lit) : undefined}
 		onmouseenter={() => { if (fids.length) onFindingHover(fids[0]); }}
-		onmouseleave={() => { if (fids.length) onFindingHover(null); if (!walking) hoverOff(); }}>
-		{#if fids.length}
-			<span class="absolute -left-5 top-1 flex flex-col gap-0.5">
-				{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} />{/each}
-			</span>
-		{/if}
+		onmouseleave={() => { if (fids.length) onFindingHover(null); if (!walking) hoverOff(); }}
+		onfocusin={() => { if (fids.length) onFindingHover(fids[0]); }}
+		onfocusout={(e) => { const host = (e.target as Element | null)?.closest('[data-finding-line]'); if (fids.length && !(host && e.relatedTarget instanceof Node && host.contains(e.relatedTarget))) onFindingHover(null); }}>
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
 				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
@@ -951,6 +959,13 @@
 				<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
 			{/if}
 		</div>
+		{#if fids.length && markedRows.has(r)}
+			<!-- Right edge of the line (the side nearest the rail): in the flow, so it never overlaps the text or the edit
+			     and delete controls, and never sits outside the scroller. -->
+			<span class="mt-1 flex shrink-0 gap-0.5">
+				{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} />{/each}
+			</span>
+		{/if}
 	</li>
 {/snippet}
 
