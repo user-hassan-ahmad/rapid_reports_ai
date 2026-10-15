@@ -62,4 +62,48 @@ describe('FindingConnector', () => {
 			expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
 		} finally { cleanup(); pane.remove(); }
 	});
+	it('card header inside a clipping wrapper inside a scroller, scrolled out of the scroller but still on screen: no curve', async () => {
+		const cleanup = ends();
+		const rail = document.querySelector('[data-finding-card="u1"]') as HTMLElement;
+		const scroller = document.createElement('div');
+		Object.assign(scroller.style, { position: 'fixed', left: '150px', top: '300px', width: '250px', height: '100px', overflow: 'auto' });
+		const clip = document.createElement('div'); // like .gl-card: overflow hidden for the rounded corners
+		Object.assign(clip.style, { overflow: 'hidden', height: '300px' });
+		Object.assign(rail.style, { position: 'static', width: '150px', height: '40px', marginLeft: '50px' });
+		clip.append(rail);
+		scroller.append(clip);
+		document.body.append(scroller);
+		scroller.scrollTop = 0; // the card is at the top of the clip; push it above the scroller's visible part
+		clip.style.paddingTop = '0px';
+		scroller.scrollTop = 150;
+		try {
+			render(FindingConnector, { active: 'u1', minWidth: 0 });
+			await new Promise((res) => setTimeout(res, 100));
+			expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
+			scroller.scrollTop = 0;
+			await expect.poll(() => document.querySelector('[data-testid="finding-connector"] path')?.getAttribute('d') ?? '').toMatch(/^M /);
+		} finally { cleanup(); scroller.remove(); }
+	});
+
+	it('re-attaches when the two containers mount after the overlay', async () => {
+		render(FindingConnector, { active: 'u1', minWidth: 0 });
+		await new Promise((res) => setTimeout(res, 50));
+		expect(document.querySelector('[data-testid="finding-connector"] path')).toBeNull();
+		const stack = document.createElement('div');
+		stack.setAttribute('data-testid', 'hybrid-stack');
+		const cards = document.createElement('div');
+		cards.setAttribute('data-testid', 'copilot-cards');
+		document.body.append(stack, cards);
+		const pad = document.createElement('span');
+		pad.setAttribute('data-finding-mark', 'u1');
+		Object.assign(pad.style, { position: 'fixed', left: '20px', top: '200px', width: '16px', height: '16px' });
+		const card = document.createElement('div');
+		card.setAttribute('data-finding-card', 'u1');
+		Object.assign(card.style, { position: 'fixed', left: '200px', top: '80px', width: '150px', height: '40px' });
+		stack.append(pad);
+		cards.append(card);
+		try {
+			await expect.poll(() => document.querySelector('[data-testid="finding-connector"] path')?.getAttribute('d') ?? '').toMatch(/^M 36 208 C /);
+		} finally { stack.remove(); cards.remove(); }
+	});
 });

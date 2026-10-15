@@ -48,4 +48,12 @@ describe('visible means visible in its own pane', () => {
 		expect(connectorPath(card, rect(100, 20), vp, { marker: pane })).toBeNull();
 		expect(connectorPath(card, marker, vp, { card: rect(700, 200, 480, 300) })).toBeNull();
 	});
+	it('an endpoint must be inside every clipping or scrolling ancestor: a list of panes', () => {
+		const card = rect(800, 150, 380, 30);
+		const clip = rect(790, 140, 400, 60); // the card's own clipping wrapper: contains it
+		const list = rect(700, 300, 480, 200); // the rail list's scroller: the card has scrolled above it
+		expect(connectorPath(card, rect(100, 300), vp, { card: [clip] })).not.toBeNull();
+		expect(connectorPath(card, rect(100, 300), vp, { card: [clip, list] })).toBeNull();
+		expect(endpointVisible(card, [clip, list], vp)).toBe(false);
+	});
 });

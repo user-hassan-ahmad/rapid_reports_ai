@@ -31,3 +31,9 @@ export function activeFindingOf(hover: string | null, openOrder: string[], group
 export function touch(order: string[], ref: string): string[] {
 	return [...order.filter((r) => r !== ref), ref];
 }
+
+/** The ref of the first card in a finding's rail group (what its scratchpad marker reveals), or null. */
+export function firstCardRef(groups: Group[], findingId: string): string | null {
+	const g = groups.find((x) => x.finding?.id === findingId && x.cards.length);
+	return g ? cardRef(g.cards[0]) : null;
+}

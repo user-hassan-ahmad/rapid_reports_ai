@@ -80,4 +80,28 @@ describe('scratchpad finding markers', () => {
 		m.blur();
 		expect(onFindingHover).toHaveBeenLastCalledWith(null);
 	});
+
+	it('the marker button reveals its finding\'s card (click, Enter or Space)', async () => {
+		const onFindingOpen = vi.fn();
+		render(HybridStackView, { ...base(), units, findingMarks: { u1: 1 }, onFindingOpen });
+		await page.getByRole('button', { name: 'Finding 1: A 7 mm solid nodule.' }).click();
+		expect(onFindingOpen).toHaveBeenCalledWith('u1');
+	});
+
+	it('a unit whose first row is in a hidden group gets its marker on its first visible row', async () => {
+		// 'Spleen' is not abnormal anywhere, so its group is not shown; the same unit id also appears in Lungs
+		const hiddenFirst = [u(1, 'Hidden first row.', 'Spleen'), u(1, 'A 7 mm solid nodule.', 'Lungs', { abnormal: true, covers: ['Lungs'] })];
+		render(HybridStackView, { ...base(), groups: ['Spleen', ...GROUPS], units: hiddenFirst, findingMarks: { u1: 1 } });
+		const mark = document.querySelector('[data-finding-mark="u1"]') as HTMLElement;
+		expect(mark).not.toBeNull();
+		expect(mark.closest('li')!.textContent).toContain('A 7 mm solid nodule.');
+	});
+
+	it('Copilot on: the gutter is reserved on finding lines before any match lands; Copilot off: none', async () => {
+		const r = render(HybridStackView, { ...base(), units, findingGutter: true, findingMarks: {} });
+		expect(document.querySelectorAll('[data-finding-gutter]').length).toBe(2); // the two abnormal lines, not the normal one
+		expect(document.querySelector('[data-finding-mark]')).toBeNull();
+		await r.rerender({ ...base(), units, findingGutter: false, findingMarks: {} });
+		expect(document.querySelector('[data-finding-gutter]')).toBeNull();
+	});
 });

@@ -93,6 +93,8 @@
 		onRecEdit = () => {},
 		onRecDelete = () => {},
 		findingMarks = {},
+		findingGutter = false,
+		onFindingOpen = () => {},
 		activeFinding = null,
 		onFindingHover = () => {},
 		onConfirm,
@@ -212,6 +214,10 @@
 		/** Guideline finding ids (`u<unit>` | `u<unit>.<part>`) to their rail number: a numbered marker in the margin of that
 		 *  unit's line; {} (Copilot off) shows none. A part's id marks its unit's line (parts render as one line). */
 		findingMarks?: Record<string, number>;
+		/** Copilot is on: reserve the marker gutter on finding lines from the start, so text never re-wraps when the match lands. */
+		findingGutter?: boolean;
+		/** The marker button was used: reveal this finding's card in the rail. */
+		onFindingOpen?: (id: string) => void;
 		/** The finding being looked at on either side: its line gets a faint highlight (no layout shift). */
 		activeFinding?: string | null;
 		onFindingHover?: (id: string | null) => void;
@@ -253,17 +259,6 @@
 				(g.name === OTHER && showsGroup(units, OTHER))
 		)
 	);
-	// The first row of each unit id carries the finding's marker (a unit that renders as several rows gets one).
-	const markedRows = $derived.by(() => {
-		const seen = new Set<number>();
-		const out = new Set<ViewRow>();
-		const walk = (r: ViewRow) => {
-			if (!seen.has(r.unitId)) { seen.add(r.unitId); out.add(r); }
-			r.children.forEach(walk);
-		};
-		[...(view.groups.find((g) => g.name === TECHNIQUE)?.rows ?? []), ...view.groups.flatMap((g) => g.rows)].forEach(walk);
-		return out;
-	});
 	const technique = $derived(view.groups.find((g) => g.name === TECHNIQUE));
 	const conclusionRows = $derived(view.groups.find((g) => g.name === CONCLUSION)?.rows ?? []);
 	const dictatedNormalWords = $derived(new Map(states.dictatedNormal.map((d) => [d.region, d.words])));
@@ -297,6 +292,18 @@
 	const flatRows = (rows: ViewRow[]): ViewRow[] => rows.flatMap((r) => [r, ...flatRows(r.children)]);
 	// Lines in the order they are shown, for the walkthrough's top-to-bottom order.
 	const shownLines = $derived(flatRows([...(technique?.rows ?? []), ...shown.flatMap((g) => g.rows), ...conclusionRows]));
+	// The first SHOWN row of each unit id carries the finding's marker (a unit that renders as several rows gets one, and
+	// one whose first row sits in a hidden group gets it on its first visible row).
+	const markedRows = $derived.by(() => {
+		const seen = new Set<number>();
+		const out = new Set<ViewRow>();
+		for (const r of shownLines) if (!seen.has(r.unitId)) { seen.add(r.unitId); out.add(r); }
+		return out;
+	});
+	const isFinding = (r: ViewRow) => {
+		const u = units.find((x) => x.id === r.unitId);
+		return !!u && (u.abnormal || !!u.parts?.some((p) => p.abnormal));
+	};
 	const onLine = (c: CheckFlag, r: ViewRow) => r.text.includes(c.quote) || (!!c.other && r.text.includes(c.other));
 	/** The line a check's card opens on: its quote's line, else the other half's. */
 	const cardLine = (c: CheckFlag) => shownLines.find((r) => r.text.includes(c.quote)) ?? shownLines.find((r) => onLine(c, r)) ?? null;
@@ -959,11 +966,11 @@
 				<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
 			{/if}
 		</div>
-		{#if fids.length && markedRows.has(r)}
+		{#if (findingGutter && isFinding(r)) || (fids.length && markedRows.has(r))}
 			<!-- Right edge of the line (the side nearest the rail): in the flow, so it never overlaps the text or the edit
-			     and delete controls, and never sits outside the scroller. -->
-			<span class="mt-1 flex shrink-0 gap-0.5">
-				{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} />{/each}
+			     and delete controls, and never sits outside the scroller. Reserved from the start while Copilot is on. -->
+			<span class="mt-1 flex min-w-[16px] shrink-0 gap-0.5" data-finding-gutter={findingGutter ? '' : undefined}>
+				{#if fids.length && markedRows.has(r)}{#each fids as id (id)}<FindingMarker n={findingMarks[id]} {id} text={r.text} side="pad" active={activeFinding === id} onHover={onFindingHover} onOpen={onFindingOpen} />{/each}{/if}
 			</span>
 		{/if}
 	</li>

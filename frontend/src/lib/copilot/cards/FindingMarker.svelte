@@ -4,13 +4,15 @@
 	 * component draws both ends. `n` is the finding's number (copilot/markers findingNumbers); `text` the full finding,
 	 * kept as the title and the screen-reader name. `side` says which end it is (data attribute the connector reads).
 	 */
-	let { n, id, text, side, active = false, onHover = undefined }: {
+	let { n, id, text, side, active = false, onHover = undefined, onOpen = undefined }: {
 		n: number;
 		id: string;
 		text: string;
 		side: 'rail' | 'pad';
 		active?: boolean;
 		onHover?: (id: string | null) => void;
+		/** The scratchpad button: reveal this finding's card in the rail (click, Enter or Space). */
+		onOpen?: (id: string) => void;
 	} = $props();
 	const data = $derived(side === 'rail' ? { 'data-finding-mark-rail': id } : { 'data-finding-mark': id });
 </script>
@@ -18,7 +20,7 @@
 {#if side === 'pad'}
 	<!-- Scratchpad end: focusable, so the keyboard reaches the same highlight as the mouse. -->
 	<button type="button" class="fm fm-btn" class:fm-active={active} aria-label={`Finding ${n}: ${text}`} title={text} {...data}
-		onmouseenter={() => onHover?.(id)} onmouseleave={() => onHover?.(null)}>{n}</button>
+		onclick={() => onOpen?.(id)} onmouseenter={() => onHover?.(id)} onmouseleave={() => onHover?.(null)}>{n}</button>
 {:else}
 	<span class="fm" class:fm-active={active} role="img" aria-label={`Finding ${n}: ${text}`} title={text} {...data}
 		onmouseenter={() => onHover?.(id)} onmouseleave={() => onHover?.(null)}>{n}</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeFindingOf, findingNumbers, touch, trackOpen } from './markers';
+import { activeFindingOf, findingNumbers, firstCardRef, touch, trackOpen } from './markers';
 import { cardRef } from './state';
 import { card } from './cards/fixtures';
 import type { Group } from './state';
@@ -33,5 +33,10 @@ describe('which finding is active', () => {
 		expect(activeFindingOf(null, order, groups)).toBe('u4');
 		expect(activeFindingOf(null, touch(order, cardRef(ca)), groups)).toBe('u1');
 		expect(touch([], 'x')).toEqual(['x']);
+	});
+	it('the marker opens the first card of its finding group', () => {
+		expect(firstCardRef(groups, 'u4')).toBe(cardRef(cb));
+		expect(firstCardRef(groups, 'u1')).toBe(cardRef(ca));
+		expect(firstCardRef(groups, 'u9')).toBeNull();
 	});
 });

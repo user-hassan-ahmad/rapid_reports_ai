@@ -12,13 +12,15 @@
 	let d = $state<string | null>(null);
 	let frame = 0;
 
-	/** The nearest scrolling (or clipping) ancestor's rect: where the endpoint can actually be seen. */
-	function paneOf(el: HTMLElement): DOMRect | null {
+	/** Every ancestor that scrolls or clips (overflow not visible on either axis), up to the document: the endpoint is
+	 *  seen only where all of them overlap (a card clips to its rounded corners AND sits in the rail's scroller). */
+	function panesOf(el: HTMLElement): DOMRect[] {
+		const out: DOMRect[] = [];
 		for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
 			const o = getComputedStyle(p);
-			if (/(auto|scroll|hidden|overlay)/.test(o.overflowX + o.overflowY)) return p.getBoundingClientRect();
+			if (o.overflowX !== 'visible' || o.overflowY !== 'visible') out.push(p.getBoundingClientRect());
 		}
-		return null;
+		return out;
 	}
 	const esc = (s: string) => s.replace(/["\\]/g, '\\$&');
 	function measure() {
@@ -31,7 +33,7 @@
 		const first = card.querySelector<HTMLElement>('.cp-card') ?? card;
 		const head = first.querySelector<HTMLElement>('.gl-head') ?? first;
 		d = connectorPath(head.getBoundingClientRect(), mark.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight },
-			{ marker: paneOf(mark), card: paneOf(head) });
+			{ marker: panesOf(mark), card: panesOf(head) });
 	}
 	function schedule() { if (!frame) frame = requestAnimationFrame(measure); }
 
@@ -39,13 +41,27 @@
 		void active;
 		schedule();
 		if (!active) return;
-		// only the two containers that hold the ends (the scratchpad stack and the rail's card list), never this overlay
-		const mo = new MutationObserver(schedule);
-		for (const el of document.querySelectorAll('[data-testid="hybrid-stack"], [data-testid="copilot-cards"]')) mo.observe(el, { childList: true, subtree: true });
+		// Watch the two containers that hold the ends (the scratchpad stack and the rail's card list), never this overlay,
+		// and re-attach when either mounts or remounts: a light body observer only checks which containers exist.
+		const SEL = '[data-testid="hybrid-stack"], [data-testid="copilot-cards"]';
+		let watched: Element[] = [];
+		const inner = new MutationObserver(schedule);
+		const attach = () => {
+			const now = [...document.querySelectorAll(SEL)];
+			if (now.length === watched.length && now.every((e, i) => e === watched[i])) return;
+			inner.disconnect();
+			watched = now;
+			for (const el of now) inner.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+			schedule();
+		};
+		const mo = new MutationObserver(attach);
+		mo.observe(document.body, { childList: true, subtree: true });
+		attach();
 		window.addEventListener('scroll', schedule, true);
 		window.addEventListener('resize', schedule);
 		return () => {
 			mo.disconnect();
+			inner.disconnect();
 			window.removeEventListener('scroll', schedule, true);
 			window.removeEventListener('resize', schedule);
 			if (frame) cancelAnimationFrame(frame);
