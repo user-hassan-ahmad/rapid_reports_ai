@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from .gate_model import GateRecord
 from .schemas import CONCLUSION, GENERAL, TECHNIQUE
+from .session_rules import SELECTED_RECS
 from .units import StackUnit
 
 FIXED = {TECHNIQUE, GENERAL, CONCLUSION}
@@ -98,8 +99,8 @@ def _value_statements(gate: GateRecord) -> list[str]:
 def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
                    removed: list[str] | None = None) -> Statements:
     """What Generate receives (checklist spec §7): the radiologist's sentences, tapped rows, confirmed region normals,
-    typed values, the confirmed conclusion, and what they removed (never to be asserted). `removed`: the reconciled
-    list (dictation wins), else the gate's."""
+    typed values, the confirmed conclusion, applied recommendations, and what they removed (never to be
+    asserted). `removed`: the reconciled list (dictation wins), else the gate's."""
     removed_list = list(gate.removed if removed is None else removed)
     items = _items(units)
 
@@ -146,6 +147,10 @@ def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
     if conclusion:
         parts.append(f"Conclusion (confirmed by the radiologist): {conclusion}")
         plain.append(conclusion)
+    recs = [r.text.strip() for r in gate.recommendations if r.text.strip()]
+    if recs:                                     # spec 2026-10-14 §7.3: the shared recommendations rule places it
+        parts.append(f"{SELECTED_RECS} {' '.join(recs)}")
+        plain += recs
     if removed_list:
         parts.append(f"DO NOT ASSERT (removed by the radiologist): {' '.join(removed_list)}")
     gone = set(removed_list)

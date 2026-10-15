@@ -54,3 +54,31 @@ def test_said_is_only_the_radiologists_units_and_taps():
     assert "Liver 18 cm." in said and "No focal lesion." in said and "No appendicitis." in said
     assert "Portal vein patent." not in said and "Spleen normal." not in said   # assumed normals never override
     assert "Hepatomegaly." not in said                                         # nor does the conclusion
+
+
+def test_applied_recommendations_reach_the_block_and_plain():
+    c = next(c for c in GOLDEN if c["name"] == "rows_assumed_conclusion_removed")
+    recs = [{"key": "k1", "text": "Solid nodule 6-8 mm: CT at 3 months (BTS 2015)."}, {"key": "k2", "text": "  "}]
+    st = findings_block(_units(c), c["groups"], GateRecord.model_validate({**c["gate"], "recommendations": recs}))
+    assert "Recommendations (selected by the radiologist): Solid nodule 6-8 mm: CT at 3 months (BTS 2015)." in st.block
+    assert "Solid nodule 6-8 mm: CT at 3 months (BTS 2015)." in st.plain()     # its numbers count as stated
+    assert "Recommendations (selected" not in st.plain()
+    plain = findings_block(_units(c), c["groups"], GateRecord.model_validate(c["gate"]))
+    assert findings_block(_units(c), c["groups"], GateRecord.model_validate({**c["gate"], "recommendations": recs[1:]})).block == plain.block
+
+
+def test_an_applied_line_counts_as_stated_for_the_number_check_and_the_post_gen_check():
+    """backend-1b 2026-10-15: report.py passes Statements.all_texts() to undictated_numbers, and plain() feeds the
+    removed guard and the post-generation check, so a selected line is treated as the radiologist's statement: its
+    guideline numbers are never flagged as undictated, and the omission check may restore it if the writer drops it
+    (intended)."""
+    from rapid_reports_ai.template_number_check import undictated_numbers
+    c = next(c for c in GOLDEN if c["name"] == "rows_assumed_conclusion_removed")
+    line = "Solid nodule 6-8 mm: CT in 3 months (BTS 2015)."
+    st = findings_block(_units(c), c["groups"], GateRecord.model_validate({**c["gate"], "recommendations": [{"text": line}]}))
+    assert line in st.all_texts() and line in st.plain()
+    report = "Impression: follow-up CT in 3 months."
+    flagged = lambda texts: [n for n in undictated_numbers(report, texts, "") if "3" in n["text"]]   # noqa: E731
+    without = findings_block(_units(c), c["groups"], GateRecord.model_validate(c["gate"]))
+    assert flagged(without.all_texts())            # control: with no applied line the 3 is undictated
+    assert not flagged(st.all_texts())             # the applied line supplies it

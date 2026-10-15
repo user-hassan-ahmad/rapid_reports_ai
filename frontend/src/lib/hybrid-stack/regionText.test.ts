@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { regionText } from './regionState';
-import type { StackUnit } from './types';
+import { buildFindingsBlock, regionText } from './regionState';
+import type { GateRecord, StackUnit } from './types';
 
 const u = (id: number, text: string, group: string | null, extra: Partial<StackUnit> = {}): StackUnit => ({
 	id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal: false, pinned: false, heading: false, ...extra
@@ -40,5 +40,22 @@ describe('regionText', () => {
 
 	it('a bare normal grouped General covers no region', () => {
 		expect(regionText([u(0, 'normal', 'General')])).toEqual({});
+	});
+});
+
+describe('applied recommendations (spec 2026-10-14 §7.3)', () => {
+	const gate = (recommendations?: { text: string }[]) =>
+		({ confirmed_at: '', conclusion_text: 'Solid nodule.', conclusion_source: 'dictated', assumed_normal: [], remainder_normal: [], dictated_normal: [], items: [], assumed: {}, removed: ['No effusion.'], capped: [], ...(recommendations ? { recommendations } : {}) }) as unknown as GateRecord;
+	const units = [{ id: 1, text: 'A 7 mm solid nodule.', group: 'Lungs', structure: null, attach_to: null, parts: null, covers: [], abnormal: true, pinned: false, heading: false }] as StackUnit[];
+	it('adds one selected-recommendations line after the conclusion, before what was removed', () => {
+		const b = buildFindingsBlock(units, ['Lungs'], gate([{ text: 'Solid nodule 6-8 mm: CT at 3 months (BTS 2015).' }, { text: '  ' }, { text: 'Second (X 2020).' }]));
+		const parts = b.split('\n\n');
+		const i = parts.findIndex((p) => p.startsWith('Recommendations (selected by the radiologist): '));
+		expect(parts[i]).toBe('Recommendations (selected by the radiologist): Solid nodule 6-8 mm: CT at 3 months (BTS 2015). Second (X 2020).');
+		expect(parts[i - 1]).toBe('Conclusion (confirmed by the radiologist): Solid nodule.');
+		expect(parts[i + 1]).toBe('DO NOT ASSERT (removed by the radiologist): No effusion.');
+	});
+	it('no recommendations, or only empty ones: the block is unchanged', () => {
+		expect(buildFindingsBlock(units, ['Lungs'], gate([{ text: ' ' }]))).toBe(buildFindingsBlock(units, ['Lungs'], gate()));
 	});
 });

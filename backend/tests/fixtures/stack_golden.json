@@ -387,6 +387,123 @@
         "text": "Liver: Lesion 12 µm, angle ≥ 30°, 🙂.",
         "block": "Liver: Lesion 12 µm, angle ≥ 30°, 🙂.\n\nConclusion (confirmed by the radiologist): Lesion ≥ 30° 🙂."
       }
+    },
+    {
+      "name": "applied_recommendations",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Liver 18 cm.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 2,
+          "text": "Normal study apart from hepatomegaly.",
+          "group": "Conclusion",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": {
+        "confirmed_at": "2026-10-14T00:00:00Z",
+        "conclusion_text": "Hepatomegaly. ",
+        "conclusion_source": "dictated",
+        "assumed_normal": [
+          "Pancreas"
+        ],
+        "remainder_normal": [
+          "Kidneys"
+        ],
+        "dictated_normal": [],
+        "items": [
+          {
+            "id": "r1",
+            "kind": "finding",
+            "region": "Liver",
+            "question": "Focal lesion?",
+            "sentences": [
+              "No focal lesion."
+            ],
+            "answered_by": "tap"
+          },
+          {
+            "id": "r2",
+            "kind": "referral",
+            "region": "",
+            "question": "Appendicitis?",
+            "sentences": [
+              "No appendicitis."
+            ],
+            "answered_by": "tap"
+          },
+          {
+            "id": "r3",
+            "kind": "finding",
+            "region": "Spleen",
+            "question": "Splenomegaly?",
+            "sentences": [
+              "Not enlarged."
+            ],
+            "answered_by": "skip"
+          }
+        ],
+        "assumed": {
+          "Liver": [
+            "Portal vein patent."
+          ],
+          "Spleen": [
+            "Spleen normal."
+          ]
+        },
+        "removed": [
+          "No ascites."
+        ],
+        "capped": [],
+        "units_hash": "k",
+        "recommendations": [
+          {
+            "key": "bts|nodule",
+            "finding_id": "u1",
+            "pack": "bts-pulmonary-nodule",
+            "outcome": "ct3",
+            "verdict": "surveillance|CT at 3 months|",
+            "sentence": "Solid nodule 6-8 mm: CT at 3 months (BTS 2015).",
+            "text": "Solid nodule 6-8 mm: CT at 3 months (BTS 2015).",
+            "values": [
+              {
+                "input": "diameter_mm",
+                "value": "7 mm",
+                "state": "read",
+                "quote": "7 mm"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "hash": "21:d3965ba7",
+        "text": "Liver: Liver 18 cm.",
+        "block": "Liver: Liver 18 cm. Answered by the radiologist: No focal lesion. Assumed normal (confirmed by the radiologist): Portal vein patent.\n\nReferral question (answered by the radiologist): No appendicitis.\n\nAssumed normal (confirmed by the radiologist): Spleen: Spleen normal.\n\nConfirmed normal (not dictated; confirmed by the radiologist): Pancreas; remainder of Kidneys.\n\nConclusion (confirmed by the radiologist): Hepatomegaly.\n\nRecommendations (selected by the radiologist): Solid nodule 6-8 mm: CT at 3 months (BTS 2015).\n\nDO NOT ASSERT (removed by the radiologist): No ascites."
+      }
     }
   ]
 }

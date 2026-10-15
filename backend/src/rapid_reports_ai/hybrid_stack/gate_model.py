@@ -27,6 +27,32 @@ class ValueChip(BaseModel):
     value: Optional[str] = None
 
 
+class AppliedValue(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    input: str = ""
+    value: str = ""
+    state: str = ""
+    quote: str = ""
+
+
+class AppliedRec(BaseModel):
+    """A recommendation applied from a guideline card (spec 2026-10-14 §7.2); `text` is what reaches the report."""
+    model_config = ConfigDict(extra="allow")
+    key: str = ""
+    finding_id: str = ""
+    pack: str = ""
+    version: str = ""
+    bundle: str = ""
+    source: str = ""
+    outcome: str = ""
+    verdict: str = ""
+    chosen_from: Optional[int] = None
+    sentence: str = ""
+    text: str = ""
+    values: list[AppliedValue] = Field(default_factory=list)
+    stale: Optional[Literal["values", "finding"]] = None
+
+
 class GateRecord(BaseModel):
     model_config = ConfigDict(extra="allow")
     confirmed_at: str = ""
@@ -37,6 +63,7 @@ class GateRecord(BaseModel):
     items: list[GateItem] = Field(default_factory=list)
     assumed: dict[str, list[str]] = Field(default_factory=dict)
     removed: list[str] = Field(default_factory=list)
+    recommendations: list[AppliedRec] = Field(default_factory=list)   # no cap: a 422 would block Generate (D24)
     values: Optional[list[ValueChip]] = None
     units_hash: str = ""
     findings_hash: Optional[str] = None   # recorded by the browser at Confirm (P2c); verified when present
