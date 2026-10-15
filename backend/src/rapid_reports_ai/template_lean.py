@@ -563,8 +563,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         if gate_filled and vrec["backstop"]["missing"]:
             # before the line is written, so a written-back sentence never sits on (or is stripped with) that line
             before = final
-            final, edits, vrec["restored"] = restore_values(final, sheet, vrec["backstop"]["missing"],
-                                                            (stack or {}).get("values_quotes") or {})
+            final, edits, vrec["restored"] = await restore_values(final, sheet, vrec["backstop"]["missing"],
+                                                                  (stack or {}).get("values_quotes") or {})
             back = {norm_key(x) for x in vrec["restored"]}
             flags = [f for f in flags if norm_key(f["text"]) not in back]
             if edits:   # shown on the rail as pre-applied insertions, like the check's own

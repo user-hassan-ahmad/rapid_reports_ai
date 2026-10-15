@@ -175,8 +175,8 @@ def _section_aliases(st) -> dict:
     return alias
 
 
-def restore_values(report: str, sheet: str, missing: Sequence[str],
-                   quotes: dict) -> Tuple[str, List[dict], List[str]]:
+async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes: dict,
+                         conveys=None) -> Tuple[str, List[dict], List[str]]:
     """A value the gate filled from the dictation never vanishes (P3 2026-10-15): (the report with each missing
     value's dictated sentence written back, the insertion edits, the items the report now holds). `quotes`: item ->
     {"sentence": the dictated sentence holding the value, "region": its scratchpad region}
@@ -184,14 +184,19 @@ def restore_values(report: str, sheet: str, missing: Sequence[str],
     for its region, as dictated (capitalised, terminated; a bulleted section's marker). Flag only (the item is not
     returned, so its value_missing flag stays; it is never listed as not provided): no sentence (a stated? or kept
     chip), no region, a region no headed report section is named for, a region naming the conclusion, or a report
-    without headers. A sentence already in the report is not written again. Run before write_missing. Never raises:
-    on any error the report comes back as it was."""
+    without headers. A sentence already in the report word for word is not written again. Before writing, the quick
+    path's duplicate check (`conveys`, default report_review.already_conveyed: Jev) asks whether the report already
+    says each sentence in other words: said, it is not written and the item is held (no flag); the check failing
+    writes nothing and keeps every such flag (fail closed). Run before write_missing. Never raises: on any error the
+    report comes back as it was."""
     try:
-        from .report_review import section_spans
+        from . import report_review as rr
         from .template_lean import report_sections
         by = {norm_key(k): v for k, v in (quotes or {}).items() if isinstance(v, dict)}
         alias = _section_aliases(_clean(sheet))
-        text, edits, restored = report or "", [], []
+        text = report or ""
+        bare = _NA_LINE.sub("", text)
+        held, todo = [], []   # todo: (item, sentence, the report names of its section)
         for item in missing:
             q = by.get(norm_key(item)) or {}
             sent = " ".join(str(q.get("sentence") or "").split())
@@ -199,22 +204,40 @@ def restore_values(report: str, sheet: str, missing: Sequence[str],
                 continue
             sent = sent[0].upper() + sent[1:]
             sent = sent if sent[-1] in ".!?" else sent + "."
-            if _present(sent, _NA_LINE.sub("", text)):
-                restored.append(item)
+            if _present(sent, bare):
+                held.append(item)
                 continue
             region = " ".join(str(q.get("region") or "").split()).upper()
             if not region:
                 continue
             want = alias.get(region, {region})
-            spans = section_spans(text, report_sections(text, sheet))
+            spans = rr.section_spans(text, report_sections(text, sheet))
+            if any(s.header and s.role != "impression" and s.name in want for s, _, _ in spans):
+                todo.append((item, sent, want))
+        said = [False] * len(todo)
+        if todo:
+            try:
+                said = list(await (conveys or rr.already_conveyed)(bare, [t[1] for t in todo]))
+                if len(said) != len(todo):
+                    raise ValueError(f"{len(said)} answers for {len(todo)} sentences")
+            except Exception as e:  # noqa: BLE001 -- fail closed: nothing written, the flags stay
+                logger.warning("[template.required_values] restore duplicate check failed (%s: %s)",
+                               type(e).__name__, str(e)[:200])
+                todo, said = [], []
+        edits = []
+        for (item, sent, want), dup in zip(todo, said):
+            if dup:
+                held.append(item)
+                continue
+            spans = rr.section_spans(text, report_sections(text, sheet))
             hit = next(((a, b) for s, a, b in spans if s.header and s.role != "impression" and s.name in want), None)
             if hit is None:
                 continue
             text = _append(text, hit[0], hit[1], sent)
             edits.append({"type": "insertion", "sentence": sent})
-            restored.append(item)
-        logger.info("[template.required_values] restored=%d", len(edits))
-        return text, edits, restored
+            held.append(item)
+        logger.info("[template.required_values] restored=%d held=%d", len(edits), len(held))
+        return text, edits, [i for i in missing if i in held]
     except Exception as e:  # noqa: BLE001 -- never break Generate
         logger.warning("[template.required_values] restore error=%s", f"{type(e).__name__}: {e}"[:200])
         return report, [], []
