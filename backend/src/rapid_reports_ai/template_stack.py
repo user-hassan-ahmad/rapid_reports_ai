@@ -16,7 +16,7 @@ import re
 from typing import List, Sequence
 
 from .template_sheet_grammar import _BULLET
-from .hybrid_stack.session_rules import RECOMMENDATIONS_RULE
+from .hybrid_stack.session_rules import CONCLUSION_IS_CONTENT, RECOMMENDATIONS_RULE
 
 # Units that state or decide content (the grammar's keywords; optional indentation and "- " bullet, as it parses)
 _CONTENT_UNITS = ("NORMAL", "NEGATIVE", "IF_PRESENT", "RECOMMEND", "DIFFERENTIAL", "QUESTION")
@@ -114,5 +114,6 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
             "## Confirmed Conclusion\n"
             "- The radiologist's own conclusion; write the impression from it in report style and in this sheet's "
             "impression format, keeping every finding it names and adding nothing it does not contain — no diagnosis, "
-            f'grade or negative; a recommendation only as the session rules allow: "{conclusion.strip()}"')
+            f'grade or negative; a recommendation only as the session rules allow; {CONCLUSION_IS_CONTENT}: '
+            f'"{conclusion.strip()}"')
     return "\n\n".join(parts)

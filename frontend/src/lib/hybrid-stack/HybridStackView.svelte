@@ -1355,7 +1355,7 @@
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
-						disabled={!hasConclusion || syncing || checking || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+						disabled={!hasConclusion || held.length > 0 || syncing || checking || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
 				{/if}
 			</span>
 		</section>
@@ -1374,6 +1374,8 @@
 			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90"
 				>{gateConfirmed ? 'assumptions confirmed' : namedNormals ? `${assumedCount} regions assumed normal (no sheet yet)` : `${assumedCount} assumed normal`}</span>
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
+			<!-- Q12 (Hassan 2026-10-16): an open instruction card blocks Confirm, and so Generate, until it is answered -->
+			{#if held.length}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" data-gate="held">{held.length} {held.length === 1 ? 'instruction' : 'instructions'} to answer</span>{/if}
 			{#if guidelinesUnresolved.length}<button type="button" class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/25" data-gate="guidelines"
 					onclick={() => onOpenGuideline(guidelinesUnresolved[0].key)}>{guidelinesUnresolved.length} guideline{guidelinesUnresolved.length === 1 ? '' : 's'} unresolved</button>{/if}
 			{#if sideFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-gate="sides">{sideFailed === 'kept' ? 'side check unavailable: open “Which side?” questions kept' : 'side check unavailable'}</span>{/if}
@@ -1384,7 +1386,7 @@
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || !hasConclusion || syncing || checking || newLine.trim().length > 0 || editing !== null || valueDraft}
+			disabled={gateConfirmed || !hasConclusion || held.length > 0 || syncing || checking || newLine.trim().length > 0 || editing !== null || valueDraft}
 			onclick={() => (stops.length ? startWalk() : onConfirm())}
 			>{gateConfirmed ? 'Confirmed ✓' : checking ? 'Checking…' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
 	</section>

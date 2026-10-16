@@ -28,7 +28,7 @@ from .polish_attachment import MOVED_MIN, moved_score
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
-from .hybrid_stack.jev_stack import ask_command, decide_command, held_score, settle_instruction
+from .hybrid_stack.jev_stack import ask_command, decide_command, held_score, polish_handles, settle_instruction
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1173,7 +1173,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
             d = await classify()
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
                      asr_min_conf=request.asr_min_conf, preceding=request.active)
-    stack_command = settle_instruction(stack_command, r.route)
+    stack_command = settle_instruction(stack_command, r.route, polish_handles(
+        d.triage.action if isinstance(d, BundleDecision) else None, request.latest_utterance))
     ok = isinstance(d, BundleDecision)
     # Word-sense spotter + fixer: Jev flagged words that make no clinical sense as heard;
     # code proposes sound-alikes, Jev chooses the sentence, a confident choice is applied.

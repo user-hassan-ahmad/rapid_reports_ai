@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from ..dictation_triage_router import map_formatting
 from ..jev_client import JEV_MODEL, jev_post
 
 TIMEOUT_S = 3.0
@@ -38,24 +39,45 @@ INSTRUCTION = "instruction"
 INSTRUCTION_CRITERION = (
     "An instruction to the software that is not report content: it asks for the report or scratchpad to be changed, "
     "cleared, restarted, reorganised, reformatted, rewritten or navigated, or for something said to be moved or made "
-    "into another part of the report (such as the conclusion or impression), in a way none of the other options "
-    "covers; or it is speech not meant for the report (talking to the software or to someone else). A sentence that "
-    "records what was done, found, compared, communicated or advised (technique, a comparison, a reference to another "
-    "report, who was told, a recommendation to the referrer) is report content.")
-INSTRUCTION_MIN = 0.85  # lab 2026-10-15 (120 synthetic, 2 runs): 0/120 report sentences held (highest 0.81), 57/60 instructions held; Hassan picks the bar, the flag stays off until then
+    "into another part of the report (such as the conclusion or impression), or for the software to do something, in "
+    "a way none of the other options covers. Removing the last thing said is delete. A formatting or punctuation "
+    "command (new line, new paragraph, full stop), a filler, thinking aloud, or talk not meant for the report (to "
+    "someone else or to the software) is not this option. A sentence that records what was done, found, compared, "
+    "communicated or advised (technique, a comparison, a reference to another report, who was told, a recommendation "
+    "to the referrer) is report content.")
+INSTRUCTION_MIN = 0.85  # lab 2026-10-15 (120 synthetic, 2 runs): 0/60 report sentences held (highest 0.81), 57/60 instructions held; Hassan's bar (Q9, 2026-10-16)
+# Q10 (Hassan 2026-10-16): only a clear, specific instruction is held. A removal counts toward the hold only when it
+# names what it removes (a section, region or statement); "remove the last sentence", "get rid of that" keep today's path.
+NAMED_KEY = "names_target"
+NAMED_QUESTION: dict[str, Any] = {"type": "noul", "instructions": (
+    "The LATEST UTTERANCE names the part of the report it is about: a section, region, structure, heading, paragraph "
+    "or statement, by its name or its content (such as the technique section, the liver line, all the other "
+    "sections, everything except the conclusion), or the whole report. It does not when it refers only to that, it "
+    "or this, or to the last word, sentence, line or thing said.")}
+NAMED_MIN = 0.5
 
 
 WRITING_ROUTES = ("fast_append", "polish")   # bundle routes that write the words as report text
 
 
-def settle_instruction(stack: dict | None, bundle_route: str) -> dict | None:
-    """A held instruction is flagged only when the bundle would write the words (fast_append, or polish, which also
-    takes fillers and "remove the last sentence"): a delete, skip or formatting command route stands, unflagged, and
-    the stack decision returns to what it was before the hold (`fallback`)."""
+def polish_handles(triage_action: str | None, utterance: str) -> bool:
+    """The bundle triage read the final as something the polish already handles, as today: a filler, thinking aloud
+    or an aside (Q11), or a formatting command of the lexicon ("new paragraph", "full stop") the bundle was unsure
+    of (Q15). A "formatting command" the lexicon does not know is not one: lab 2026-10-16, the triage reads most
+    restructure and reformat instructions (P3 included) as formatting_command."""
+    if triage_action == "ignore_noise":
+        return True
+    return triage_action == "formatting_command" and bool(map_formatting(utterance))
+
+
+def settle_instruction(stack: dict | None, bundle_route: str, polish_handled: bool = False) -> dict | None:
+    """A held instruction is flagged only when the bundle would write the words (fast_append or polish) and the
+    final is not something the polish already handles (`polish_handles`). Otherwise the route stands, unflagged,
+    and the stack decision returns to what it was before the hold (`fallback`)."""
     if not stack or stack.get("action") != INSTRUCTION:
         return stack
     out = {k: v for k, v in stack.items() if k != "fallback"}   # never in the response
-    if bundle_route not in WRITING_ROUTES:   # the pre-hold decision (a region-less delete stays a delete)
+    if bundle_route not in WRITING_ROUTES or polish_handled:   # the pre-hold decision
         out["action"] = stack.get("fallback") or "dictate"
     return out
 
@@ -96,6 +118,8 @@ def stated_question(chip: str) -> dict[str, Any]:
 
 def command_questions(regions: list[str], chips: list[str], instruction: bool = False) -> dict[str, dict[str, Any]]:
     qs: dict[str, dict[str, Any]] = {"command": command_question(instruction)}
+    if instruction:
+        qs[NAMED_KEY] = NAMED_QUESTION
     if regions:
         qs["target_region"] = region_question(regions)
     if chips:
@@ -122,6 +146,7 @@ def parse_command(answers: dict, chips: list[str], instruction: bool = False) ->
     if instruction:
         out[INSTRUCTION] = option_p(a, INSTRUCTION)
         out["p_delete"] = option_p(a, "delete")
+        out["p_named"] = float((answers.get(NAMED_KEY) or {}).get("noul") or 0.0)
     r = answers.get("target_region")
     if r and r.get("choice") not in (None, NONE):
         out["region"] = r["choice"]
@@ -199,10 +224,12 @@ def chip_state(stated: float, contra: float) -> str:
 
 
 def held_score(parsed: dict) -> float:
-    """P(an instruction the scratchpad will not carry out): P(instruction) + P(delete). The scratchpad acts on a
-    delete only when it names a region; any other removal ("delete all the other sections") would otherwise be
-    written as dictation (P3). Lab 2026-10-15: those removals split between delete and instruction."""
-    return float(parsed.get(INSTRUCTION) or 0.0) + float(parsed.get("p_delete") or 0.0)
+    """P(an instruction the scratchpad will not carry out): P(instruction), plus P(delete) when the utterance names
+    what it removes. The scratchpad acts on a delete only when it names a region; any other named removal ("delete
+    all the other sections") would otherwise be written as dictation (P3). Lab 2026-10-15: those removals split
+    between delete and instruction. A removal that names nothing ("remove the last sentence") keeps today's path (Q10)."""
+    named = float(parsed.get("p_named") or 0.0) >= NAMED_MIN
+    return round(float(parsed.get(INSTRUCTION) or 0.0) + (float(parsed.get("p_delete") or 0.0) if named else 0.0), 6)
 
 
 def decide_command(parsed: dict, instruction_min: float | None = None) -> dict:

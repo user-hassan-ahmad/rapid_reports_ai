@@ -44,7 +44,7 @@ from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these
     q_finding, q_present, route_finding, split_findings,
 )
 from . import linked_normals as _ln
-from .hybrid_stack.session_rules import RECOMMENDATIONS_RULE
+from .hybrid_stack.session_rules import CONCLUSION_IS_CONTENT, RECOMMENDATIONS_RULE
 from . import normal_groups as _ng
 from . import report_reconcile as _rc
 
@@ -314,7 +314,7 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
             "every finding it names and adding nothing it does not contain — no diagnosis, grade or negative; a "
-            "recommendation only as the session rules allow):** "
+            f"recommendation only as the session rules allow; {CONCLUSION_IS_CONTENT}):** "
             f'"{conclusion.strip()}"'])]))
     return Brief(text=render(secs), decisions={"stack_fallback": True, "options": []}, reconcile_ms=0)
 

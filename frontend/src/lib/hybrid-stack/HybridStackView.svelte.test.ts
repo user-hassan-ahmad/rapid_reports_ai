@@ -666,4 +666,17 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (side not stated)')).toBeInTheDocument();
 		await expect.element(page.getByText(/side check unavailable/)).toBeInTheDocument();
 	});
+	it('Q12: an open instruction card blocks Confirm (and so Generate) until it is answered', async () => {
+		const props = { ...base(), onKeepHeld: vi.fn(), onRemoveHeld: vi.fn(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			conclusion: { kind: 'draft', text: 'Simple hepatic cyst.', edited: true } as const };
+		const r = render(HybridStackView, { ...props, held: [{ id: 1, text: 'Delete all the other sections.' }] });
+		await expect.element(page.getByTestId('held-instruction')).toHaveTextContent(/Delete all the other sections/);
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		await expect.element(page.getByText('1 instruction to answer')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Discard' }).click();
+		expect(props.onRemoveHeld).toHaveBeenCalledWith(1);
+		r.rerender({ ...props, held: [] });
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+		await expect.element(page.getByText('1 instruction to answer')).not.toBeInTheDocument();
+	});
 });

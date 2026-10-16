@@ -2141,7 +2141,12 @@
 	/** Instruction flag: hold a final as said (Deepgram's words, not a polish), outside the verbatim text. */
 	function holdInstruction(chunk: string): void {
 		const text = chunk.trim();
-		if (text) heldInstructions = [...heldInstructions, { id: ++heldSeq, text }];
+		if (!text) return;
+		heldInstructions = [...heldInstructions, { id: ++heldSeq, text }];
+		if (stackGate) { // Q12: a card that opens after Confirm withdraws the gate, so Generate waits for the answer
+			stackGate = null;
+			onStackGate(null, [], []);
+		}
 	}
 	/** Keep as text: the held words are appended as dictation and take the normal path from there. */
 	function keepHeld(id: number): void {
@@ -2205,6 +2210,7 @@
 	 *  recorded only on that Confirm answer for the dictation on screen (round 1), never on a live one; live
 	 *  refreshes wait while it runs. */
 	async function stackConfirm(): Promise<boolean> {
+		if (heldInstructions.length) return false; // Q12: an open instruction card blocks Confirm, and so Generate
 		if (assumedSnap?.confirm_recheck && !confirmReady(assumedSnap, verbatimNow)) {
 			if (confirming) return false;
 			confirming = true;

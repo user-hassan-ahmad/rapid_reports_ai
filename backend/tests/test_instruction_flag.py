@@ -12,8 +12,9 @@ from rapid_reports_ai.hybrid_stack import jev_stack as J
 from tests.test_canvas_bundle_route import BODY, FakeBundle, authed_client, lab  # noqa: F401  (fixtures)
 
 
-def _parsed(cmd="dictate", conf=0.9, ins=0.0, p_delete=0.0, region=None, chip=None):
-    return {"command": cmd, "confidence": conf, "region": region, "chip": chip, "instruction": ins, "p_delete": p_delete}
+def _parsed(cmd="dictate", conf=0.9, ins=0.0, p_delete=0.0, region=None, chip=None, named=1.0):
+    return {"command": cmd, "confidence": conf, "region": region, "chip": chip, "instruction": ins, "p_delete": p_delete,
+            "p_named": named}
 
 
 def test_the_question_is_unchanged_when_the_flag_is_off():
@@ -124,12 +125,113 @@ def test_bundle_returns_a_held_instruction(authed_client, lab, monkeypatch):  # 
 
 
 def test_a_polished_final_is_still_held(authed_client, lab, monkeypatch):  # noqa: F811
-    # the bundle routes fillers and "scratch that"-like finals to polish, which writes text: the hold still applies
+    # a clear instruction the bundle routes to polish (it writes text): the hold still applies
+    lab(FakeBundle(action="append_new_finding", conf=0.5))
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("instruction", conf=0.95, ins=0.95)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Make the conclusion a numbered list.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["route"] == "polish" and d["stack_command"]["action"] == "instruction"
+
+
+# ── Hassan's decisions 2026-10-16 (Q10, Q11, Q15) ─────────────────────────────
+
+def test_q10_an_unclear_delete_is_not_held():
+    # "Remove the last sentence." / "Get rid of that.": names no section or statement -> today's delete, no card
+    d = J.decide_command(_parsed("delete", conf=0.9, ins=0.05, p_delete=0.9, named=0.1))
+    assert d == {"action": "delete", "region": None, "chip": None}
+    # Jev unsure between delete and instruction, still naming nothing: today's decision
+    assert J.decide_command(_parsed("delete", conf=0.5, ins=0.45, p_delete=0.5, named=0.2))["action"] == "dictate"
+
+
+def test_q10_a_delete_naming_what_to_remove_is_held():
+    # P3 "Delete all the other sections.": names what it removes, matches no command -> held
+    d = J.decide_command(_parsed("delete", conf=0.5, ins=0.42, p_delete=0.5, named=0.9))
+    assert d["action"] == "instruction" and d["fallback"] == "dictate"
+    assert J.held_score(_parsed("delete", ins=0.42, p_delete=0.5, named=0.9)) == 0.92
+    assert J.held_score(_parsed("delete", ins=0.42, p_delete=0.5, named=0.1)) == 0.42
+
+
+def test_q10_bare_scratch_that_is_undo_and_never_asked(authed_client, lab, monkeypatch):  # noqa: F811
+    lab(FakeBundle())
+    asked = []
+
+    async def ask(scratchpad, utterance, regions, chips):
+        asked.append(utterance)
+        return _parsed("instruction", conf=0.95, ins=0.95)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    for said in ("Scratch that.", "Delete that."):
+        d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": said,
+                                                           "stack_regions": ["Lungs"]}).json()
+        assert d["route"] == "delete" and d["stack_command"] is None
+    assert asked == []
+
+
+async def test_q10_the_named_question_is_asked_in_the_same_call_only_when_on(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {"command": {"choice": "delete", "confidence": 0.9},
+                                                     J.NAMED_KEY: {"noul": 0.2}}})
+    t = httpx.MockTransport(handler)
+    on = await J.ask_command("Liver normal.", "Remove the last sentence.", [], [], transport=t, instruction=True)
+    assert len(seen) == 1 and J.NAMED_KEY in seen[0]["questions"] and on["p_named"] == 0.2
+    await J.ask_command("Liver normal.", "Remove the last sentence.", [], [], transport=t, instruction=False)
+    assert J.NAMED_KEY not in seen[1]["questions"]
+
+
+def test_q11_a_filler_or_aside_is_not_held(authed_client, lab, monkeypatch):  # noqa: F811
+    # the bundle reads it as noise: the polish cleans it, as today; never a card
     lab(FakeBundle(action="ignore_noise"))
 
     async def ask(scratchpad, utterance, regions, chips):
         return _parsed("instruction", conf=0.95, ins=0.95)
     monkeypatch.setattr(cr, "ask_command", ask)
-    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Hmm, where was I.",
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Hang on, the phone's ringing.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["route"] == "polish" and d["stack_command"]["action"] == "dictate"
+
+
+def test_q11_the_option_does_not_cover_talk_not_meant_for_the_report():
+    c = J.INSTRUCTION_CRITERION
+    assert "speech not meant for the report (talking to the software or to someone else)" not in c
+    assert "not this option" in c
+
+
+def test_q15_a_tidy_up_command_is_never_held(authed_client, lab, monkeypatch):  # noqa: F811
+    # "New paragraph" the bundle is unsure of goes to the polish, which handles it as today
+    lab(FakeBundle(action="formatting_command", conf=0.5))
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("instruction", conf=0.9, ins=0.9)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "New paragraph please.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["route"] == "polish" and d["stack_command"]["action"] == "dictate"
+
+
+def test_q15_settle_never_holds_what_the_polish_handles():
+    held = {"action": "instruction", "fallback": "dictate", "region": None}
+    assert J.settle_instruction(held, "polish", True)["action"] == "dictate"
+    assert J.settle_instruction(held, "polish", False)["action"] == "instruction"
+    assert J.polish_handles("ignore_noise", "Hang on, the phone's ringing.")
+    assert J.polish_handles("formatting_command", "New paragraph.") and J.polish_handles("formatting_command", "Full stop.")
+    assert not J.polish_handles("append_new_finding", "New paragraph.")
+    assert not J.polish_handles(None, "Hmm.")   # Jev error: the hold stands
+
+
+def test_q15_an_instruction_the_lexicon_does_not_know_is_still_held(authed_client, lab, monkeypatch):  # noqa: F811
+    # lab 2026-10-16: the triage reads P3 as a formatting command; the lexicon has no such command, so it is held
+    lab(FakeBundle(action="formatting_command", conf=0.6))
+    assert not J.polish_handles("formatting_command", "Delete all the other sections.")
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("delete", conf=0.5, ins=0.42, p_delete=0.5, named=0.9)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Delete all the other sections.",
                                                        "stack_regions": ["Lungs"]}).json()
     assert d["route"] == "polish" and d["stack_command"]["action"] == "instruction"
