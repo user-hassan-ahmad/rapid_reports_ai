@@ -366,3 +366,202 @@ def test_an_added_clause_with_no_new_content_words_is_not_violet():
     assert [r[a:b] for a, b in g[1].runs] == ["crescentic"]
     assert dg.tier_of(0.6, "abnormal", False, False, has_new_words=False) == "dictated"
     assert dg.tier_of(0.6, "not_a_finding", True, False, has_new_words=False) == "rec"   # recs keep their item
+
+
+# A recommendation the radiologist dictated, reworded by the writer into the impression's last line (integration spec
+# D22). The gate scores the rewording below GATE_MIN, so the clause is tier "rec"; the live items must still not call
+# it undictated. Synthetic stand-ins for three P3 observations (stack plain(): the confirmed conclusion is one line).
+REWORDED_RECS = [
+    ("FINDINGS:\nThere is a 4 cm mass in the pancreatic head encasing the SMV.\n\n"
+     "IMPRESSION:\nPancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion is recommended.\n",
+     "4 cm pancreatic head mass encasing the SMV.\n"
+     "Pancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion.", 0.66),
+    ("FINDINGS:\nThere is a 2 cm nodule in the right thyroid lobe.\n\n"
+     "IMPRESSION:\nRight thyroid nodule. Non-urgent thyroid ultrasound is recommended.\n",
+     "2 cm nodule right thyroid lobe.\nIncidental right thyroid nodule. Thyroid nodule, suggest non-urgent ultrasound.",
+     0.65),
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. Follow-up CT in 12 months per guidelines.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, follow-up CT in 12 months per guidelines.", 0.55),
+]
+
+
+def _live_rec(report, dictation, rec_p, **kw):
+    """Live apply where the gate calls every clause dictated except the recommendation (P(all_stated) `rec_p`)."""
+    i, al, g = _rec_gate(report, dictation, rec_p)
+    prov, _, _, log = dg.apply(i, RUN, al, g, [], [], **kw)
+    return [it.anchor.text for it in prov if it.kind == "recommendation"], log
+
+
+def _rec_gate(report, dictation, rec_p):
+    from rapid_reports_ai.review_engine.provenance import is_recommendation
+    i, al, texts = _unit_texts(report, dictation)
+    recs = [is_recommendation(t, None, "IMPRESSION") for t in texts]
+    jp = _jp(texts, [rec_p if r else 0.9 for r in recs], ["not_a_finding" if r else "abnormal" for r in recs])
+    g = dg.classify(i, report, al, jp)
+    assert [x.tier for x in g if x.tier == "rec"] == ["rec"]
+    return i, al, g
+
+
+async def _live_rec_jev(monkeypatch, report, dictation, answer):
+    """Live: ask_recs (Jev answers every recommendation question with `answer`, or raises it) then apply."""
+    i, al, g = _rec_gate(report, dictation, 0.2)
+    sent = []
+
+    async def fake(state, qs):
+        sent.append((state, qs))
+        if isinstance(answer, Exception):
+            raise answer
+        return {k: answer for k in qs}
+    monkeypatch.setattr(rc, "_jev", fake)
+    rec_jev, ask_log = await dg.ask_recs(i, al, g)
+    prov, _, _, log = dg.apply(i, RUN, al, g, [], [], rec_jev=rec_jev)
+    return [it.anchor.text for it in prov if it.kind == "recommendation"], log, ask_log, sent
+
+
+DICTATED_ANS = {"probabilities": {"stated": 0.1, "synonym_or_equivalent": 0.8, "not_stated": 0.1}}
+ADDED_ANS = {"probabilities": {"stated": 0.02, "synonym_or_equivalent": 0.03, "not_stated": 0.95}}
+BLENDED = ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+           "IMPRESSION:\n7 mm right upper lobe nodule. CT in 3 months and refer to MDT.\n",
+           "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months.", "CT in 3 months and refer to MDT.")
+TALK = ("FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team.\n",
+        "- Pancreatic mass\n- Result discussed by phone with Dr Jones, surgical registrar, read-back confirmed",
+        "Discussed with the referring team.")
+
+
+@pytest.mark.asyncio
+async def test_jev_decides_a_recommendation_the_word_rule_would_flag(monkeypatch):
+    # no pair and no shared words: only Jev knows it was dictated in other words
+    r, d, talk = TALK
+    recs, log, ask_log, _ = await _live_rec_jev(monkeypatch, r, d, DICTATED_ANS)
+    assert recs == [] and log["rec_dictated"] == 1 and log["rec_by_jev"] == 1 and log["rec_by_backstop"] == 0
+    recs, log, _, _ = await _live_rec_jev(monkeypatch, r, d, ADDED_ANS)
+    assert recs == [talk] and log["rec_dictated"] == 0
+
+
+@pytest.mark.asyncio
+async def test_jev_decides_a_recommendation_the_word_rule_would_clear(monkeypatch):
+    # every word is in a dictated line, but Jev says not stated: Jev wins, the item stays
+    report, dictation, _ = REWORDED_RECS[2]
+    recs, log, _, _ = await _live_rec_jev(monkeypatch, report, dictation, ADDED_ANS)
+    assert recs == ["Follow-up CT in 12 months per guidelines."] and log["rec_dictated"] == 0
+
+
+@pytest.mark.asyncio
+async def test_jev_flags_a_blended_recommendation(monkeypatch):
+    r, d, flagged = BLENDED
+    recs, _, _, _ = await _live_rec_jev(monkeypatch, r, d, ADDED_ANS)
+    assert recs == [flagged]
+
+
+@pytest.mark.asyncio
+async def test_ask_recs_sends_one_request_with_the_q3_question_per_recommendation(monkeypatch):
+    from rapid_reports_ai.review_engine.provenance import q_synthesis
+    r, d, flagged = BLENDED
+    _, _, ask_log, sent = await _live_rec_jev(monkeypatch, r, d, ADDED_ANS)
+    assert len(sent) == 1 and "DICTATED FINDINGS:" in sent[0][0]
+    assert list(sent[0][1].values()) == [q_synthesis(flagged, flagged)]
+    assert ask_log["asked"] == 1 and ask_log["error"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", [RuntimeError("jev down"), {}, {"choice": "maybe"}])
+async def test_the_word_rule_decides_only_when_jev_has_no_answer(monkeypatch, answer):
+    report, dictation, _ = REWORDED_RECS[2]
+    recs, log, ask_log, _ = await _live_rec_jev(monkeypatch, report, dictation, answer)
+    assert recs == [] and log["rec_by_backstop"] == 1                 # the word rule clears the reworded one
+    r, d, flagged = BLENDED
+    recs, log, _, _ = await _live_rec_jev(monkeypatch, r, d, answer)
+    assert recs == [flagged] and log["rec_dictated"] == 0             # and keeps the blended one
+    if isinstance(answer, Exception):
+        assert ask_log["error"]
+
+
+@pytest.mark.asyncio
+async def test_the_word_rule_never_clears_a_recommendation_the_radiologist_declined(monkeypatch):
+    # Jev down; every content word of the report's recommendation is in the dictated line, but the line declines it
+    r = ("FINDINGS:\nThere is a 4 mm solid nodule in the right upper lobe.\n\n"
+         "IMPRESSION:\n4 mm right upper lobe nodule. Follow-up CT is recommended.\n")
+    d = "4 mm solid nodule right upper lobe.\n4 mm nodule, no follow-up CT required."
+    recs, log, _, _ = await _live_rec_jev(monkeypatch, r, d, RuntimeError("jev down"))
+    assert recs == ["Follow-up CT is recommended."] and log["rec_by_backstop"] == 0
+
+
+def test_apply_lets_jev_decide_the_answered_recommendations_and_the_word_rule_the_rest():
+    r = ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+         "IMPRESSION:\n7 mm right upper lobe nodule. Follow-up CT in 12 months per guidelines.\n"
+         "Referral to the respiratory clinic is advised.\n")
+    d = "7 mm solid nodule right upper lobe.\n7 mm nodule, follow-up CT in 12 months per guidelines."
+    from rapid_reports_ai.review_engine.provenance import is_recommendation
+    i, al, texts = _unit_texts(r, d)
+    recs = [is_recommendation(t, None, "IMPRESSION") for t in texts]
+    jp = _jp(texts, [0.2 if x else 0.9 for x in recs], ["not_a_finding" if x else "abnormal" for x in recs])
+    g = dg.classify(i, r, al, jp)
+    rec = [x for x in g if x.tier == "rec"]
+    assert len(rec) == 2
+    ct = r.index("Follow-up CT in 12 months per guidelines.")
+    ref = r.index("Referral to the respiratory clinic is advised.")
+    # Jev answered only the referral (added); the CT one is unanswered, so the word rule clears it
+    rec_jev = {(ref, ref + len("Referral to the respiratory clinic is advised.")): 0.02,
+               (ct, ct + len("Follow-up CT in 12 months per guidelines.")): None}
+    prov, _, _, log = dg.apply(i, RUN, al, g, [], [], rec_jev=rec_jev)
+    assert [it.anchor.text for it in prov if it.kind == "recommendation"] == [
+        "Referral to the respiratory clinic is advised."]
+    assert (log["rec_by_jev"], log["rec_by_backstop"]) == (0, 1)
+
+
+@pytest.mark.asyncio
+async def test_ask_recs_asks_nothing_without_a_recommendation(monkeypatch):
+    called = []
+
+    async def fake(state, qs):
+        called.append(qs)
+        return {}
+    monkeypatch.setattr(rc, "_jev", fake)
+    i, al, texts = _unit_texts("FINDINGS:\nA pancreatic mass.\n", "- Pancreatic mass")
+    g = dg.classify(i, "FINDINGS:\nA pancreatic mass.\n", al, _jp(texts, [0.9] * len(texts), ["abnormal"] * len(texts)))
+    assert await dg.ask_recs(i, al, g) == ({}, {"asked": 0, "error": None})
+    assert called == []
+
+
+# The word rule below is the backstop when Jev has no answer (no rec_jev): near-verbatim rewordings clear, partial
+# overlap keeps the item.
+@pytest.mark.parametrize("report,dictation,p", REWORDED_RECS)
+def test_backstop_gives_no_item_for_a_reworded_dictated_recommendation(report, dictation, p):
+    recs, log = _live_rec(report, dictation, p)
+    assert recs == [] and log["recommendation"] == 0 and log["rec_dictated"] == 1
+
+
+def test_backstop_still_flags_a_recommendation_the_radiologist_did_not_dictate():
+    r = ("FINDINGS:\nThere is a 4 cm mass in the pancreatic head encasing the SMV.\n\n"
+         "IMPRESSION:\nPancreatic head mass encasing the SMV, likely adenocarcinoma. MDT discussion is recommended.\n")
+    for d in ("4 cm pancreatic head mass encasing the SMV.\nPancreatic head mass encasing the SMV, likely adenocarcinoma.",
+              "4 cm pancreatic head mass encasing the SMV.\nLikely adenocarcinoma. Suggest follow-up CT in 3 months."):
+        recs, log = _live_rec(r, d, 0.1)
+        assert recs == ["MDT discussion is recommended."] and log["rec_dictated"] == 0
+
+
+@pytest.mark.parametrize("report,dictation,flagged", [
+    # an undictated referral carried in the same sentence as a dictated follow-up (one shared word, "CT")
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT in 3 months and refer to MDT.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months.", "CT in 3 months and refer to MDT."),
+    # a different, undictated study sharing only the modality word with the dictated one
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT abdomen is recommended.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT chest in 12 months.", "CT abdomen is recommended."),
+    # the same study at a different, undictated interval
+    ("FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\n"
+     "IMPRESSION:\n7 mm right upper lobe nodule. CT in 12 months is recommended.\n",
+     "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months.", "CT in 12 months is recommended."),
+])
+def test_backstop_flags_a_recommendation_that_only_shares_a_word_with_a_dictated_one(report, dictation, flagged):
+    recs, log = _live_rec(report, dictation, 0.1)
+    assert recs == [flagged] and log["rec_dictated"] == 0
+
+
+@pytest.mark.parametrize("text", ["Follow-up CT isn't needed.", "CT needn't be repeated.", "We don't need follow-up.",
+                                  "Further imaging cannot be justified.", "Avoid further CT.", "No further imaging.",
+                                  "Follow-up not required.", "Nil further.", "Surveillance is unnecessary."])
+def test_the_word_rule_sees_negation_and_contractions(text):
+    assert dg._NEG.search(text)
