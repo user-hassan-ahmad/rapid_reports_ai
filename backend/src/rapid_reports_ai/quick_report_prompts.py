@@ -419,6 +419,22 @@ the skill sheet takes precedence."""
 
 QR_STYLE_GUIDE_STACK = _swaps(
     QR_STYLE_GUIDE_BRIEF,
+    # Q17-Q20 (2026-10-17): no house style to match; the radiologist's wording wins in FINDINGS (review of 65dbf914:
+    # the inherited "do not copy input phrasing verbatim" and passive-filler rules demanded rewording)
+    (_between(QR_STYLE_GUIDE_BRIEF, "### Voice", "### Output Structure"),
+     """### Voice
+
+British English. Impersonal third-person — never "I" or "we". FINDINGS statements keep the radiologist's wording
+(light grammar fixes only; statements may be joined as the Report Flow allows; abbreviations stay as dictated): never
+reframed into other radiological language, synonyms or a different sentence pattern.
+The conclusion and any selected recommendation are written in report style. Words the report adds itself (joining
+words, the impression) avoid passive filler ("is noted", "is seen") and weak existential openers ("there is").
+
+"""),
+    ("""Apply preferred/suppressed term pairs from the skill sheet across ALL sections
+including the impression.""",
+     """Apply preferred/suppressed term pairs from the skill sheet to the words the report adds
+itself, including the impression; a FINDINGS statement keeps the dictated terms."""),
     (_between(QR_STYLE_GUIDE_BRIEF, "### Impression as Synthesis", "### Incidental Findings"),
      """### Impression
 
@@ -472,9 +488,8 @@ QR_PRE_WRITING_ANALYSIS_STACK = _swaps(
 QR_VERIFICATION_CHECKLIST_STACK = _swaps(
     QR_VERIFICATION_CHECKLIST_BRIEF,
     (_between(QR_VERIFICATION_CHECKLIST_BRIEF, "- Every KEEP negative", "- No suppressed terms"),
-     """- Every statement in FINDINGS (its DO NOT ASSERT line excepted) appears with its meaning and wording kept (light grammar fixes only); no normal or negative statement appears that FINDINGS does not contain, for any region
-- No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it
-- Every FINDINGS statement stays in its own words, even one about the same structure as a DO NOT ASSERT line or worded like it
+     """- Every FINDINGS statement (its Conclusion, Recommendations and DO NOT ASSERT lines excepted) appears with its meaning and wording kept (light grammar fixes only; statements may be joined as the Report Flow allows; abbreviations stay as dictated), even one about the same structure as a DO NOT ASSERT line or worded like it; no normal or negative statement appears that FINDINGS does not contain, for any region
+- No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it; a FINDINGS statement licenses only what it says itself, never a broader removed sentence
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- Recommendations are specific (specialty, urgency, pathway)",
