@@ -2285,6 +2285,8 @@
 			side_hold: assumedSnap?.side_hold ?? [], // held regions Confirm passed: each was kept as dictated (its text's key)
 			side_choices: sideChoices(assumedSnap) // its "both" drops: the pairs whose choice applied
 		};
+		// Q12, again after every await above: a final decided during the Confirm re-ask may have opened a card
+		if (heldInstructions.length) return false;
 		stackGate = gate;
 		onStackGate(gate, [...stackUnits, ...tail], stackGroups);
 		void sendStackLog();

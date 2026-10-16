@@ -196,10 +196,22 @@ def test_q11_a_filler_or_aside_is_not_held(authed_client, lab, monkeypatch):  # 
     assert d["route"] == "polish" and d["stack_command"]["action"] == "dictate"
 
 
-def test_q11_the_option_does_not_cover_talk_not_meant_for_the_report():
-    c = J.INSTRUCTION_CRITERION
-    assert "speech not meant for the report (talking to the software or to someone else)" not in c
-    assert "not this option" in c
+async def test_q11_an_aside_jev_reads_as_dictation_is_not_held(monkeypatch):
+    # the option no longer covers talk not meant for the report: an aside Jev reads as dictation stays dictation
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {
+            "command": {"choice": "dictate", "confidence": 0.8,
+                        "probabilities": {"dictate": 0.8, "instruction": 0.15, "delete": 0.05}},
+            J.NAMED_KEY: {"noul": 0.1}}})
+    parsed = await J.ask_command("Liver normal.", "Can you pass me that coffee please.", [], [],
+                                 transport=httpx.MockTransport(handler), instruction=True)
+    crit = seen[0]["questions"]["command"]["criteria"][J.INSTRUCTION]
+    assert "talk not meant for the report" in crit and "is not this option" in crit
+    assert J.decide_command(parsed) == {"action": "dictate", "region": None, "chip": None}
 
 
 def test_q15_a_tidy_up_command_is_never_held(authed_client, lab, monkeypatch):  # noqa: F811
@@ -209,7 +221,7 @@ def test_q15_a_tidy_up_command_is_never_held(authed_client, lab, monkeypatch):  
     async def ask(scratchpad, utterance, regions, chips):
         return _parsed("instruction", conf=0.9, ins=0.9)
     monkeypatch.setattr(cr, "ask_command", ask)
-    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "New paragraph please.",
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "New paragraph.",
                                                        "stack_regions": ["Lungs"]}).json()
     assert d["route"] == "polish" and d["stack_command"]["action"] == "dictate"
 
@@ -235,3 +247,34 @@ def test_q15_an_instruction_the_lexicon_does_not_know_is_still_held(authed_clien
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Delete all the other sections.",
                                                        "stack_regions": ["Lungs"]}).json()
     assert d["route"] == "polish" and d["stack_command"]["action"] == "instruction"
+
+
+def test_q15_a_formatting_command_with_words_besides_is_not_a_tidy_up_command():
+    # review 2026-10-16: the lexicon matches anywhere; "Put the impression on a new line." would be released and
+    # fast_append would write "Put the impression on" as report text
+    assert not J.polish_handles("formatting_command", "Put the impression on a new line.")
+    assert not J.polish_handles("formatting_command", "New paragraph please.")
+    assert J.polish_handles("formatting_command", "New line.")
+
+
+def test_q15_put_the_impression_on_a_new_line_is_held(authed_client, lab, monkeypatch):  # noqa: F811
+    lab(FakeBundle(action="formatting_command", conf=0.6))
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("instruction", conf=0.9, ins=0.9)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Put the impression on a new line.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["route"] == "polish" and d["stack_command"]["action"] == "instruction"
+
+
+def test_q10_a_delete_top_choice_naming_nothing_is_never_held():
+    # review 2026-10-16: whatever the instruction score, a delete that names nothing keeps today's path
+    d = J.decide_command(_parsed("delete", conf=0.5, ins=0.86, p_delete=0.5, named=0.1))
+    assert d["action"] != "instruction"
+    assert J.decide_command(_parsed("delete", conf=0.5, ins=0.86, p_delete=0.5, named=0.9))["action"] == "instruction"
+
+
+def test_q10_the_named_question_covers_a_kind_of_statement():
+    assert "kind of statement" in J.NAMED_QUESTION["instructions"]
+

@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ..dictation_triage_router import map_formatting
+from ..fast_append import clean_verbatim
 from ..jev_client import JEV_MODEL, jev_post
 
 TIMEOUT_S = 3.0
@@ -52,8 +54,9 @@ NAMED_KEY = "names_target"
 NAMED_QUESTION: dict[str, Any] = {"type": "noul", "instructions": (
     "The LATEST UTTERANCE names the part of the report it is about: a section, region, structure, heading, paragraph "
     "or statement, by its name or its content (such as the technique section, the liver line, all the other "
-    "sections, everything except the conclusion), or the whole report. It does not when it refers only to that, it "
-    "or this, or to the last word, sentence, line or thing said.")}
+    "sections, everything except the conclusion), a kind of statement by what such statements say (such as all the "
+    "normal sentences), or the whole report. It does not when it refers only to that, it or this, or to the last "
+    "word, sentence, line or thing said.")}
 NAMED_MIN = 0.5
 
 
@@ -63,11 +66,13 @@ WRITING_ROUTES = ("fast_append", "polish")   # bundle routes that write the word
 def polish_handles(triage_action: str | None, utterance: str) -> bool:
     """The bundle triage read the final as something the polish already handles, as today: a filler, thinking aloud
     or an aside (Q11), or a formatting command of the lexicon ("new paragraph", "full stop") the bundle was unsure
-    of (Q15). A "formatting command" the lexicon does not know is not one: lab 2026-10-16, the triage reads most
-    restructure and reformat instructions (P3 included) as formatting_command."""
+    of (Q15), with no words besides: route_bundle's own test (`command_with_text`), so "Put the impression on a new
+    line." is not one. A "formatting command" the lexicon does not know is not one either: lab 2026-10-16, the
+    triage reads most restructure and reformat instructions (P3 included) as formatting_command."""
     if triage_action == "ignore_noise":
         return True
-    return triage_action == "formatting_command" and bool(map_formatting(utterance))
+    return (triage_action == "formatting_command" and bool(map_formatting(utterance))
+            and not re.search(r"\w", clean_verbatim(utterance)))
 
 
 def settle_instruction(stack: dict | None, bundle_route: str, polish_handled: bool = False) -> dict | None:
@@ -245,7 +250,8 @@ def decide_command(parsed: dict, instruction_min: float | None = None) -> dict:
     delete = cmd == "delete" and conf >= COMMAND_DELETE_MIN
     if delete and (parsed.get("region") or not asked):
         return {"action": "delete", "region": parsed.get("region"), "chip": None}
-    if asked and held_score(parsed) >= (INSTRUCTION_MIN if instruction_min is None else instruction_min):
+    unnamed_delete = cmd == "delete" and float(parsed.get("p_named") or 0.0) < NAMED_MIN   # Q10: today's path
+    if asked and not unnamed_delete and held_score(parsed) >= (INSTRUCTION_MIN if instruction_min is None else instruction_min):
         # fallback: the decision without the hold, restored when the bundle's route does not write (settle_instruction)
         return {"action": INSTRUCTION, "region": None, "chip": None, "fallback": "delete" if delete else "dictate"}
     if delete:   # no region: the bundle's own route decides (the last thing said)

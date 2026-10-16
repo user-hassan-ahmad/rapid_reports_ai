@@ -77,3 +77,14 @@ def test_shared_modules_import_neither_pathway():
 def test_template_pipeline_imports_no_quick_module():
     for f in ("template_pipeline.py", "template_brief.py", "template_history.py"):
         assert not any(i.startswith("quick_report") for i in _imports(SRC / f)), f
+
+
+def test_stack_briefs_share_only_the_session_rules():
+    # Q13 (2026-10-16): the conclusion rule is shared through hybrid_stack.session_rules; neither stack brief imports
+    # the other path's modules
+    q, t = _imports(SRC / "quick_report_brief.py"), _imports(SRC / "template_stack.py")
+    assert "hybrid_stack.session_rules" in q and "hybrid_stack.session_rules" in t
+    for m in q:
+        assert not m.startswith(("template", "global_style_guide")), m
+    for m in t:
+        assert not m.startswith(("quick_report", "linked_normals", "normal_groups", "report_reconcile")), m
