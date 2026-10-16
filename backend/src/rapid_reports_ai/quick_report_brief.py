@@ -280,6 +280,18 @@ def _without_history_section(b: Bullet) -> Bullet:
     return Bullet(b.label, [m.group(1) + sep.join(kept)] + b.lines[1:])
 
 
+# Dictation wins over an earlier removal (Q7, 2026-10-16): the quick path has no house style to match, so the writer
+# never resolves "every statement in the input appears" against a DO NOT ASSERT line by dropping, trimming or
+# rewording a dictated statement about the same structure. The quick copy of the template stack's rule (the two
+# paths never import each other).
+REMOVED_RULE = (
+    "FINDINGS statements always win over these removed sentences. Every statement in the FINDINGS input except its "
+    "own DO NOT ASSERT line appears with its meaning and wording kept (light grammar fixes only), even one about the "
+    "same structure as a removed sentence, whether it names that structure differently, adds a value or is worded "
+    "like it. A DO NOT ASSERT line never removes, shortens or rewords a FINDINGS statement; it forbids only the "
+    "removed sentence itself, in any wording, where no FINDINGS statement says it.")
+
+
 def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> Brief:
     """The brief of every stack session (checklist spec §7): from the slim sheet, or from today's sheet when the slim
     one is missing; never the raw sheet, which would state its own negatives and impression. Structure and style
@@ -295,6 +307,8 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         secs = []
     # Always (review 2026-10-12): the sweep order and style rules must never fill a step with normals of their own.
     guard = [f'  - DO NOT ASSERT: "{t}" — removed by the radiologist' for t in declined]
+    if guard:
+        guard.insert(0, f"  {REMOVED_RULE}")
     secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
         "- **Mandatory negatives:** (scratchpad: state only what the findings state — never a normal or negative "
         "statement the findings do not contain, even for a region in the sweep order)"] + guard)]))
@@ -307,8 +321,8 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         "labels unless the Report Flow uses those headings. The Report Flow only decides WHERE the input's statements "
         "go: a region or structure it lists that the input does not mention is left out entirely, never filled with a "
         "normal statement (no 'not dilated', 'normal' or 'no lymphadenopathy' the input does not contain). Every "
-        "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
-        "into one sentence, naming only the structures the input names; nothing is added."]),
+        "statement in the input appears, with its meaning and wording kept (light grammar fixes only); statements "
+        "about the same structure may be joined into one sentence, naming only the structures the input names; nothing is added."]),
         Bullet("Recommendations", [RECOMMENDATIONS_RULE])]))   # the one rule both stack briefs share (D22)
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [

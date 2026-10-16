@@ -544,7 +544,8 @@ for _old, _new in (
      "**12. The radiologist confirmed every statement before generation.** FINDINGS holds the dictated sentences, "
      "the answers given in the scratchpad and the normals the radiologist confirmed; nothing else is stated, for "
      "any structure or region. **DO NOT ASSERT**: the radiologist removed this statement; it never appears, in "
-     "any wording or section.\n\n"),
+     "any wording or section, unless a FINDINGS statement says it. A DO NOT ASSERT never removes, shortens or "
+     "rewords a FINDINGS statement, even one about the same structure: the dictated wording wins.\n\n"),
     # principle 8 names the descriptor-propagation principle replaced above (review 2026-10-12)
     ("The descriptor-propagation principle propagates what WAS dictated; it does not mandate emitting a "
      "placeholder for what wasn't. ", ""),
