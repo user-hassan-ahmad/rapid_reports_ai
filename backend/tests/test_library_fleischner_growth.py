@@ -28,9 +28,11 @@ def _read(**vals):
 _NODULE = {"nodule_type": "solid", "count": "single", "diameter_mm": 9.0}
 
 
-def test_growth_read_excludes_with_growth_wording():
+def test_growth_read_is_a_doubt_and_answered_excludes_with_growth_wording():
     e, src = _pack()
-    p = PP.finish(e, PP.Settlement(values=_read(**_NODULE, prior_growth=True)), {}, {}, src)
+    s = PP.Settlement(values=_read(**_NODULE, prior_growth=True))
+    assert PP.finish(e, s, {}, {}, src).scope_doubt == ["prior_growth"]        # read: confirmed first (2026-10-15)
+    p = PP.finish(e, s, {"prior_growth": "Yes"}, {}, src)
     assert p.state == "does_not_apply"
     assert p.exclusion.headline == "Outside the Fleischner table: interval growth"
     assert "see the BTS card" in p.exclusion.recommendation
@@ -69,7 +71,7 @@ def test_growth_prefilled_is_scope_doubt():
 
 def test_generic_exclusion_keeps_generic_wording():
     e, src = _pack()
-    p = PP.finish(e, PP.Settlement(values=_read(**_NODULE, exclusion=True)), {}, {}, src)
+    p = PP.finish(e, PP.Settlement(values=_read(**_NODULE)), {"exclusion": "Yes"}, {}, src)
     assert p.state == "does_not_apply"
     assert p.exclusion.headline == e.outcome(DOES_NOT_APPLY).headline
     assert p.exclusion_reason.input == "exclusion" and p.exclusion_reason.outcome is None

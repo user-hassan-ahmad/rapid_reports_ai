@@ -73,40 +73,105 @@ def test_bts_interval_is_since_study():
     assert _bts().input("interval_days").since_study is True
 
 
+PICK = "earlier study's date"       # the comparison-date question (reading lab wording 2)
+
+
+def pick(written: str | None, conf: float = 0.95):
+    """A Jev stand-in for the comparison-date question: the option whose date is written so, else none."""
+    def answer(q):
+        key = next((k for k, c in q["criteria"].items() if written and k != "none" and c.startswith(written)), "none")
+        return key, conf
+    return answer
+
+
+@pytest.fixture
+def picks(jev):
+    jev["stated"][PICK] = pick("12 March 2025")
+    return jev
+
+
 async def _settle(monkeypatch, dictation, quote, history=""):
     _model(monkeypatch, {"input": "interval_days", "value": quote, "quote": quote},
            {"input": "prior_study", "value": True, "quote": "Compared with the CT thorax"})
     return await PP.settle_pack(_bts(), dictation, history, finding=NODULE)
 
 
-async def test_interval_from_comparison_date(monkeypatch, jev, today):
+async def test_interval_from_comparison_date(monkeypatch, picks, today):
     prompts = []
     _model(monkeypatch, {"input": "interval_days", "value": "12 March 2025", "quote": "12 March 2025"},
            prompts=prompts)
     s = await PP.settle_pack(_bts(), DICTATION, "", finding=NODULE)
     d = s.values["interval_days"]
-    assert d.value.value == 581 and d.tier == "read" and d.basis == "from the CT of 12 Mar 2025"
+    assert d.value.value == 581 and d.tier == "prefilled" and d.basis == "from the CT of 12 Mar 2025"
+    assert d.why == [PP.WHY_FROM_DATE]                  # an assumption (Hassan 2026-10-14): confirmed, never read
     assert "DICTATION" in prompts[0]                    # the date may come from the whole dictation
     p = PP.finish(_bts(), s, {"prior_study": "Yes", "resolved": "No"}, {}, [])
     row = next(x for x in p.draft if x.input == "interval_days")
-    assert row.state == "read" and row.value == "581 days" and row.basis == "from the CT of 12 Mar 2025"
+    assert row.state == "prefilled" and row.value == "581 days" and row.basis == "from the CT of 12 Mar 2025"
 
 
-async def test_two_dates_asks(monkeypatch, jev, today):
+@pytest.mark.parametrize("jev_pick,conf,filled", [("12 March 2025", 0.95, True), ("12 March 2025", 0.79, False),
+                                                  ("1 June 2024", 0.95, False), (None, 0.95, False)])
+async def test_two_dates_fill_only_the_date_jev_picks_as_the_comparison(monkeypatch, jev, today, jev_pick, conf,
+                                                                        filled):
+    """Several dates: Jev picks the comparison study's from every dated sentence; the interval is pre-filled only when
+    that is the model's quoted date, at DATE_MIN; else (none, low, another date) it is asked."""
+    jev["stated"][PICK] = pick(jev_pick, conf)
     s = await _settle(monkeypatch, f"{DICTATION}\nAlso compared with CT 1 June 2024.", "12 March 2025")
+    assert ("interval_days" in s.values) is filled
+    if filled:
+        assert s.values["interval_days"].tier == "prefilled" and s.values["interval_days"].value.value == 581
+
+
+async def test_a_single_date_that_is_not_the_comparison_is_asked(monkeypatch, jev, today):
+    """A stray referral date is the only date: Jev says it dates no comparison study, so nothing is pre-filled."""
+    jev["stated"][PICK] = pick(None)
+    s = await _settle(monkeypatch, NODULE, "02/10/2026", history="Referred 02/10/2026 by GP.")
     assert "interval_days" not in s.values
+    q = next(q for p in jev["payloads"] for q in p["questions"].values() if PICK in q["instructions"])
+    assert q["type"] == "choice" and "none" in q["criteria"] and len(q["criteria"]) == 2
+
+
+async def test_a_failed_date_pick_alone_asks_and_marks_the_settlement_failed(monkeypatch, jev, today):
+    """Review I-1: the scope batches succeed, the date pick's own call fails: an outage, never "none"."""
+    jev["fail_q"] = PICK
+    s = await _settle(monkeypatch, DICTATION, "12 March 2025")
+    assert "interval_days" not in s.values and s.failed
+    assert s.values["prior_study"].why != [PP.WHY_NO_CHECK]  # the patient batch itself ran
+
+
+@pytest.mark.parametrize("answer", [("d9", 0.95), ("12 March 2025", 0.95), ("d0", 1.5)])
+async def test_an_off_menu_or_out_of_range_date_answer_is_an_outage(monkeypatch, jev, today, answer):
+    """Review M-2: a key that is not an option, or a confidence outside 0..1, is malformed: asked and failed."""
+    jev["stated"][PICK] = answer
+    s = await _settle(monkeypatch, DICTATION, "12 March 2025")
+    assert "interval_days" not in s.values and s.failed
+
+
+async def test_a_date_only_in_a_finding_outside_the_dictation_reaches_jev_with_it(monkeypatch, jev, today):
+    """Review M-4: the date pick's state carries a finding that is not part of the dictation."""
+    jev["stated"][PICK] = pick("12/03/2025")
+    finding = "Nodule 9 mm, 6 mm on the CT of 12/03/2025."
+    _model(monkeypatch, {"input": "interval_days", "value": "12/03/2025", "quote": "12/03/2025"})
+    s = await PP.settle_pack(_bts(), "Lungs: see below.", "", finding=finding)
+    assert s.values["interval_days"].tier == "prefilled"
+    state = next(p["state"] for p in jev["payloads"] for q in p["questions"].values() if PICK in q["instructions"])
+    assert state.endswith(f"FINDING:\n{finding}")
 
 
 async def test_approx_date_prefilled(monkeypatch, jev, today):
+    jev["stated"][PICK] = pick("March 2025")
     s = await _settle(monkeypatch, f"Compared with CT from March 2025.\n{NODULE}", "March 2025")
     d = s.values["interval_days"]
-    assert d.tier == "prefilled" and any("approximate date" in w for w in d.why)
+    assert d.tier == "prefilled" and any("approximate date" in w for w in d.why) and PP.WHY_FROM_DATE in d.why
     assert d.basis.endswith("(approximate)") and d.value.value == (TODAY - date(2025, 3, 15)).days
 
 
 async def test_future_date_dropped(monkeypatch, jev, today):
+    jev["stated"][PICK] = pick("20 November 2026")          # Jev would fill it: only the guard asks (review M-3)
     s = await _settle(monkeypatch, f"Compared with the CT of 20 November 2026.\n{NODULE}", "20 November 2026")
     assert "interval_days" not in s.values
+    jev["stated"][PICK] = pick("14 October 2026")
     s = await _settle(monkeypatch, f"Compared with the CT of 14 October 2026.\n{NODULE}", "14 October 2026")
     assert "interval_days" not in s.values                 # a zero interval
 
@@ -128,15 +193,17 @@ async def test_a_date_outside_the_dictation_is_asked(monkeypatch, jev, today):
 
 
 async def test_a_date_in_the_history_counts(monkeypatch, jev, today):
+    jev["stated"][PICK] = pick("12/03/2025")
     s = await _settle(monkeypatch, NODULE, "12/03/2025", history="Follow-up of nodule seen on CT 12/03/2025.")
     d = s.values["interval_days"]
-    assert d.tier == "read" and d.value.value == 581 and d.basis == "from the CT of 12 Mar 2025"
+    assert d.tier == "prefilled" and d.value.value == 581 and d.basis == "from the CT of 12 Mar 2025"
 
 
 # fix round 1 (task-3-review I-1, I-2, M-1, M-2, N-3)
 @pytest.mark.parametrize("second", ["CT 01/06/24", "CT 1 June", "CT of the 1st of June", "CT June 24", "CT Jun-24"])
 async def test_two_dates_asks_when_the_second_is_not_parseable(monkeypatch, jev, today, second):
     """I-1: a second comparison with a two-digit year or no year still counts: the interval is asked, never read."""
+    jev["stated"][PICK] = pick("12 March 2025")             # Jev would fill it: only the guard asks (review M-3)
     s = await _settle(monkeypatch, f"{DICTATION}\nAlso compared with {second}.", "12 March 2025")
     assert "interval_days" not in s.values
 

@@ -16,6 +16,7 @@ over the values the card shows."""
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 import json
 import logging
 import os
@@ -50,10 +51,16 @@ ONE_LESION_MIN = 0.8      # Jev ONE_LESION: below it, every lesion input on the 
 ONE_LESION = "The FINDING describes only one lesion of any kind (nodule, granuloma, mass, cyst, scar or other)"
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
-CHOICE_MIN = 0.8          # the scope's batched Jev claim for an enum or a boolean: below it, WHY_UNCONFIRMED
+CHOICE_MIN = 0.8          # the scope's batched Jev claim for an enum: below it, WHY_UNCONFIRMED
+# a clinical yes/no is read only when Jev's four-way choice says the text states it in words, in the drafted direction,
+# at this bar (reading lab 2026-10-15, n=73 x2: 32/78 stated values read, no silence or inference read; Hassan approved)
+STATED_MIN = 0.9
+STATED = {"stated_yes": True, "stated_no": False}
 NOT_STATED = "Not stated"   # always offered (spec §7.6): clears a value to unknown
 # why a drafted value is pre-filled rather than read (spec §7.5); shown with the value
-WHY_KIND = "yes/no and absent values are never read"
+WHY_KIND = "absent or not-assessable values are never read"
+WHY_SCOPE_KIND = "a yes/no about the guideline's scope is always confirmed"   # eligibility: reading it could exclude
+WHY_NOT_IN_WORDS = "not said in words: implied or not mentioned"              # the four-way choice (STATED_MIN)
 WHY_NOT_OPTION_WORD = "the quote does not use the option's own words"
 WHY_MODIFIED = "a negation or hedge before the quote"
 WHY_OTHER_NUMBER = "another number in this finding"
@@ -90,9 +97,13 @@ class _Evals:
         self.left -= 1
         self.memo[key] = engine.evaluate(self.e, given, assume_eligible=assume)
         return self.memo[key]
-WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
+WHY_WOULD_EXCLUDE = "this value would make the guideline not apply: confirm it"   # a scope doubt, any role or tier
 WHY_SUSPECTED = "suspected, not established"   # a hedged cancer Yes (spec §7.12 item 6): a scope doubt, never assumed No
 WHY_APPROX_DATE = "approximate date: only the month or year of the earlier study is stated"   # spec §7.12 item 4
+# Hassan 2026-10-14: an interval worked out from a date is an assumption: pre-filled, never read, confirmed before a
+# calculation rests on it
+WHY_FROM_DATE = "worked out from the date of the earlier study: confirm it"
+DATE_MIN = 0.8      # Jev's comparison-date pick (reading lab 2026-10-15, wording 2: 0 wrong at 0.8)
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
@@ -385,33 +396,87 @@ def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = 
 
 @dataclass
 class Dated:
-    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to Jev or the
-    number checks; exact is read, approximate is pre-filled."""
+    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to the value claim or
+    the number checks; always pre-filled (WHY_FROM_DATE), approximate also WHY_APPROX_DATE."""
     exact: bool
     basis: str
 
 
-def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
-    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), more
-    than one distinct date across the dictation and the history (which study is meant is not stated), a future date or
-    an interval of zero or less, or a value outside the input's range."""
+def _date_candidates(findings: str, history: str, finding: str) -> list[dict]:
+    """Every date code can read in the history and the dictation (and the finding, when it is not part of the
+    dictation), each with its sentence: the options Jev picks the comparison date from."""
+    out = []
+    texts = [("history", history), ("dictation", findings)]
+    if finding and finding not in findings:
+        texts.append(("finding", finding))
+    for where, text in texts:
+        for p in DT._scan(text or "") or []:
+            a = max(text.rfind(".", 0, p.start), text.rfind("\n", 0, p.start)) + 1
+            ends = [x for x in (text.find(".", p.end), text.find("\n", p.end)) if x >= 0]
+            sentence = text[a:min(ends) + 1 if ends else len(text)].strip()
+            out.append({"key": f"d{len(out)}", "day": p.day, "text": p.text, "where": where, "sentence": sentence})
+    return out
+
+
+def _date_question(cands: list[dict]) -> dict:
+    """Reading lab 2026-10-15, wording 2: it names the dates that are not the comparison."""
+    crit = {c["key"]: f"{c['text']} ({c['where']}: \"{c['sentence']}\")" for c in cands}
+    crit["none"] = ("None of them: no date of the comparison study is given, or several earlier studies are compared "
+                    "and it cannot be told which one the comparison measurement comes from.")
+    return {"type": "choice", "criteria": crit, "instructions": (
+        "This report compares the current scan with an earlier imaging study. Which option is that earlier study's "
+        "date? Not a referral, birth, surgery, biopsy or appointment date, and not the date of a different study that "
+        "is not the comparison.")}
+
+
+class DateCheckFailed(Exception):
+    """The comparison-date pick did not run (timeout, HTTP error, malformed or off-menu answer): an outage, never
+    "none" (review I-1). The interval is asked and the settlement is marked failed."""
+
+
+async def _comparison_date(cands: list[dict], findings: str, history: str, finding: str) -> date | None:
+    """The date Jev picks as the comparison study's, at DATE_MIN; None for "none" or low confidence. A failed call
+    raises DateCheckFailed. The state is the patient batch's, plus the finding when it is not part of the dictation
+    (its dates are options too)."""
+    state = f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"
+    if finding and finding not in findings:
+        state += f"\n\nFINDING:\n{finding}"
+    try:
+        _, picks = await _jev({"date": _date_question(cands)}, state)
+    except Exception as ex:
+        logger.warning("[library.preview] comparison date pick failed (%s); interval asked", type(ex).__name__)
+        raise DateCheckFailed from ex
+    key, conf = picks["date"]
+    return next((c["day"] for c in cands if c["key"] == key), None) if conf >= DATE_MIN else None
+
+
+async def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
+    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), a
+    future date or an interval of zero or less, a value outside the input's range, an impossible date or a written
+    date code cannot read beside it (which study is meant is not stated), or a date that is not the one Jev picks as
+    the comparison study's from every dated sentence (even when it is the only date: a referral date is not a
+    comparison). A failed pick raises DateCheckFailed."""
     p = DT.parse(quote)
     if p is None:
         return None
-    texts = f"{findings}\n{history}\n{finding}"
-    if DT.several_dates(texts) or DT.distinct_dates(texts) != [p.day]:
-        logger.info("[library.preview] %s: several dates in the dictation; interval asked", i.id)
-        return None
     days = DT.days_since(p.day)
     if days <= 0 or not i.in_range(float(days)):
+        return None
+    texts = f"{findings}\n{history}\n{finding}"
+    cands = _date_candidates(findings, history, finding)
+    if DT._scan(texts) is None or (DT.several_dates(texts) and len({c["day"] for c in cands}) < 2):
+        logger.info("[library.preview] %s: a date code cannot read beside it; interval asked", i.id)
+        return None
+    if await _comparison_date(cands, findings, history, finding) != p.day:
+        logger.info("[library.preview] %s: not the comparison date Jev picks; interval asked", i.id)
         return None
     return InputValue(value=float(days)), Dated(p.exact, DT.basis(quote, p, [finding, findings, history]))
 
 
 async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
                   history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool, dict[str, Dated]]:
-    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed, the
-    since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call or a date pick
+    failed, the since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
     ids = [i.id for i in e.inputs if i.id not in given and (finding or i.scope != "lesion")]
     if not ids:
         return {}, False, {}
@@ -422,13 +487,18 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         return {}, True, {}
     out: dict[str, tuple[InputValue, Settled]] = {}
     dated: dict[str, Dated] = {}
+    check_failed = False        # a date pick that did not run: the interval is asked and the settlement failed
     for item in raw.settled:
         i = e.input(item.input)
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         if i.since_study and DT.parse(q) is not None:      # a date: code converts it, or it is asked
-            got = _since(i, q, finding, findings, history)
+            try:
+                got = await _since(i, q, finding, findings, history)
+            except DateCheckFailed:
+                check_failed = True
+                continue
             if got is not None:
                 out[i.id] = (got[0], Settled(input=i.id, value=_show(e, i, got[0]), quote=q))
                 dated[i.id] = got[1]
@@ -436,7 +506,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         v = _value(i, item, _texts(i, finding, findings, history))
         if v is not None:            # a suspected cancer is kept: _read_reasons marks it, so it is a scope doubt
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
-    return out, False, dated
+    return out, check_failed, dated
 
 
 def _texts(i: InputDef, finding: str, findings: str, history: str) -> list[str]:
@@ -466,7 +536,9 @@ def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[
     """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
     present = v.state == "present"
     out = [WHY_SUSPECTED] if _hedged_cancer(i, v, quote, texts) else []
-    out += [] if present and i.type != "boolean" else [WHY_KIND]
+    out += [] if present else [WHY_KIND]
+    if present and i.type == "boolean" and i.role == "eligibility":
+        out.append(WHY_SCOPE_KIND)
     if present and i.type == "enum" and not _has_option_words(str(v.value), quote):
         out.append(WHY_NOT_OPTION_WORD)
     if i.type != "number" and _modified(quote, texts):
@@ -479,13 +551,40 @@ def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[
     return out
 
 
-async def _jev(claims: list[str], state: str) -> list[float]:
-    qs = {f"v{n}": {"type": "noul", "instructions": c} for n, c in enumerate(claims)}
+async def _jev(qs: dict[str, dict], state: str) -> tuple[dict[str, float], dict[str, tuple[str, float]]]:
+    """One batched call: (noul score per noul question, (choice, confidence) per choice question). Malformed raises:
+    an outage, never a low score."""
     r = await P.jev_post({"model": P.JEV_MODEL, "state": state, "questions": qs},
                          os.environ.get("OPENROUTER_API_KEY", ""), P.JEV_TIMEOUT_S)
     r.raise_for_status()
-    s = J.scores(r.json(), qs)        # malformed raises: an outage, never a low score
-    return [s[f"v{n}"] for n in range(len(claims))]
+    body = r.json()
+    nouls = J.scores(body, [k for k, q in qs.items() if q["type"] == "noul"])
+    picks = {k: J.choice(body, k) for k, q in qs.items() if q["type"] == "choice"}
+    for k, (c, conf) in picks.items():        # off the menu or out of range: malformed (review M-2)
+        if c not in qs[k]["criteria"] or not 0.0 <= conf <= 1.0:
+            raise ValueError(f"jev choice {k!r} is off the menu or out of range")
+    return nouls, picks
+
+
+_WHERE = {"lesion": "the FINDING", "patient": "the CLINICAL HISTORY or DICTATION"}
+
+
+def _stated_question(scope: str, label: str) -> dict:
+    """Reading lab 2026-10-15, the four-way wording: only stated_yes / stated_no in the drafted direction is read."""
+    w = _WHERE[scope]
+    return {"type": "choice", "instructions": f"How does {w} deal with this item: {label}?", "criteria": {
+        "stated_yes": f"{w} says in words that it is present or true.",
+        "stated_no": f"{w} says in words that it is absent or not true (for example 'no ...', 'without ...', "
+                     "'never ...').",
+        "implied": f"{w} does not say it in words; it could only be inferred from other details or from what is "
+                   "left unsaid.",
+        "not_mentioned": f"{w} says nothing that bears on it."}}
+
+
+def _four_way(e: Entry, k: str, v: InputValue) -> bool:
+    """A clinical yes/no with a value: put to the four-way choice instead of the claim."""
+    i = e.input(k)
+    return i.type == "boolean" and i.role != "eligibility" and v.state == "present"
 
 
 UNENHANCED_MIN = 0.8      # Jev _phase_claim below it: the attenuation is asked (review M2)
@@ -501,8 +600,10 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
                    history: str) -> tuple[dict[str, list[str]], bool]:
     """(input -> the reasons it is not read, empty when confirmed; whether a Jev call failed). Both scopes together:
     - per scope, one batched call: "The FINDING states <label>: <value>" with the finding unit alone as state
-      (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or a
-      boolean CHOICE_MIN; below it, WHY_UNCONFIRMED. An attenuation adds the phase claim (WHY_PHASE). The lesion batch
+      (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or an
+      eligibility yes/no CHOICE_MIN; below it, WHY_UNCONFIRMED. A clinical yes/no is asked the four-way choice
+      instead (_stated_question): stated in the drafted direction at STATED_MIN, else WHY_UNCONFIRMED (the other
+      direction, or lower confidence) or WHY_NOT_IN_WORDS (implied, not mentioned). An attenuation adds the phase claim (WHY_PHASE). The lesion batch
       also carries ONE_LESION whenever any lesion input is pending: below ONE_LESION_MIN every lesion input gets
       WHY_SEVERAL.
     A failed call gives each of its inputs WHY_NO_CHECK (the lesion batch: every lesion input). Nothing is dropped:
@@ -521,30 +622,41 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
         if not ids:
             return False
         one_lesion = scope == "lesion"
-        claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
-                  for k in ids]
+        qs: dict[str, dict] = {}
+        for n, k in enumerate(ids):
+            v = pending[k][0]
+            qs[f"v{n}"] = (_stated_question(scope, e.input(k).label) if _four_way(e, k, v) else
+                           {"type": "noul", "instructions":
+                            f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), v).replace('_', ' ')}"})
         # an attenuation not stated as unenhanced may be an enhanced value, not the one the input means
         hu = [k for k in ids if scope == "lesion" and e.input(k).type == "number"
               and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
-        claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
+        for n, k in enumerate(hu):
+            qs[f"p{n}"] = {"type": "noul", "instructions": _phase_claim(_show(e, e.input(k), pending[k][0]))}
         if one_lesion:                 # one lesion or several is a question of meaning: Jev, in the same batch
-            claims.append(ONE_LESION)
+            qs["one"] = {"type": "noul", "instructions": ONE_LESION}
         try:
-            got = await _jev(claims, states[scope])
+            nouls, picks = await _jev(qs, states[scope])
         except Exception as ex:
             logger.info("[library.preview] %s value check failed (%s)", scope, type(ex).__name__)
             for k in ids:
                 add(k, WHY_NO_CHECK)
             return True
-        for k, sc in zip(ids, got):
-            if sc < (P.SETTLED_MIN if e.input(k).type == "number" else CHOICE_MIN):
+        for n, k in enumerate(ids):
+            if f"v{n}" in picks:
+                pick, conf = picks[f"v{n}"]
+                if pick not in STATED:
+                    add(k, WHY_NOT_IN_WORDS)
+                elif STATED[pick] != pending[k][0].value or conf < STATED_MIN:
+                    add(k, WHY_UNCONFIRMED)
+            elif nouls[f"v{n}"] < (P.SETTLED_MIN if e.input(k).type == "number" else CHOICE_MIN):
                 add(k, WHY_UNCONFIRMED)
-        for k, sc in zip(hu, got[len(ids):len(ids) + len(hu)]):
-            if sc < UNENHANCED_MIN:
+        for n, k in enumerate(hu):
+            if nouls[f"p{n}"] < UNENHANCED_MIN:
                 add(k, WHY_PHASE)
-        if one_lesion and got[-1] < ONE_LESION_MIN:
+        if one_lesion and nouls["one"] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding may not be one lesion (%.2f); lesion values pre-filled",
-                        e.key, got[-1])
+                        e.key, nouls["one"])
             for k in ids:
                 add(k, WHY_SEVERAL)
         return False
@@ -696,9 +808,9 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
         why = _read_reasons(e, i, v, q, _texts(i, finding, findings, history))
         why += [r for r in reasons.get(k, []) if r not in why]
         values[k] = Drafted(v, q, "prefilled" if why else "read", why)
-    for k, d in dated.items():          # exact: read; month or year only: pre-filled, so it never decides alone
+    for k, d in dated.items():          # an assumption (Hassan 2026-10-14): pre-filled, so it never decides alone
         v, st = model[k]
-        values[k] = Drafted(v, st.quote, "read" if d.exact else "prefilled", [] if d.exact else [WHY_APPROX_DATE],
+        values[k] = Drafted(v, st.quote, "prefilled", [WHY_FROM_DATE] + ([] if d.exact else [WHY_APPROX_DATE]),
                             basis=d.basis)
     return Settlement(values=values, failed=degraded or jev_failed, no_unit=no_unit)
 
@@ -771,7 +883,7 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         elif is_answered:
             st = "answered"
         elif a is None and d is not None:
-            st = d.tier
+            st = d.tier          # a read doubt stays read (honest provenance); scope_doubt carries its tap
         elif a is None and i.id in preset:
             st = "prefilled"
         elif i.id in signs:
@@ -906,22 +1018,23 @@ def _likely(e: Entry, t: engine.Trace, base: dict[str, InputValue], sources: lis
 
 def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: dict[str, InputValue],
                             given: dict[str, InputValue]) -> tuple[engine.Trace, list[str]]:
-    """Nothing is excluded on a guess (Hassan 2026-10-13): only a read, answered or stated value may give
-    does_not_apply. When the draft excludes and pre-filled values are behind it, of any role (an eligibility value, or
-    a clinical one such as a pre-filled diameter over 3 cm), the ones whose removal lifts the exclusion are the scope
-    doubt: the draft is recomputed over every other value (the remaining pre-filled values stay in it), they are shown
-    pre-filled with WHY_WOULD_EXCLUDE, and the card stays check_first. Calculate takes such a value as sent once the
+    """Nothing is excluded unconfirmed (Hassan 2026-10-13 for a guess; 2026-10-15 for any value): only an answer, on
+    this card or as a shared patient answer, may give does_not_apply. When the draft excludes and other values are
+    behind it (read, pre-filled, an exam preset or an assumed-absent sign; of any role: an eligibility value, or a
+    clinical one such as a diameter over 3 cm), the ones whose removal lifts the exclusion are the scope doubt: the
+    draft is recomputed over every other value (the remaining ones stay in it), they carry WHY_WOULD_EXCLUDE in their
+    own state (a read one stays read), and the card stays check_first. Calculate takes such a value as sent once the
     radiologist confirms it."""
     if t.outcome != DOES_NOT_APPLY:
         return t, []
-    pre = [k for k, d in s.values.items() if d.tier == "prefilled" and k not in answers and e.input(k) is not None]
+    pre = [k for k in _known(given) if k not in answers and e.input(k) is not None]
     if not pre:
         return t, []
     known = _known(given)
 
     def without(ks) -> engine.Trace:
         return engine.evaluate(e, {k: v for k, v in known.items() if k not in ks}, assume_eligible=True)
-    if without(pre).outcome == DOES_NOT_APPLY:        # excluded anyway, by a read, answered or stated value
+    if without(pre).outcome == DOES_NOT_APPLY:        # excluded anyway, by an answer
         return t, []
     doubt = [k for k in pre if without([k]).outcome != DOES_NOT_APPLY]          # removing it alone lifts it
     if not doubt:                                      # several together: each that alone excludes, else them all
@@ -931,7 +1044,7 @@ def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: d
     t2 = without(doubt)
     if t2.outcome == DOES_NOT_APPLY:
         doubt, t2 = pre, without(pre)
-    logger.info("[library.preview] %s: a pre-filled value would exclude; drafted in scope", e.key)
+    logger.info("[library.preview] %s: a drafted value would exclude; drafted in scope", e.key)
     return t2, doubt
 
 
@@ -965,15 +1078,20 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
     - a value equal to its draft keeps the draft's state (a preset's: pre-filled, by the exam); one equal to the shared
       patient answer is answered; one the preview showed assumed, sent back unchanged and not answered, stays assumed;
       any other is edited (answered when nothing was drafted);
-    - a pre-filled value the preview held as a scope doubt, sent back unchanged and not answered (confirmed), is left
-      out of the evaluation and returned in scope_doubt: it never becomes a silent exclusion."""
+    - a value the preview held as a scope doubt (read, pre-filled, a preset or a sign), sent back unchanged and not
+      answered (confirmed), is left out of the evaluation and returned in scope_doubt: it never becomes a silent
+      exclusion."""
     answered = answered or {}
     given = _given(e, values)                         # NOT_STATED -> unknown
     try:
         card = finish(e, s, answered, patient, sources, presets)
         shown = {d.input: d for d in card.draft}
-        doubt = [k for k in card.scope_doubt if k not in answered and k in given and k in s.values
-                 and _same_shown(e, e.input(k), s.values[k].value, given[k])]
+        def unchanged(k: str) -> bool:
+            """Sent back as the card showed it: a drafted value by its draft, a preset or a sign by its shown text."""
+            if k in s.values:
+                return _same_shown(e, e.input(k), s.values[k].value, given[k])
+            return k in shown and shown[k].value == _show(e, e.input(k), given[k])
+        doubt = [k for k in card.scope_doubt if k not in answered and k in given and unchanged(k)]
         known = {k: v for k, v in _known(given).items() if k not in doubt}
         t = engine.evaluate(e, known)
     except (engine.EvaluationError, ValueError) as ex:

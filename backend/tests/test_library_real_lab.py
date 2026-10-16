@@ -541,7 +541,8 @@ def test_taps_to_ready_add_one_tick_per_decisive_guess_left_on_the_card(toy_entr
 
 
 def test_an_excluded_card_has_no_tick_in_taps_to_ready(toy):
-    """The real card shows no Check zone once the pack does not apply: taps_to_ready equals taps."""
+    """The real card shows no Check zone once the pack does not apply, nor on the collapsed "Not applied" row of a
+    scope doubt the truth agrees with (its confirmation is counted in taps): taps_to_ready equals taps."""
     from tests.test_library_pack_preview import _elig
     e = _elig(toy)
     s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "prefilled", ["x"]),

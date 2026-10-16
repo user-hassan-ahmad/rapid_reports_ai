@@ -49,7 +49,8 @@ async def test_a_stated_cancer_is_not_suspected_and_is_a_scope_doubt_until_confi
     assert "exclusion" in p.scope_doubt and p.state == "check_first"      # the settle path: pre-filled, a doubt
     read = PP.Settlement(values={**s.values, "exclusion": PP.Drafted(InputValue(value=True), "Known breast cancer",
                                                                       "read")})
-    assert PP.finish(e, read, {}, {}, []).state == DOES_NOT_APPLY          # read (or answered), it excludes
+    assert PP.finish(e, read, {}, {}, []).state != DOES_NOT_APPLY          # read: still a doubt (Hassan 2026-10-15)
+    assert PP.finish(e, read, {"exclusion": "Yes"}, {}, []).state == DOES_NOT_APPLY   # confirmed: it excludes
 
 
 async def test_a_stated_cancer_with_queried_metastases_is_not_suspected(monkeypatch, jev):
