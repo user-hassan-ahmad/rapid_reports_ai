@@ -30,7 +30,32 @@ undo, an unclear delete, fillers, asides and the tidy-up commands keep today's p
   `hybrid_stack/session_rules.py`, on the conclusion line of `template_stack.stack_brief` and
   `quick_report_brief.stack_fallback`).
 - **Q15 tidy-up commands:** commands the polish already handles ("new paragraph", "full stop", "remove the last
-  sentence") keep working as today and are never held.
+  sentence") keep working as today and are never held. A lexicon command wrapped in a few politeness or filler words
+  ("New paragraph please.", "Okay new paragraph.": `_COMMAND_WRAP` please, okay, ok, right, and, so, then, now) still
+  counts (reviewer minor).
+
+## Hassan's decisions, round 2 (2026-10-16)
+
+- **Q21 clear app, navigation and phone commands get a card** ("Scroll down.", "Send it.", "Show me the comparison
+  study.", "Can you get the registrar to call me back?"): the lean polish wrote "Send it." and the registrar request
+  into the report. Only true fillers and asides are released to the tidy-up: the `ignore_noise` release applies only
+  when P(instruction) < `INSTRUCTION_MIN`. Checked against the saved runs first: with the question as it was, the 18
+  fillers and asides scored P(instruction) 0.87-1.00, so that rule alone would have held all of them. The command
+  question therefore gains a `chatter` option when the flag is on (a filler, hesitation, false start, thinking aloud,
+  or a remark to oneself or someone present that asks for nothing to be done), and the instruction criterion now
+  names requests for the software or someone present to act (open, show, scroll, send, sign, save, record, call).
+  `chatter` decides as dictation (today's path).
+- **Q22 rollout condition: Q13 goes live with the card, not alone.** The conclusion rule (`CONCLUSION_IS_CONTENT`)
+  stays in the code on this branch, but integrate must not take the branch until `RR_STACK_INSTRUCTION_FLAG` is
+  switched on.
+- **Q23 the card gets keys, voice and a walkthrough stop.** Done on this branch: K = Keep as text, X = Discard on the
+  first open card (`aria-keyshortcuts` and key caps on its buttons), never while typing (input, textarea, select,
+  contenteditable), never with a modifier, never during the walkthrough (it owns its keys). **Not done (stopped, by
+  instruction):** voice ("keep" / "discard") and the walkthrough stop. This base has an inline walkthrough
+  (`stops`, `walkKey` in `HybridStackView.svelte`: rows, guidelines, values, checks) but none of the shared
+  infrastructure the declutter branch adds (`walkKeys.ts` answer table, `walkVoice.ts`, `readiness.ts` StopKind,
+  the `/canvas/walk_answer` route and its `none` wording in `jev_stack.py`). The `instruction` stop belongs there,
+  after feat/scratchpad-declutter lands.
 
 ## Design
 
@@ -157,6 +182,31 @@ as `ignore_noise` in either run, through the lean span polish (`/canvas/polish-s
 nothing. 4 are written: "Send it.", "Can you get the registrar to call me back?", and two the fidelity check put back
 as said ("Right, so, what else.", "Not sure about that, I'll come back to it."). The full `/process` polish was not
 run.
+
+## Lab result (2026-10-16 round 2: Q21 chatter option, wrapped tidy-up commands, 2 runs)
+
+The fixture plus 10 wrapped tidy-up commands (`fixture_v3.json`, 130 items), asked as the bundle route asks it.
+
+| at 0.85 | run 1 | run 2 |
+|---|---|---|
+| report sentences wrongly held (of 60) | 0 | 0 |
+| instructions held (of 60) | 38 | 37 |
+| fillers released (of 10) | 8 | 8 |
+| asides released (of 8) | 7 | 7 |
+| app commands held (of 10) | 7 | 7 |
+| navigation commands held (of 8) | 6 | 5 |
+| wrapped tidy-up commands handled, not held (of 10) | 10 | 10 |
+
+- Held in both runs: "Send it.", "Scroll down.", "Show me the comparison study.", "Go back to the beginning.",
+  "Generate the report.", "Stop recording." and the registrar request (the only aside held).
+- Fillers held in both runs: "Let me scroll back up." and "Where's the previous scan gone." (P(instruction)
+  0.88-0.99): thinking aloud that reads as navigation.
+- App commands not held: "Undo that last change." and "Don't put that in the report." (Q10, names nothing), "Add the
+  standard normals." (below the bar, as in every run).
+- Wrapped tidy-up commands: the bundle routes all 10 to `fast_append` (`command_with_text`), and Jev reads 8 of 10 as
+  instructions at 0.85 or above; the wrap allowance releases them, so they take today's path, which writes the
+  wrapping word ("please.") after the break.
+- Command fixture (1 run only): no dictation held; "Clear everything under aortic arch." held, as before.
 
 ## Q13 lab (2026-10-16, 5 synthetic cases x 2 writers x 2 runs)
 

@@ -679,4 +679,19 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
 		await expect.element(page.getByText('1 instruction to answer')).not.toBeInTheDocument();
 	});
+	it('Q23: K keeps and X discards the open instruction card; never while typing', async () => {
+		const props = { ...base(), onKeepHeld: vi.fn(), onRemoveHeld: vi.fn(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			conclusion: { kind: 'draft', text: 'Simple hepatic cyst.', edited: true } as const };
+		render(HybridStackView, { ...props, held: [{ id: 7, text: 'Send it.' }, { id: 8, text: 'Scroll down.' }] });
+		await expect.element(page.getByRole('button', { name: 'Keep as text' }).first()).toHaveAttribute('aria-keyshortcuts', 'K');
+		await page.getByLabelText('New line').click();
+		await userEvent.keyboard('kx');
+		expect(props.onKeepHeld).not.toHaveBeenCalled();
+		expect(props.onRemoveHeld).not.toHaveBeenCalled();
+		(document.activeElement as HTMLElement | null)?.blur();
+		await userEvent.keyboard('k');
+		expect(props.onKeepHeld).toHaveBeenCalledWith(7);   // the first open card
+		await userEvent.keyboard('X');
+		expect(props.onRemoveHeld).toHaveBeenCalledWith(7);
+	});
 });

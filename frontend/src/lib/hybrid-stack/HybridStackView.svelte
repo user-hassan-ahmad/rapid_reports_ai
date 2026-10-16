@@ -483,6 +483,17 @@
 		else return;
 		e.preventDefault();
 	}
+	// Q23 (Hassan 2026-10-16): K keeps the first open instruction card as text, X discards it (the keys of the conflict
+	// stops). Never while typing, never with a modifier, never during the walkthrough (it owns its keys).
+	function heldKey(e: KeyboardEvent) {
+		if (!held.length || walking || editing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+		const t = e.target as HTMLElement | null;
+		if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+		if (e.key === 'k' || e.key === 'K') onKeepHeld(held[0].id);
+		else if (e.key === 'x' || e.key === 'X') onRemoveHeld(held[0].id);
+		else return;
+		e.preventDefault();
+	}
 	function finishWalk() {
 		walking = false;
 		if (onConfirmGenerate) onConfirmGenerate();
@@ -983,7 +994,7 @@
 	</li>
 {/snippet}
 
-<svelte:window onkeydown={walkKey} />
+<svelte:window onkeydown={(e) => { walkKey(e); heldKey(e); }} />
 
 <div class="space-y-3" data-testid="hybrid-stack">
 	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onPick={onPickValue} onDraft={(d) => (valueDraft = d)} />
@@ -1036,8 +1047,10 @@
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-amber-400/20 bg-amber-500/[0.05] px-3 py-1.5 text-xs" role="status" data-testid="held-instruction">
 				<p class="min-w-0 flex-1 text-amber-200/90">This sounded like an instruction, not report text: <span class="text-gray-200">“{h.text}”</span>. It is not in the report.</p>
 				<span class="flex gap-3">
-					<button type="button" class="text-amber-200 hover:text-amber-100" onclick={() => onKeepHeld(h.id)}>Keep as text</button>
-					<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => onRemoveHeld(h.id)}>Discard</button>
+					<button type="button" class="text-amber-200 hover:text-amber-100" aria-keyshortcuts={h.id === held[0].id ? 'K' : undefined}
+						onclick={() => onKeepHeld(h.id)}>Keep as text{#if h.id === held[0].id}<kbd class="ml-1 rounded border border-white/15 px-1 text-[10px] text-gray-400" aria-hidden="true">K</kbd>{/if}</button>
+					<button type="button" class="text-gray-400 hover:text-gray-200" aria-keyshortcuts={h.id === held[0].id ? 'X' : undefined}
+						onclick={() => onRemoveHeld(h.id)}>Discard{#if h.id === held[0].id}<kbd class="ml-1 rounded border border-white/15 px-1 text-[10px] text-gray-400" aria-hidden="true">X</kbd>{/if}</button>
 				</span>
 			</div>
 		{/each}

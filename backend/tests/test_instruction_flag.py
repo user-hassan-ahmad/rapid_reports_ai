@@ -21,7 +21,8 @@ def test_the_question_is_unchanged_when_the_flag_is_off():
     assert J.command_question(False) is J.COMMAND_QUESTION
     assert J.INSTRUCTION not in J.COMMAND_QUESTION["criteria"]
     on = J.command_question(True)["criteria"]
-    assert list(on)[:-1] == list(J.COMMAND_QUESTION["criteria"]) and on[J.INSTRUCTION] == J.INSTRUCTION_CRITERION
+    assert list(on)[:-2] == list(J.COMMAND_QUESTION["criteria"]) and on[J.INSTRUCTION] == J.INSTRUCTION_CRITERION
+    assert on[J.CHATTER] == J.CHATTER_CRITERION
 
 
 def test_flag_reads_the_environment(monkeypatch):
@@ -185,11 +186,12 @@ async def test_q10_the_named_question_is_asked_in_the_same_call_only_when_on(mon
 
 
 def test_q11_a_filler_or_aside_is_not_held(authed_client, lab, monkeypatch):  # noqa: F811
-    # the bundle reads it as noise: the polish cleans it, as today; never a card
+    # the bundle reads it as noise and Jev does not read it as an instruction (it is chatter): the polish cleans it,
+    # as today; never a card. A held score from an unclear named removal is released too (Q21: P(instruction) < bar).
     lab(FakeBundle(action="ignore_noise"))
 
     async def ask(scratchpad, utterance, regions, chips):
-        return _parsed("instruction", conf=0.95, ins=0.95)
+        return _parsed("delete", conf=0.5, ins=0.4, p_delete=0.5, named=0.9)
     monkeypatch.setattr(cr, "ask_command", ask)
     d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Hang on, the phone's ringing.",
                                                        "stack_regions": ["Lungs"]}).json()
@@ -204,13 +206,13 @@ async def test_q11_an_aside_jev_reads_as_dictation_is_not_held(monkeypatch):
     def handler(req):
         seen.append(json.loads(req.content))
         return httpx.Response(200, json={"answers": {
-            "command": {"choice": "dictate", "confidence": 0.8,
-                        "probabilities": {"dictate": 0.8, "instruction": 0.15, "delete": 0.05}},
+            "command": {"choice": "chatter", "confidence": 0.8,
+                        "probabilities": {"chatter": 0.8, "instruction": 0.15, "delete": 0.05}},
             J.NAMED_KEY: {"noul": 0.1}}})
     parsed = await J.ask_command("Liver normal.", "Can you pass me that coffee please.", [], [],
                                  transport=httpx.MockTransport(handler), instruction=True)
-    crit = seen[0]["questions"]["command"]["criteria"][J.INSTRUCTION]
-    assert "talk not meant for the report" in crit and "is not this option" in crit
+    crit = seen[0]["questions"]["command"]["criteria"]
+    assert "remark to oneself or to someone present" in crit[J.CHATTER] and "filler" in crit[J.CHATTER]
     assert J.decide_command(parsed) == {"action": "dictate", "region": None, "chip": None}
 
 
@@ -230,7 +232,7 @@ def test_q15_settle_never_holds_what_the_polish_handles():
     held = {"action": "instruction", "fallback": "dictate", "region": None}
     assert J.settle_instruction(held, "polish", True)["action"] == "dictate"
     assert J.settle_instruction(held, "polish", False)["action"] == "instruction"
-    assert J.polish_handles("ignore_noise", "Hang on, the phone's ringing.")
+    assert J.polish_handles("ignore_noise", "Hang on, the phone's ringing.", p_instruction=0.3)
     assert J.polish_handles("formatting_command", "New paragraph.") and J.polish_handles("formatting_command", "Full stop.")
     assert not J.polish_handles("append_new_finding", "New paragraph.")
     assert not J.polish_handles(None, "Hmm.")   # Jev error: the hold stands
@@ -253,7 +255,6 @@ def test_q15_a_formatting_command_with_words_besides_is_not_a_tidy_up_command():
     # review 2026-10-16: the lexicon matches anywhere; "Put the impression on a new line." would be released and
     # fast_append would write "Put the impression on" as report text
     assert not J.polish_handles("formatting_command", "Put the impression on a new line.")
-    assert not J.polish_handles("formatting_command", "New paragraph please.")
     assert J.polish_handles("formatting_command", "New line.")
 
 
@@ -277,4 +278,43 @@ def test_q10_a_delete_top_choice_naming_nothing_is_never_held():
 
 def test_q10_the_named_question_covers_a_kind_of_statement():
     assert "kind of statement" in J.NAMED_QUESTION["instructions"]
+
+
+# ── Hassan's decisions 2026-10-16 round 2 (Q21, wrapped tidy-up commands) ────────
+
+def test_q21_a_clear_app_command_read_as_noise_is_held(authed_client, lab, monkeypatch):  # noqa: F811
+    # "Send it." / "Can you get the registrar to call me back?": the triage reads noise, the polish wrote them
+    lab(FakeBundle(action="ignore_noise"))
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("instruction", conf=0.9, ins=0.9)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "Send it.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["route"] == "polish" and d["stack_command"]["action"] == "instruction"
+    assert "p_instruction" not in d["stack_command"]   # internal, never in the response
+
+
+def test_q21_noise_is_released_only_below_the_bar():
+    assert J.polish_handles("ignore_noise", "Hmm, where was I.", p_instruction=0.2)
+    assert not J.polish_handles("ignore_noise", "Send it.", p_instruction=J.INSTRUCTION_MIN)
+    assert not J.polish_handles("ignore_noise", "Send it.", p_instruction=0.95)
+
+
+def test_q21_the_chatter_option_is_asked_only_when_on_and_decides_dictation():
+    on = J.command_question(True)["criteria"]
+    assert J.CHATTER in on and J.CHATTER not in J.COMMAND_QUESTION["criteria"]
+    assert "asks for nothing to be done" in on[J.CHATTER]
+    assert "someone" in J.INSTRUCTION_CRITERION   # a request for someone or the software to act is an instruction
+    d = J.decide_command(_parsed(J.CHATTER, conf=0.9, ins=0.05))
+    assert d == {"action": "dictate", "region": None, "chip": None}
+
+
+def test_q15_wrapped_tidy_up_commands_are_handled():
+    # reviewer minor 2026-10-16: politeness and filler words around a lexicon command
+    for said in ("New paragraph please.", "Okay new paragraph.", "Right, full stop.", "And new line.",
+                 "OK, new paragraph, please."):
+        assert J.polish_handles("formatting_command", said), said
+    assert not J.polish_handles("formatting_command", "Put the impression on a new line.")
+    assert not J.polish_handles("formatting_command", "New paragraph the liver.")
 

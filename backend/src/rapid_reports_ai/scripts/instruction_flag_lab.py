@@ -62,7 +62,7 @@ async def _ask(it: dict, instruction: bool) -> dict:
                                     open_line="", latest_utterance=it["utterance"]), word_sense=False))
     r = route_bundle(dec, it["utterance"], preceding=it["scratchpad"])
     return {**parsed, "route": r.route, "triage": dec.triage.action,
-            "polish_handled": polish_handles(dec.triage.action, it["utterance"])}
+            "polish_handled": polish_handles(dec.triage.action, it["utterance"], float(parsed.get("instruction") or 0.0))}
 
 
 async def run(items: list[dict], instruction: bool) -> list[dict]:
@@ -112,10 +112,25 @@ def _score(r: dict) -> float:
     return held_score(r) if "p_delete" in r else float(r.get("instruction") or 0.0)
 
 
+def score_categories(ok: list[dict], t: float = 0.85) -> None:
+    """Held per fixture category at bar t (Q21: app/navigate held, fillers released; wrapped tidy-up never held)."""
+    from collections import defaultdict
+    by = defaultdict(list)
+    for x in ok:
+        by[(x["item"]["gold"], x["item"]["category"])].append(x)
+    print(f"  held at {t} by category (gold/category: held/n, not held):")
+    for (g, c), xs in sorted(by.items()):
+        held = [x for x in xs if _held(x["answer"], t)]
+        free = [x["item"]["utterance"] for x in xs if not _held(x["answer"], t)]
+        print(f"    {g}/{c:<12} {len(held)}/{len(xs)}" + (f"  not held: {free}" if g == "instruction" and free else "")
+              + (f"  held: {[x['item']['utterance'] for x in held]}" if g != "instruction" and held else ""))
+
+
 def score_fixture(rows: list[dict]) -> None:
     ok = [x for x in rows if "error" not in x["answer"]]
     ins = [x for x in ok if x["item"]["gold"] == "instruction"]
     con = [x for x in ok if x["item"]["gold"] == "content"]
+    score_categories(ok)
     print(f"answered {len(ok)}/{len(rows)}: {len(ins)} instructions, {len(con)} report sentences")
     print("  choice, instructions:", dict(Counter(x["answer"]["command"] for x in ins)))
     print("  choice, report sentences:", dict(Counter(x["answer"]["command"] for x in con)))
@@ -181,7 +196,8 @@ def score(paths: list[str]) -> None:
         for x in data["rows"]:   # rows saved before polish_handles: derived from the saved triage action
             a = x["answer"]
             if "triage" in a and "polish_handled" not in a:
-                a["polish_handled"] = polish_handles(a["triage"], x["item"]["utterance"])
+                a["polish_handled"] = polish_handles(a["triage"], x["item"]["utterance"],
+                                                     float(a.get("instruction") or 0.0))
         print(f"== {p} ({data['arm']})")
         (score_fixture if data["arm"].startswith("fixture") else score_command)(data["rows"])
 

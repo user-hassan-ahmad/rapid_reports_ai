@@ -1139,6 +1139,7 @@ async def _stack_command(request: "BundleRequest") -> Optional[dict]:
            "command": parsed.get("command"), "confidence": parsed.get("confidence")}
     if "instruction" in parsed:   # the instruction flag asked it: "instruction" = held for the radiologist, not written
         out["instruction"] = round(held_score(parsed), 3)
+        out["p_instruction"] = float(parsed.get("instruction") or 0.0)   # read and removed by settle_instruction
         if "fallback" in d:       # read and removed by settle_instruction
             out["fallback"] = d["fallback"]
     return out
@@ -1174,7 +1175,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
                      asr_min_conf=request.asr_min_conf, preceding=request.active)
     stack_command = settle_instruction(stack_command, r.route, polish_handles(
-        d.triage.action if isinstance(d, BundleDecision) else None, request.latest_utterance))
+        d.triage.action if isinstance(d, BundleDecision) else None, request.latest_utterance,
+        float((stack_command or {}).get("p_instruction") or 0.0)))
     ok = isinstance(d, BundleDecision)
     # Word-sense spotter + fixer: Jev flagged words that make no clinical sense as heard;
     # code proposes sound-alikes, Jev chooses the sentence, a confident choice is applied.

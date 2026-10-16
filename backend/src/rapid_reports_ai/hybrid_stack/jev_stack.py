@@ -41,12 +41,19 @@ INSTRUCTION = "instruction"
 INSTRUCTION_CRITERION = (
     "An instruction to the software that is not report content: it asks for the report or scratchpad to be changed, "
     "cleared, restarted, reorganised, reformatted, rewritten or navigated, or for something said to be moved or made "
-    "into another part of the report (such as the conclusion or impression), or for the software to do something, in "
-    "a way none of the other options covers. Removing the last thing said is delete. A formatting or punctuation "
-    "command (new line, new paragraph, full stop), a filler, thinking aloud, or talk not meant for the report (to "
-    "someone else or to the software) is not this option. A sentence that records what was done, found, compared, "
-    "communicated or advised (technique, a comparison, a reference to another report, who was told, a recommendation "
-    "to the referrer) is report content.")
+    "into another part of the report (such as the conclusion or impression), or for the software or someone present "
+    "to do something (open, show, scroll, send, sign, save, record, call), in a way none of the other options covers. "
+    "Removing the last thing said is delete. A formatting or punctuation command (new line, new paragraph, full stop) "
+    "is not this option. A sentence that records what was done, found, compared, communicated or advised (technique, "
+    "a comparison, a reference to another report, who was told, a recommendation to the referrer) is report content.")
+# Q21 (Hassan 2026-10-16): a filler or an aside that asks for nothing has its own option, so a clear app, navigation
+# or phone request ("Send it.", "Scroll down.", "Can you get the registrar to call me back?") keeps a high
+# P(instruction) and is held, while the tidy-up keeps cleaning true fillers. Lab 2026-10-16: without this option the
+# fillers scored P(instruction) 0.87-1.00.
+CHATTER = "chatter"
+CHATTER_CRITERION = (
+    "Not report content and asks for nothing to be done: a filler, hesitation, false start, thinking aloud, or a "
+    "remark to oneself or to someone present (a greeting, a pause, a comment on the work).")
 INSTRUCTION_MIN = 0.85  # lab 2026-10-15 (120 synthetic, 2 runs): 0/60 report sentences held (highest 0.81), 57/60 instructions held; Hassan's bar (Q9, 2026-10-16)
 # Q10 (Hassan 2026-10-16): only a clear, specific instruction is held. A removal counts toward the hold only when it
 # names what it removes (a section, region or statement); "remove the last sentence", "get rid of that" keep today's path.
@@ -63,16 +70,23 @@ NAMED_MIN = 0.5
 WRITING_ROUTES = ("fast_append", "polish")   # bundle routes that write the words as report text
 
 
-def polish_handles(triage_action: str | None, utterance: str) -> bool:
+# Words a lexicon command may be wrapped in and still be a tidy-up command ("New paragraph please.", "Okay new
+# paragraph."): reviewer minor 2026-10-16.
+_COMMAND_WRAP = re.compile(r"\b(?:please|okay|ok|right|and|so|then|now)\b", re.IGNORECASE)
+
+
+def polish_handles(triage_action: str | None, utterance: str, p_instruction: float = 0.0) -> bool:
     """The bundle triage read the final as something the polish already handles, as today: a filler, thinking aloud
-    or an aside (Q11), or a formatting command of the lexicon ("new paragraph", "full stop") the bundle was unsure
-    of (Q15), with no words besides: route_bundle's own test (`command_with_text`), so "Put the impression on a new
-    line." is not one. A "formatting command" the lexicon does not know is not one either: lab 2026-10-16, the
-    triage reads most restructure and reformat instructions (P3 included) as formatting_command."""
+    or an aside (Q11) that Jev does not read as an instruction (P(instruction) below the bar: Q21, a clear app,
+    navigation or phone request read as noise is still held), or a formatting command of the lexicon ("new
+    paragraph", "full stop") the bundle was unsure of (Q15), with nothing besides but a few wrapping words
+    (`_COMMAND_WRAP`): route_bundle's own test (`command_with_text`), so "Put the impression on a new line." is not
+    one. A "formatting command" the lexicon does not know is not one either: lab 2026-10-16, the triage reads most
+    restructure and reformat instructions (P3 included) as formatting_command."""
     if triage_action == "ignore_noise":
-        return True
+        return p_instruction < INSTRUCTION_MIN
     return (triage_action == "formatting_command" and bool(map_formatting(utterance))
-            and not re.search(r"\w", clean_verbatim(utterance)))
+            and not re.search(r"\w", _COMMAND_WRAP.sub("", clean_verbatim(utterance))))
 
 
 def settle_instruction(stack: dict | None, bundle_route: str, polish_handled: bool = False) -> dict | None:
@@ -81,7 +95,7 @@ def settle_instruction(stack: dict | None, bundle_route: str, polish_handled: bo
     and the stack decision returns to what it was before the hold (`fallback`)."""
     if not stack or stack.get("action") != INSTRUCTION:
         return stack
-    out = {k: v for k, v in stack.items() if k != "fallback"}   # never in the response
+    out = {k: v for k, v in stack.items() if k not in ("fallback", "p_instruction")}   # never in the response
     if bundle_route not in WRITING_ROUTES or polish_handled:   # the pre-hold decision
         out["action"] = stack.get("fallback") or "dictate"
     return out
@@ -94,7 +108,8 @@ def instruction_on() -> bool:
 def command_question(instruction: bool = False) -> dict[str, Any]:
     if not instruction:
         return COMMAND_QUESTION
-    return {**COMMAND_QUESTION, "criteria": {**COMMAND_QUESTION["criteria"], INSTRUCTION: INSTRUCTION_CRITERION}}
+    return {**COMMAND_QUESTION, "criteria": {**COMMAND_QUESTION["criteria"], INSTRUCTION: INSTRUCTION_CRITERION,
+                                             CHATTER: CHATTER_CRITERION}}
 
 
 def region_question(regions: list[str]) -> dict[str, Any]:
