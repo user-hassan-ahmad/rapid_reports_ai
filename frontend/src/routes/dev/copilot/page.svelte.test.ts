@@ -69,11 +69,11 @@ describe('/dev/copilot', () => {
 		await expect.element(other.getByText('Other guidelines checked')).toBeInTheDocument();
 		const head = page.getByTestId('dv-collapsed').getByRole('button', { name: /Fleischner 2017/ });
 		(head.element() as HTMLElement).focus();
-		await expect.element(page.getByTestId('dv-collapsed').getByText('On these values', { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('dv-collapsed').getByText('RECOMMENDATION', { exact: true })).not.toBeInTheDocument();
 		await userEvent.keyboard('{Enter}');
-		await expect.element(page.getByTestId('dv-collapsed').getByText('On these values', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByTestId('dv-collapsed').getByText('RECOMMENDATION', { exact: true })).toBeInTheDocument();
 		await userEvent.keyboard('{Enter}');
-		await expect.element(page.getByTestId('dv-collapsed').getByText('On these values', { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('dv-collapsed').getByText('RECOMMENDATION', { exact: true })).not.toBeInTheDocument();
 	});
 
 	it('renders the whole case in CopilotRail, wide and narrow', async () => {

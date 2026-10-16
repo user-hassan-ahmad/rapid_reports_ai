@@ -71,7 +71,7 @@
 		onExpand?: (ref: string, open: boolean) => void;
 		/** The cards blocking Confirm (gate.unresolved, §7.12 item 5), keyed by card ref or column ref. */
 		unresolved?: Unresolved[];
-		/** "Seen, leave as is" (session.seen). */
+		/** "Not in this report" (session.seen). */
 		onSeen?: (key: string) => void;
 		/** The finding being looked at (hovered or open on either side): its group is outlined. */
 		activeFinding?: string | null;
