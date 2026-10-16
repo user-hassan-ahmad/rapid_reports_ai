@@ -521,6 +521,7 @@ VERIFICATION_CHECKLIST_STACK = _swaps(
      """- Every statement in FINDINGS (its DO NOT ASSERT line excepted) appears with its meaning unchanged; no normal or negative statement appears that FINDINGS does not contain, for any structure
 - No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it
 - Every FINDINGS statement stays, even one about the same structure as a DO NOT ASSERT line; where its wording would match a removed sentence, it keeps its own words; a removed sentence's wording is never used to express it
+- Each FINDINGS statement keeps its meaning in the skill sheet's style: an abnormal, incidental or benign one keeps every finding detail; a normal statement keeps its qualifier, every number and unit, any side and every structure it names
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- All triggered interpretive clauses are appended\n", ""),

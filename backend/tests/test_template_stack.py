@@ -80,6 +80,27 @@ def test_the_stack_checklist_lets_dictated_findings_win():
     assert "written in its own words" not in stays and "same structure" in stays and "would match a removed sentence, it keeps its own words" in stays and "same structure" not in no_assert
 
 
+def test_dictated_wording_rule_follows_the_examples_rule():
+    """Fidelity Q6 (2026-10-16): finding statements keep the dictated content; exact normals take the sheet's wording,
+    but restyling never drops the qualifier, a number or unit, a side or a named structure."""
+    lines = stack_brief("", "", []).splitlines()
+    i = next(n for n, l in enumerate(lines) if l.startswith("- **Examples are wording only:**"))
+    rule = lines[i + 1]
+    assert rule.startswith("- **Dictated wording:**")
+    for s in ("abnormal, incidental or benign finding", "joined with other findings",
+              "no finding detail is lost", "only that a structure is normal",
+              "takes the skill sheet's wording and style", "never drops or renames",
+              "qualifier", "every number and unit", "any side", "every structure it names"):
+        assert s in rule, s
+
+
+def test_the_stack_checklist_keeps_dictated_meaning():
+    line = next(l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if l.startswith("- Each FINDINGS statement"))
+    for s in ("abnormal, incidental or benign", "every finding detail", "normal statement",
+              "qualifier", "every number and unit", "any side", "every structure it names"):
+        assert s in line, s
+
+
 def test_no_conclusion_or_removals_no_sections():
     b = stack_brief(LEAN, " ", ["  ", ""])
     assert "## Confirmed Conclusion" not in b and "## Removed by the Radiologist" not in b
@@ -186,7 +207,7 @@ async def test_session_rules_reach_the_generation_system_prompt(capture):
         stack={"conclusion": "Dilated left ventricle.", "declined": []})
     sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
     for s in ("**Fixed lines:**", "a FIXED line never contradicts the input, the clinical history",
-              "**Examples are wording only:**", "the wording the report adds"):
+              "**Examples are wording only:**", "**Dictated wording:**", "the wording the report adds"):
         assert s in sp
 
 

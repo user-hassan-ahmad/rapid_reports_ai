@@ -47,6 +47,15 @@ REMOVED_RULE = (
     "it. A DO NOT ASSERT line never removes, "
     "shortens or rewords a FINDINGS statement; it forbids only the removed sentence itself, in any wording, where no "
     "FINDINGS statement says it.")
+# How far the sheet's example wording reaches into a dictated statement (fidelity Q6, 2026-10-16): findings keep the
+# dictated content; exact normals take the sheet's style, but never at the cost of what carries their meaning.
+DICTATED_WORDING_RULE = (
+    "\n- **Dictated wording:** a FINDINGS statement that reports an abnormal, incidental or benign finding, alone or "
+    "joined with other findings in one sentence, keeps the radiologist's content: it may be lightly summarised or "
+    "shortened, but no finding detail is lost. A statement that says only that a structure is normal, intact or "
+    "unremarkable takes the skill sheet's wording and style for that structure, but restyling never drops or renames "
+    "what carries its meaning: the normal, intact or unremarkable qualifier, every number and unit, any side, and "
+    "every structure it names stay as the radiologist gave them.")
 
 
 def _strip(sheet: str) -> List[str]:
@@ -108,7 +117,8 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
         "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
         "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "
         "states it. The same holds for a style note or logic line that says the report states such content: it "
-        "applies only when the input states it.\n"
+        "applies only when the input states it."
+        + DICTATED_WORDING_RULE + "\n"
         "- **Scores, grades and values:** a sheet instruction to state a score, grade, classification, time window, "
         "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
         "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
