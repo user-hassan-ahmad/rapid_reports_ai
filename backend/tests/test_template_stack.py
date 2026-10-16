@@ -88,17 +88,38 @@ def test_dictated_wording_rule_follows_the_examples_rule():
     rule = lines[i + 1]
     assert rule.startswith("- **Dictated wording:**")
     for s in ("abnormal, incidental or benign finding", "joined with other findings",
-              "no finding detail is lost", "only that a structure is normal",
-              "takes the skill sheet's wording and style", "never drops or renames",
-              "qualifier", "every number and unit", "any side", "every structure it names"):
+              "every size, number and unit, side, location, descriptor and comparison",
+              "stated certainty", "only that a structure is normal",
+              "skill sheet's wording and style for that same structure", "fuller normal wording",
+              "never drops or renames", "that the structure is normal", "every number and unit", "any side",
+              "every structure it names"):
+        assert s in rule, s
+
+
+def test_dictated_wording_adds_nothing_and_keeps_negatives():
+    """Q16 + review I1/I3 (2026-10-17): a same-structure fuller normal is style; another structure or item is an
+    addition; sheet wording matching a removed sentence is not used; a negative keeps what it rules out."""
+    rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
+    for s in ("Nothing is added", "no other structure, separately assessable item or statement",
+              "would match a DO NOT ASSERT sentence, the statement keeps its own words",
+              "A negative keeps the finding it rules out and its structure",
+              "only its phrasing may follow the skill sheet"):
         assert s in rule, s
 
 
 def test_the_stack_checklist_keeps_dictated_meaning():
     line = next(l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if l.startswith("- Each FINDINGS statement"))
-    for s in ("abnormal, incidental or benign", "every finding detail", "normal statement",
-              "qualifier", "every number and unit", "any side", "every structure it names"):
+    for s in ("adds nothing", "abnormal, incidental or benign", "stated certainty", "normal statement",
+              "every number and unit", "any side", "every structure it names", "no other structure or item",
+              "a negative keeps the finding it rules out"):
         assert s in line, s
+
+
+def test_stack_voice_lets_the_sheet_own_phrasing():
+    """Review M3: the base guide's "do not copy input phrasing verbatim" pulls against dictated wording."""
+    assert "Do not copy input\nphrasing verbatim" not in g.GLOBAL_STYLE_GUIDE_STACK
+    assert "Phrasing follows the skill sheet; content follows the input." in g.GLOBAL_STYLE_GUIDE_STACK
+    assert "Do not copy input\nphrasing verbatim" in g.GLOBAL_STYLE_GUIDE  # the base guide is unchanged
 
 
 def test_no_conclusion_or_removals_no_sections():

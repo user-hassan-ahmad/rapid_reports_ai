@@ -52,10 +52,14 @@ REMOVED_RULE = (
 DICTATED_WORDING_RULE = (
     "\n- **Dictated wording:** a FINDINGS statement that reports an abnormal, incidental or benign finding, alone or "
     "joined with other findings in one sentence, keeps the radiologist's content: it may be lightly summarised or "
-    "shortened, but no finding detail is lost. A statement that says only that a structure is normal, intact or "
-    "unremarkable takes the skill sheet's wording and style for that structure, but restyling never drops or renames "
-    "what carries its meaning: the normal, intact or unremarkable qualifier, every number and unit, any side, and "
-    "every structure it names stay as the radiologist gave them.")
+    "shortened, but every size, number and unit, side, location, descriptor and comparison stays, with its stated "
+    "certainty. A statement that says only that a structure is normal, intact or unremarkable may take the skill "
+    "sheet's wording and style for that same structure, its fuller normal wording included, but restyling never "
+    "drops or renames what carries its meaning: that the structure is normal (in the sheet's word for it), every "
+    "number and unit, any side, and every structure it names stay as the radiologist gave them. Nothing is added: no "
+    "other structure, separately assessable item or statement from the sheet's wording that the statement does not "
+    "cover; where the sheet's wording would match a DO NOT ASSERT sentence, the statement keeps its own words. A "
+    "negative keeps the finding it rules out and its structure; only its phrasing may follow the skill sheet.")
 
 
 def _strip(sheet: str) -> List[str]:
