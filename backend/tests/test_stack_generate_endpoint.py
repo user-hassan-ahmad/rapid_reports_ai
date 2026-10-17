@@ -323,3 +323,36 @@ def test_template_generate_hands_the_writer_each_filled_values_sentence_and_regi
     # a quote no dictated unit holds is dropped (flag only); a chip without one has no entry
     assert seen["stack"]["values_quotes"] == {"Liver span": {"quote": "Liver span 17 cm.",
                                                              "sentence": "Liver span 17 cm.", "region": "Liver"}}
+
+
+SITE_UNITS = [{**UNITS[0], "text": "Aortic sinus 4.1 cm.", "abnormal": True}]   # SYNTHETIC
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_quick_flags_a_dictated_value_moved_to_another_structure(authed, fakes, monkeypatch, on):
+    from rapid_reports_ai import dictated_structure_check as dsc
+
+    async def quick(**kw):
+        return {"report_content": "FINDINGS\nAortic root 4.1 cm.\n\nIMPRESSION\nAortic sinus 4.1 cm.",
+                "description": "d", "scan_type": "CT", "model_used": "m",
+                "quality_check": {"enabled": True, "review": []}, "signature": ""}
+
+    async def ask(ps):
+        return [0.1 for _ in ps]
+    monkeypatch.setattr(SR, "generate_quick_report", quick)
+    monkeypatch.setattr(dsc, "ask_same_site", ask)
+    if on:
+        monkeypatch.setenv("RR_DICTATED_STRUCTURES", "1")
+    else:
+        monkeypatch.delenv("RR_DICTATED_STRUCTURES", raising=False)
+    units = [StackUnit.model_validate(u) for u in SITE_UNITS]
+    gate = {"conclusion_text": "Dilated aortic sinus.", "removed": [], "units_hash": "k",
+            "findings_hash": findings_hash(units)}
+    events = _events(authed.post("/api/canvas/stack/generate", json=_body(units=SITE_UNITS, gate=gate)))
+    flags = [i for i in events[0][1]["quality_check"]["review"] if i.get("kind") == "dictated_structure_changed"]
+    if not on:
+        assert flags == []
+        return
+    assert [(f["text"], f["sentence"], f["dictated_quote"], f["severity"]) for f in flags] == [
+        ("4.1 cm", "Aortic root 4.1 cm.", "Aortic sinus 4.1 cm.", "high")]
+    assert flags[0]["edit"] == {"mode": "replace", "find": "Aortic root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}

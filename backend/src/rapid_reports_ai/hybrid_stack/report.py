@@ -19,6 +19,7 @@ from ..review_engine.engine import schedule_review
 from ..template_lean import generate_template_report_lean
 from ..template_number_check import undictated_numbers
 from .. import dictated_number_check as dnc
+from .. import dictated_structure_check as dsc
 from .findings import _value_statements, filled_value_quotes, findings_block
 from .gate_model import findings_hash
 from .removed_guard import guard, reconcile
@@ -97,10 +98,13 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     review += guard_items
     if req.kind == "quick":
         review += undictated_numbers(report, [*st.all_texts(), req.history, st.conclusion], "")
+    # the radiologist's own statements: dictated units and taps minus removed ones, and typed values
+    gone = set(removed)
+    own = [*(p for p in st.said_parts if p not in gone), *(v + "." for v in _value_statements(req.gate))]
     if dnc.enabled():   # both paths: a dictated number the report does not hold (spec 2026-10-15), flags only
-        gone = set(removed)
-        review += dnc.missing_dictated_numbers(
-            report, [*(p for p in st.said_parts if p not in gone), *(v + "." for v in _value_statements(req.gate))])
+        review += dnc.missing_dictated_numbers(report, own)
+    if dsc.enabled():   # both paths: a dictated value written against another structure (spec 2026-10-17), flags only
+        review += await dsc.changed_structures(report, own, removed)
     if removals:
         quality.setdefault("pre_edit_report", generated)
         quality["applied_edits"] = [*(quality.get("applied_edits") or []), *removals]
