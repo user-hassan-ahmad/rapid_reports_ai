@@ -306,6 +306,7 @@ class Pair:
     report: str     # the FINDINGS sentence holding every value of the chain, as written (any line label kept)
     chain: str      # the dictated chain as written ("2.3 x 1.8 cm")
     region: str = ""   # the scratchpad region the dictated sentence was said under ("" when none)
+    label: str = ""    # the line label stripped from the dictated sentence ("Liver and Biliary:"; "" when none)
 
 
 def sentence_spans(text: str) -> List[Tuple[int, int]]:
@@ -415,7 +416,9 @@ def pairs(report: Optional[str], sources: Iterable[Source], removed: Iterable[st
             j = next((k for k, (s, e) in enumerate(sspans) if s <= start < e), None)
             if j is None:
                 continue
-            d = strip_prefix(src[sspans[j][0]:sspans[j][1]])
+            whole = src[sspans[j][0]:sspans[j][1]].strip()
+            d = strip_prefix(whole)
+            label = whole[:whole.rfind(d)].strip() if d != whole else ""
             if norm(d) in gone:
                 continue
             for i in sorted(held):
@@ -426,7 +429,7 @@ def pairs(report: Optional[str], sources: Iterable[Source], removed: Iterable[st
                 if i > 0 and "\n" not in text[spans[i - 1][0]:a] and _value_only(raw, d):
                     a = spans[i - 1][0]   # a value-only fragment ("LVEF 45%.") reads with the sentence before it
                     raw = text[a:b].strip()
-                p = Pair(d, raw, chain, region)
+                p = Pair(d, raw, chain, region, label)
                 if p in seen:
                     continue
                 seen.add(p)

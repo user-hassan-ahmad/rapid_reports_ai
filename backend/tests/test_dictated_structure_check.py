@@ -341,3 +341,22 @@ async def test_a_region_word_counts_when_a_dictated_word_shares_its_first_four_l
                                                                                        edited):
     items = await dsc.changed_structures(report, [(region, dictated)], ask=_ask(default=0.1)[0])
     assert [i["edit"] is not None for i in items] == [edited]
+
+
+# --- lab v4: the last unsafe offers ---
+
+async def test_a_multi_clause_dictation_is_never_pasted_over_a_sentence_the_writer_split():
+    report = "Gallbladder calculi up to 1.2 cm. The wall is not thickened and there is no pericholecystic fluid."
+    items, _ = await run(report, "Gallstones 1.2 cm, wall not thickened, no pericholecystic fluid.", default=0.1)
+    assert [(i["text"], i["edit"]) for i in items] == [("1.2 cm", None)]
+
+
+async def test_a_dictated_line_label_the_sentence_does_not_name_withholds_the_edit():
+    # the label is stripped from the dictated sentence; Apply would lose the organ it names
+    report = "The liver contains two hypoattenuating lesions in segment 7, the largest measuring 18 mm."
+    items, _ = await run(report, "Liver and Biliary: Two hypoattenuating lesions in segment 7, largest 18 mm.",
+                         default=0.1)
+    assert [(i["dictated_quote"], i["edit"]) for i in items] == [
+        ("Two hypoattenuating lesions in segment 7, largest 18 mm.", None)]
+    items, _ = await run("Left renal cyst 15 mm.", "Kidneys: Simple cyst 15 mm in the left kidney.", default=0.1)
+    assert items[0]["edit"] is not None   # the sentence names its label ("kidney" ~ "Kidneys")

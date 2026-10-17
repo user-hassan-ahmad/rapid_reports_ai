@@ -81,8 +81,9 @@ survives (step 2), and the structure the number belongs to survives (this step).
    - the stripped line label holds no content word that the dictated sentence lacks ("RIGHT KIDNEY:" above a
      left-kidney value withholds the edit; side words are not exempt here);
    - the report sentence and the dictated sentence carry the same set of number chains (no merged value, no split);
-   - the report sentence has no more clause joiners than the dictated sentence (no merged number-free statement,
-     e.g. "... 4.1 cm with no aortic regurgitation"). Joiners: and, with, without, but, whereas, which, while,
+   - the report sentence and the dictated sentence have the same number of clause joiners: more in the report is a
+     merged number-free statement ("... 4.1 cm with no aortic regurgitation"); more in the dictation is a clause the
+     writer split into another sentence, which Apply would repeat (lab v4). Joiners: and, with, without, but, whereas, which, while,
      although, except, otherwise, ";", ",", "(", ")", " - ", "—";
    - the report sentence has at most 2 content words (not a stopword; levels never count) that the dictated sentence
      lacks (`NEW_WORDS_MAX`, a backstop: "The left kidney contains a 2 cm cyst." vs "Cyst 2 cm." withholds). Side
@@ -96,7 +97,9 @@ survives (step 2), and the structure the number belongs to survives (this step).
      sentence ("Cyst 2 cm." under Left kidney withholds: Apply would drop the structure; "Left kidney cyst 2 cm."
      keeps it). A region word of 4 or more letters also counts as present when a dictated word shares its first 4
      letters, case aside ("Aortic sinus 4.1 cm." under Aorta keeps the edit; "Renal cyst 2 cm." under Kidneys does
-     not); a shorter region word must match exactly. No region: no change (lab v3, 2026-10-17);
+     not); a shorter region word must match exactly. No region: no change (lab v3, 2026-10-17). A line label
+     stripped from the dictated sentence ("Liver and Biliary:") counts as a region here (edit only; Jev's
+     dictated_region is unchanged);
    - `find` occurs exactly once in the report (the rail and verifier require it: `edits.ts:214`, `verifier.py:235`).
    Otherwise the card has no edit; the radiologist edits by hand. The replace is the dictated sentence as said, never
    prefixed with its region; the backstop and the label rule withhold an edit that would lose the region.

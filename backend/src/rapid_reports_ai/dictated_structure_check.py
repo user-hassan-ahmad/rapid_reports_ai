@@ -100,24 +100,25 @@ def _statements(sources: Iterable[dnc.Source]) -> List[str]:
 def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: Iterable[str] = ()) -> Optional[dict]:
     """A replace edit putting the dictated sentence back, or None when replacing the whole sentence could lose or
     repeat content (spec §3.5): more than one sentence (a joined fragment), a line label naming something the
-    dictated sentence does not, other values in it, an extra clause joiner, a word merged in from another dictated
-    statement or a confirmed assumed normal (side words aside), more than NEW_WORDS_MAX content words the dictated
-    sentence lacks, a region whose words the dictated sentence lacks, or a find that does not occur exactly once.
-    `find` is the report sentence without its line label; the replace is the dictated sentence as said (no region
+    dictated sentence does not, other values in it, a different number of clause joiners, a word merged in from
+    another dictated statement or a confirmed assumed normal (side words aside), more than NEW_WORDS_MAX content
+    words the dictated sentence lacks, a region or stripped dictated label whose words the dictated sentence lacks,
+    or a find that does not occur exactly once. `find` is the report sentence without its line label; the replace is the dictated sentence as said (no region
     prefix)."""
     find = dnc.strip_prefix(p.report)
     if len(dnc.sentence_spans(find)) > 1:
         return None
     own = _words(p.dictated)
     stems = {w[:4] for w in own if len(w) >= 4}
-    if any(w not in own and (len(w) < 4 or w[:4] not in stems) for w in _words(p.region) - _STOP):
+    named = _words(f"{p.region} {p.label}") - _STOP   # the region, and a line label stripped from the dictated sentence
+    if any(w not in own and (len(w) < 4 or w[:4] not in stems) for w in named):
         return None   # "Cyst 2 cm." said under Left kidney: Apply would drop the structure ("Aorta" ~ "aortic" holds)
     if (_words(p.report[:len(p.report) - len(find)]) - _STOP) - own:   # "RIGHT KIDNEY:" kept above a left-kidney value
         return None
     if dnc.chain_keys(find) != dnc.chain_keys(p.dictated):
         return None
-    if len(_JOINER.findall(find)) > len(_JOINER.findall(p.dictated)):
-        return None
+    if len(_JOINER.findall(find)) != len(_JOINER.findall(p.dictated)):
+        return None   # a clause merged in, or a dictated clause the writer split off into another sentence
     if report.count(find) != 1:
         return None
     other: Set[str] = set()
