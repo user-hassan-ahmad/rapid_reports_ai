@@ -531,6 +531,9 @@ for _old, _new in (
     (_between(_S, "**The fabrication ban does not extend to warranted clinical synthesis.**", "**2. Causal structure"),
      "**Synthesis lives in the confirmed conclusion.** The impression phrases it and adds no attribution, "
      "differential, risk or workup of its own.\n\n"),
+    # Review of 60d29afb (2026-10-17): exemplars shape only the words the writer adds; FINDINGS keep their wording
+    ("Model the voice. DRAW", "Model the voice in the words the report adds itself (joining words, the impression); "
+     "FINDINGS statements keep the radiologist's wording. DRAW"),
     # Q18 (2026-10-17): abbreviations stay as dictated; the sheet's synonyms never rename a dictated term
     (", and not sanctioned by one of the transcription exceptions below?", "?"),
     (_between(_S, "Two transcription exceptions", "Combining multiple dictated facts"),

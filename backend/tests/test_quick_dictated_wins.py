@@ -122,3 +122,45 @@ def test_non_stack_quick_prompts_are_unchanged():
         assert "interpret and reframe into your own radiological language" in t
     for t in (QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF):
         assert "Sanctioned synonym mapping" in t and "Expanding \"local perf\"" in t
+
+
+# ---- re-review of 60d29afb + Q27 (2026-10-17): suppressed terms, principle 1, impression terminology ----
+SUPPRESSED_STYLE = ("A suppressed term never appears in words the report adds itself, the impression included; a "
+                    "FINDINGS statement keeps it as dictated.")
+SUPPRESSED_CHECK = ("- No suppressed term appears in words the report adds itself (impression included); a dictated "
+                    "FINDINGS term stays")
+VOICE_P1 = ("Model the voice in the words the report adds itself (joining words, the impression); FINDINGS statements "
+            "keep the radiologist's wording.")
+
+
+def _flat(t: str) -> str:
+    return " ".join(t.split())
+
+
+def test_stack_suppressed_term_stays_when_dictated():
+    assert SUPPRESSED_STYLE in _flat(QR_STYLE_GUIDE_STACK)
+    assert "it must never appear anywhere" not in QR_STYLE_GUIDE_STACK
+    assert SUPPRESSED_CHECK in QR_VERIFICATION_CHECKLIST_STACK.splitlines()
+    assert "- No suppressed terms appear anywhere including the impression" not in QR_VERIFICATION_CHECKLIST_STACK
+
+
+def test_stack_principle_1_models_voice_only_in_added_words():
+    assert VOICE_P1 in QUICK_REPORT_HARDENING_PREAMBLE_STACK
+    assert "Model the voice. DRAW" not in QUICK_REPORT_HARDENING_PREAMBLE_STACK
+
+
+def test_stack_impression_keeps_conclusion_and_findings_terms():
+    imp = _flat(QR_STYLE_GUIDE_STACK.split("### Impression\n", 1)[1].split("###", 1)[0])
+    term = _flat(QR_STYLE_GUIDE_STACK.split("### Terminology Enforcement", 1)[1].split("###", 1)[0])
+    assert "uses the same terminology as FINDINGS" not in imp and "keeps the conclusion's and FINDINGS' own terms" in imp
+    assert "only to words the report chooses itself" in term
+    assert "a term taken from a FINDINGS statement or the confirmed conclusion keeps the radiologist's wording" in term
+
+
+def test_non_stack_suppressed_and_voice_rules_unchanged():
+    for t in (QR_STYLE_GUIDE, QR_STYLE_GUIDE_BRIEF):
+        assert "If a term is suppressed, it must never appear anywhere." in t and SUPPRESSED_STYLE not in _flat(t)
+    assert "- No suppressed terms appear anywhere including the impression" in QR_VERIFICATION_CHECKLIST_BRIEF
+    assert SUPPRESSED_CHECK not in QR_VERIFICATION_CHECKLIST_BRIEF
+    for t in (QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF):
+        assert "Model the voice. DRAW CONTENT STRICTLY FROM DICTATION." in t and VOICE_P1 not in t

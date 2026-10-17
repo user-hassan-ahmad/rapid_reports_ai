@@ -431,16 +431,21 @@ The conclusion and any selected recommendation are written in report style. Word
 words, the impression) avoid passive filler ("is noted", "is seen") and weak existential openers ("there is").
 
 """),
+    # Q27 + review of 60d29afb (2026-10-17): the sheet's term pairs apply only to words the writer chooses itself; a
+    # dictated or concluded term stays, in FINDINGS and in the impression
     ("""Apply preferred/suppressed term pairs from the skill sheet across ALL sections
-including the impression.""",
-     """Apply preferred/suppressed term pairs from the skill sheet to the words the report adds
-itself, including the impression; a FINDINGS statement keeps the dictated terms."""),
+including the impression. If a term is suppressed, it must never appear anywhere.""",
+     """Apply preferred/suppressed term pairs from the skill sheet only to words the report chooses itself (joining
+words, and the impression's own wording); a FINDINGS statement keeps the dictated terms, and a term taken from a
+FINDINGS statement or the confirmed conclusion keeps the radiologist's wording, in FINDINGS and in the impression.
+A suppressed term never appears in words the report adds itself, the impression included; a FINDINGS statement
+keeps it as dictated."""),
     (_between(QR_STYLE_GUIDE_BRIEF, "### Impression as Synthesis", "### Incidental Findings"),
      """### Impression
 
 The impression phrases the radiologist's confirmed conclusion (the skill sheet's Impression Plan) in report style:
 its findings, negatives and any recommendation, in its order. It adds no finding, diagnosis, negative, synthesis or
-recommendation of its own, and uses the same terminology as FINDINGS.
+recommendation of its own, and keeps the conclusion's and FINDINGS' own terms.
 
 """),
     ("""Before including an incidental in the impression: does it require clinical action,
@@ -487,11 +492,14 @@ QR_PRE_WRITING_ANALYSIS_STACK = _swaps(
 
 QR_VERIFICATION_CHECKLIST_STACK = _swaps(
     QR_VERIFICATION_CHECKLIST_BRIEF,
+    # The first line spells out quick_report_brief.NOT_STATEMENTS and WORDING_KEPT (Q7, Q17-Q20); keep them in step
     (_between(QR_VERIFICATION_CHECKLIST_BRIEF, "- Every KEEP negative", "- No suppressed terms"),
      """- Every FINDINGS statement (its Conclusion, Recommendations and DO NOT ASSERT lines excepted) appears with its meaning and wording kept (light grammar fixes only; statements may be joined as the Report Flow allows; abbreviations stay as dictated), even one about the same structure as a DO NOT ASSERT line or worded like it; no normal or negative statement appears that FINDINGS does not contain, for any region
 - No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it; a FINDINGS statement licenses only what it says itself, never a broader removed sentence
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
+    ("- No suppressed terms appear anywhere including the impression",   # Q27
+     "- No suppressed term appears in words the report adds itself (impression included); a dictated FINDINGS term stays"),
     ("- Recommendations are specific (specialty, urgency, pathway)",
      "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
 )
