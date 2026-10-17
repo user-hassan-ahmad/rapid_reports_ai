@@ -531,6 +531,15 @@ for _old, _new in (
     (_between(_S, "**The fabrication ban does not extend to warranted clinical synthesis.**", "**2. Causal structure"),
      "**Synthesis lives in the confirmed conclusion.** The impression phrases it and adds no attribution, "
      "differential, risk or workup of its own.\n\n"),
+    # Review of 60d29afb (2026-10-17): exemplars shape only the words the writer adds; FINDINGS keep their wording
+    ("Model the voice. DRAW", "Model the voice in the words the report adds itself (joining words, the impression's own "
+     "wording); FINDINGS statements keep the radiologist's wording. DRAW"),
+    # Q18 (2026-10-17): abbreviations stay as dictated; the sheet's synonyms never rename a dictated term
+    (", and not sanctioned by one of the transcription exceptions below?", "?"),
+    (_between(_S, "Two transcription exceptions", "Combining multiple dictated facts"),
+     "No transcription in this session: FINDINGS statements keep the radiologist's wording, so abbreviations and "
+     "shorthand stay as dictated, never expanded, and a dictated term is never swapped for the sheet's preferred "
+     "synonym.\n\n"),
     (_between(_S, "**3. Descriptor propagation", "**4. Sections are mandatory."),
      "**3. The impression carries only the conclusion's descriptors.** A size, grade or feature reaches the "
      "impression only when the confirmed conclusion names it.\n\n"),
@@ -544,7 +553,8 @@ for _old, _new in (
      "**12. The radiologist confirmed every statement before generation.** FINDINGS holds the dictated sentences, "
      "the answers given in the scratchpad and the normals the radiologist confirmed; nothing else is stated, for "
      "any structure or region. **DO NOT ASSERT**: the radiologist removed this statement; it never appears, in "
-     "any wording or section.\n\n"),
+     "any wording or section, unless a FINDINGS statement says it. A DO NOT ASSERT never removes, shortens or "
+     "rewords a FINDINGS statement, even one about the same structure: the dictated wording wins.\n\n"),
     # principle 8 names the descriptor-propagation principle replaced above (review 2026-10-12)
     ("The descriptor-propagation principle propagates what WAS dictated; it does not mandate emitting a "
      "placeholder for what wasn't. ", ""),
