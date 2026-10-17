@@ -59,7 +59,7 @@ DICTATED_WORDING_RULE = (
     "the sheet's own word for a whole-structure normal), never narrowed to a single attribute such as size; every "
     "number and unit, any side, and every structure it names stay as the radiologist gave them. Nothing is added: no "
     "other structure, separately assessable item or statement from the sheet's wording that the statement does not "
-    "cover; where the sheet's wording would match a DO NOT ASSERT sentence, the statement keeps its own words. A "
+    "cover, and no value, level or measurement from the sheet's wording where the statement gives none; where the sheet's wording would match a DO NOT ASSERT sentence, the statement keeps its own words. A "
     "negative keeps the finding it rules out and its structure; only its phrasing may follow the skill sheet.")
 
 

@@ -121,14 +121,22 @@ def test_the_stack_checklist_keeps_dictated_meaning():
     for s in ("adds nothing", "abnormal, incidental or benign", "stated certainty", "normal statement",
               "every number and unit", "any side", "every structure it names", "no other structure or item",
               "a negative keeps the finding it rules out", "that the whole structure is normal",
-              "never narrowed to a single attribute"):
+              "never narrowed to a single attribute", "no value, level or measurement from the sheet's wording"):
         assert s in line, s
+
+
+def test_a_normal_never_gains_a_value_from_the_sheet():
+    """Q28 (2026-10-17): a sheet Measurement line never adds a value, level or measurement to a bare normal."""
+    rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
+    assert ("Nothing is added: no other structure, separately assessable item or statement from the sheet's wording "
+            "that the statement does not cover, and no value, level or measurement from the sheet's wording where the "
+            "statement gives none;") in rule
 
 
 def test_stack_voice_lets_the_sheet_own_phrasing():
     """Review M3: the base guide's "do not copy input phrasing verbatim" pulls against dictated wording."""
     assert "Do not copy input\nphrasing verbatim" not in g.GLOBAL_STYLE_GUIDE_STACK
-    assert ("Phrasing follows the skill sheet; content follows the input; a term the input uses is kept."
+    assert ("Phrasing follows the skill sheet; content follows the input; a finding term the input uses is kept."
             in g.GLOBAL_STYLE_GUIDE_STACK)
     assert "Do not copy input\nphrasing verbatim" in g.GLOBAL_STYLE_GUIDE  # the base guide is unchanged
 

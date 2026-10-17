@@ -487,7 +487,7 @@ commit. Reserve hedging for genuine clinical ambiguity.""", ""),
      "is kept as the radiologist said it."),
     # A dictated statement keeps its content (template_stack.DICTATED_WORDING_RULE, review M3 2026-10-17)
     ("Do not copy input\nphrasing verbatim — interpret and reframe into your own radiological language.",
-     "Phrasing follows the skill sheet; content follows the input; a term the input uses is kept."),
+     "Phrasing follows the skill sheet; content follows the input; a finding term the input uses is kept."),
 )
 
 PRE_WRITING_ANALYSIS_STACK = _swaps(
@@ -524,7 +524,7 @@ VERIFICATION_CHECKLIST_STACK = _swaps(
      """- Every statement in FINDINGS (its DO NOT ASSERT line excepted) appears with its meaning unchanged; no normal or negative statement appears that FINDINGS does not contain, for any structure
 - No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it
 - Every FINDINGS statement stays, even one about the same structure as a DO NOT ASSERT line; where its wording would match a removed sentence, it keeps its own words; a removed sentence's wording is never used to express it
-- Each FINDINGS statement keeps its meaning in the skill sheet's style and adds nothing: an abnormal, incidental or benign one keeps every size, number and unit, side, location, descriptor, comparison and its stated certainty; a normal statement keeps that the whole structure is normal, never narrowed to a single attribute, every number and unit, any side and every structure it names, with no other structure or item from the sheet's wording; a negative keeps the finding it rules out and its structure
+- Each FINDINGS statement keeps its meaning in the skill sheet's style and adds nothing: an abnormal, incidental or benign one keeps every size, number and unit, side, location, descriptor, comparison and its stated certainty; a normal statement keeps that the whole structure is normal, never narrowed to a single attribute, every number and unit, any side and every structure it names, with no other structure or item from the sheet's wording and no value, level or measurement from the sheet's wording that it does not give; a negative keeps the finding it rules out and its structure
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- All triggered interpretive clauses are appended\n", ""),
