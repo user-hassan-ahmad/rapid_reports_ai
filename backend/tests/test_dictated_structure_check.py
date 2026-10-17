@@ -330,3 +330,14 @@ async def test_a_dictated_sentence_naming_its_region_keeps_the_edit():
                                          ask=_ask(default=0.1)[0])
     assert [i["edit"] for i in items] == [
         {"mode": "replace", "find": "Right kidney cyst 2 cm.", "replace": "Left kidney cyst 2 cm."}]
+
+
+@pytest.mark.parametrize("region, dictated, report, edited", [
+    ("Aorta", "Aortic sinus 4.1 cm.", "Aortic root 4.1 cm.", True),   # aorta ~ aortic: first 4 letters
+    ("Left kidney", "Cyst 2 cm.", "A 2 cm cyst is seen in the left kidney.", False),
+    ("Kidneys", "Renal cyst 2 cm.", "Hepatic cyst 2 cm.", False),     # renal is not kidney: conservative
+])
+async def test_a_region_word_counts_when_a_dictated_word_shares_its_first_four_letters(region, dictated, report,
+                                                                                       edited):
+    items = await dsc.changed_structures(report, [(region, dictated)], ask=_ask(default=0.1)[0])
+    assert [i["edit"] is not None for i in items] == [edited]

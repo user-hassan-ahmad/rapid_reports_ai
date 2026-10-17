@@ -109,8 +109,9 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: I
     if len(dnc.sentence_spans(find)) > 1:
         return None
     own = _words(p.dictated)
-    if (_words(p.region) - _STOP) - own:   # "Cyst 2 cm." said under Left kidney: Apply would drop the structure
-        return None
+    stems = {w[:4] for w in own if len(w) >= 4}
+    if any(w not in own and (len(w) < 4 or w[:4] not in stems) for w in _words(p.region) - _STOP):
+        return None   # "Cyst 2 cm." said under Left kidney: Apply would drop the structure ("Aorta" ~ "aortic" holds)
     if (_words(p.report[:len(p.report) - len(find)]) - _STOP) - own:   # "RIGHT KIDNEY:" kept above a left-kidney value
         return None
     if dnc.chain_keys(find) != dnc.chain_keys(p.dictated):
