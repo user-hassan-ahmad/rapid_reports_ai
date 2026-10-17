@@ -84,7 +84,11 @@ survives (step 2), and the structure the number belongs to survives (this step).
    - the report sentence and the dictated sentence have the same number of clause joiners: more in the report is a
      merged number-free statement ("... 4.1 cm with no aortic regurgitation"); more in the dictation is a clause the
      writer split into another sentence, which Apply would repeat (lab v4). Joiners: and, with, without, but, whereas, which, while,
-     although, except, otherwise, ";", ",", "(", ")", " - ", "—";
+     although, except, otherwise, ";", ",", "(", ")", " - ", "—", and "/" spaced or between words ("10 cm /
+     hydronephrosis"; never in a unit or level: "ml/m2", "L4/5");
+   - no content word of the dictated sentence (side words aside) is missing from `find` but said in another FINDINGS
+     sentence (the writer split a qualifier off: "Cyst 2 cm in the left kidney. It is septated." vs dictated
+     "Septated cyst 2 cm in right kidney.");
    - the report sentence has at most 2 content words (not a stopword; levels never count) that the dictated sentence
      lacks (`NEW_WORDS_MAX`, a backstop: "The left kidney contains a 2 cm cyst." vs "Cyst 2 cm." withholds). Side
      words count here unless the dictated sentence names a side itself, in which case the side is the correction;
@@ -171,5 +175,8 @@ A `check_flag_items` test that the edit and `dictated_quote` reach the item.
   replaced (e.g. a one-word qualifier); the radiologist sees the dictated sentence on the card before Apply.
 - A region-less dictated sentence that the report holds word for word passes in code even if the report placed it
   under another label; regioned sentences are checked against the region's words.
+- A swapped clause with equal joiner counts can still drop a writer-added clause that is not from the radiologist's
+  statements (e.g. "with no hydronephrosis" when the region was confirmed normal by name only); the card shows both
+  sentences before Apply.
 - A sentence split by an abbreviation full stop may pair on a fragment; the edit is then withheld by the rules in §3.5
   when the fragment's chains or joiners differ, and the lab counts how often it happens.

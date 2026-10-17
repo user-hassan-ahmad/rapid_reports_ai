@@ -29,7 +29,10 @@ TIMEOUT_S = 3.0        # as jev_stack.TIMEOUT_S
 LABEL = "Different site from your dictation? Apply puts your sentence back."
 LABEL_NO_EDIT = "Different site from your dictation? Check this sentence."
 
-_JOINER = re.compile(r"(?i)\b(?:and|with|without|but|whereas|which|while|although|except|otherwise)\b|[;,()\u2014]| - ")
+# "/" counts spaced or between words ("10 cm / hydronephrosis", "cm/hydronephrosis"), never in a unit or a level
+# ("ml/m2", "L4/5": fewer than 2 letters on a side, or a digit)
+_JOINER = re.compile(r"(?i)\b(?:and|with|without|but|whereas|which|while|although|except|otherwise)\b|[;,()\u2014]"
+                     r"| - | / |(?<=[A-Za-z]{2})/(?=[A-Za-z]{3})")
 NEW_WORDS_MAX = 2   # more content words than this not in the dictated sentence: the edit is withheld
 _LETTERS = re.compile(r"[a-z][a-z']+")   # digits never count: a level ("L4/5", "C5-6") is never a content word
 _STOP = frozenset("""a an the of in at on to is are was were be been with and or there this that its it as by for from
@@ -103,8 +106,9 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: I
     dictated sentence does not, other values in it, a different number of clause joiners, a word merged in from
     another dictated statement or a confirmed assumed normal (side words aside), more than NEW_WORDS_MAX content
     words the dictated sentence lacks, a region or stripped dictated label whose words the dictated sentence lacks,
-    or a find that does not occur exactly once. `find` is the report sentence without its line label; the replace is the dictated sentence as said (no region
-    prefix)."""
+    a dictated word (side words aside) missing from `find` but said in another FINDINGS sentence, or a find that
+    does not occur exactly once. `find` is the report sentence without its line label; the replace is the dictated
+    sentence as said (no region prefix)."""
     find = dnc.strip_prefix(p.report)
     if len(dnc.sentence_spans(find)) > 1:
         return None
@@ -133,6 +137,9 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: I
     new = _words(find) - _STOP - own - (_SIDE if own & _SIDE else frozenset())
     if len(new) > NEW_WORDS_MAX:
         return None
+    rest = _words(dnc.findings_only(report).replace(p.report, " "))   # the other FINDINGS sentences, label and all
+    if any(w in rest for w in own - _words(find) - _STOP - _SIDE):
+        return None   # a dictated word the writer moved to another sentence ("It is septated."): Apply would drop it
     rep = p.dictated.strip()
     rep = rep[:1].upper() + rep[1:]
     if not rep.endswith((".", "!", "?")):

@@ -360,3 +360,23 @@ async def test_a_dictated_line_label_the_sentence_does_not_name_withholds_the_ed
         ("Two hypoattenuating lesions in segment 7, largest 18 mm.", None)]
     items, _ = await run("Left renal cyst 15 mm.", "Kidneys: Simple cyst 15 mm in the left kidney.", default=0.1)
     assert items[0]["edit"] is not None   # the sentence names its label ("kidney" ~ "Kidneys")
+
+
+# --- re-review: a split-off qualifier, and "/" as a joiner ---
+
+async def test_a_dictated_word_the_writer_moved_to_another_sentence_withholds_the_edit():
+    report = "FINDINGS\nCyst 2 cm in the left kidney. It is septated."
+    items, _ = await run(report, "Septated cyst 2 cm in right kidney.", default=0.1)
+    assert [(i["sentence"], i["edit"]) for i in items] == [("Cyst 2 cm in the left kidney.", None)]
+
+
+@pytest.mark.parametrize("report", ["Left kidney 10 cm / hydronephrosis.", "Left kidney 10 cm/hydronephrosis."])
+async def test_a_slash_between_words_is_a_joiner(report):
+    items, _ = await run(report, "Right kidney 10 cm.", default=0.1)
+    assert [i["edit"] for i in items] == [None]
+
+
+async def test_a_slash_in_a_unit_or_a_level_is_not_a_joiner():
+    items, _ = await run("Indexed right atrial volume 38 ml/m2 at L4/5.", "Left atrial volume 38 ml/m2 at L4/5.",
+                         default=0.1)
+    assert items[0]["edit"] is not None
