@@ -213,3 +213,64 @@ def test_candidate_carries_the_confirmed_normals_minus_removed(authed, db_sessio
     body["gate"]["assumed"] = {"Liver": ["Normal size.", "No ascites."], "Spleen": ["Spleen normal."]}
     events = _events(authed.post("/api/canvas/stack/generate", json=body))
     assert events[0][1]["assumed_confirmed"] == ["Normal size.", "Spleen normal."]
+
+
+NUM_UNITS = [{**UNITS[0], "text": "Node 14 mm short axis.", "abnormal": True},
+             {**UNITS[0], "id": 2, "text": "Liver normal."}]   # SYNTHETIC
+
+
+def _num_body(**over):
+    units = [StackUnit.model_validate(u) for u in NUM_UNITS]
+    gate = {"conclusion_text": "Node 22 mm.", "removed": [], "units_hash": "k", "findings_hash": findings_hash(units),
+            "values": [{"item": "LVEF", "value": "55%", "state": "entered"}]}
+    return _body(units=NUM_UNITS, gate=gate, history="Prior node 30 mm.", **over)
+
+
+def _flags(events):
+    return [i for i in events[0][1]["quality_check"]["review"] if i.get("kind") == "dictated_number_missing"]
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_quick_flags_a_dictated_number_the_report_dropped(authed, fakes, monkeypatch, on):
+    if on:
+        monkeypatch.setenv("RR_DICTATED_NUMBERS", "1")
+    else:
+        monkeypatch.delenv("RR_DICTATED_NUMBERS", raising=False)
+    flags = _flags(_events(authed.post("/api/canvas/stack/generate", json=_num_body())))
+    if not on:
+        assert flags == []
+        return
+    # dictated 14 mm and the typed LVEF 55% are missing; the history (30) and the conclusion (22) are never sources
+    assert [(f["text"], f["severity"]) for f in flags] == [("14 mm", "high"), ("55%", "high")]
+    assert flags[0]["sentence"] == "Node 14 mm short axis."
+
+
+def test_template_flags_a_dictated_number_the_report_dropped(authed, db_session, user, monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_NUMBERS", "1")
+
+    async def lean(**kw):
+        return {"report_content": "FINDINGS\nNode 14 mm short axis. Liver normal.", "description": "d",
+                "model_used": "m", "quality_check": {"enabled": True, "review": []}, "sections": ["FINDINGS"]}
+
+    async def describe(findings, history, scan_type):
+        return "d"
+
+    async def reconcile(removed, plain):
+        return list(removed), []
+
+    async def guard(report, removed, plain):
+        return report, [], []
+
+    monkeypatch.setattr(SR, "generate_template_report_lean", lean)
+    monkeypatch.setattr(SR, "_describe", describe)
+    monkeypatch.setattr(SR, "reconcile", reconcile)
+    monkeypatch.setattr(SR, "guard", guard)
+    monkeypatch.setattr(SR, "template_structure", lambda cfg: object())
+    monkeypatch.setattr(SR, "schedule_review", lambda rid: None)
+    t = Template(name="T", template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nx"},
+                 user_id=user.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    events = _events(authed.post("/api/canvas/stack/generate",
+                                 json=_num_body(kind="template", template_id=str(t.id), structure_key=_template_key(t))))
+    assert [f["text"] for f in _flags(events)] == ["55%"]   # 14 mm is written; the typed value is not
