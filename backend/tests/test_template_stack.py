@@ -129,8 +129,8 @@ def test_a_normal_never_gains_a_value_from_the_sheet():
     """Q28 (2026-10-17): a sheet Measurement line never adds a value, level or measurement to a bare normal."""
     rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
     assert ("Nothing is added: no other structure, separately assessable item or statement from the sheet's wording "
-            "that the statement does not cover, and no value, level or measurement from the sheet's wording where the "
-            "statement gives none;") in rule
+            "that the statement does not cover, and no value, level or measurement from the sheet's wording that the "
+            "statement does not give;") in rule
 
 
 def test_stack_voice_lets_the_sheet_own_phrasing():
