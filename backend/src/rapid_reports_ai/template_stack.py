@@ -36,6 +36,31 @@ MISSING_VALUES_RULE = (
     "\n- **Missing values:** this template's required values are handled outside the report, and code "
     "adds the \"Values not provided\" line itself: write no list of missing or unprovided values, and no "
     "placeholder for one.")
+# Dictation wins over an earlier removal (as the scratchpad's reconcile does, hybrid_stack.removed_guard): the writer
+# must never resolve "every FINDINGS statement appears" against "no DO NOT ASSERT statement appears" by dropping a
+# dictated statement about the same structure (fidelity track Q3, 2026-10-15).
+REMOVED_RULE = (
+    "FINDINGS statements always win over these removed sentences. Every statement in the FINDINGS input except its "
+    "own DO NOT ASSERT line appears with its meaning unchanged, even one about the same structure as a removed "
+    "sentence, whether it names that structure differently or adds a value. Where a FINDINGS statement's wording "
+    "would match a removed sentence, it keeps its own words; a removed sentence's wording is never used to express "
+    "it. A DO NOT ASSERT line never removes, "
+    "shortens or rewords a FINDINGS statement; it forbids only the removed sentence itself, in any wording, where no "
+    "FINDINGS statement says it.")
+# How far the sheet's example wording reaches into a dictated statement (fidelity Q6, 2026-10-16): findings keep the
+# dictated content; exact normals take the sheet's style, but never at the cost of what carries their meaning.
+DICTATED_WORDING_RULE = (
+    "\n- **Dictated wording:** a FINDINGS statement that reports an abnormal, incidental or benign finding, alone or "
+    "joined with other findings in one sentence, keeps the radiologist's content: it may be lightly summarised or "
+    "shortened, but every size, number and unit, side, location, descriptor and comparison stays, with its stated "
+    "certainty. A statement that says only that a structure is normal, intact or unremarkable may take the skill "
+    "sheet's wording and style for that same structure, its fuller normal wording included, but restyling never "
+    "drops or renames what carries its meaning: that the whole structure is normal (normal, unremarkable, intact, or "
+    "the sheet's own word for a whole-structure normal), never narrowed to a single attribute such as size; every "
+    "number and unit, any side, and every structure it names stay as the radiologist gave them. Nothing is added: no "
+    "other structure, separately assessable item or statement from the sheet's wording that the statement does not "
+    "cover, and no value, level or measurement from the sheet's wording that the statement does not give; where the sheet's wording would match a DO NOT ASSERT sentence, the statement keeps its own words. A "
+    "negative keeps the finding it rules out and its structure; only its phrasing may follow the skill sheet.")
 
 
 def _strip(sheet: str) -> List[str]:
@@ -97,7 +122,8 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
         "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
         "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "
         "states it. The same holds for a style note or logic line that says the report states such content: it "
-        "applies only when the input states it.\n"
+        "applies only when the input states it."
+        + DICTATED_WORDING_RULE + "\n"
         "- **Scores, grades and values:** a sheet instruction to state a score, grade, classification, time window, "
         "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
         "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
@@ -108,7 +134,8 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
     parts.append(session)
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
-        parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))
+        parts.append("## Removed by the Radiologist\n" + REMOVED_RULE + "\n"
+                     + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))
     if conclusion.strip():
         parts.append(
             "## Confirmed Conclusion\n"

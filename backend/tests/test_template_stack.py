@@ -44,9 +44,101 @@ def test_a_dropped_block_ends_at_the_next_grammar_context():
 
 def test_conclusion_and_removed_sentences_are_carried():
     b = stack_brief(LEAN, "  Normal cardiac MRI.  ", ["No pericardial effusion.", "  "])
-    assert '- DO NOT ASSERT: "No pericardial effusion."' in b and b.count("DO NOT ASSERT") == 1
+    assert '- DO NOT ASSERT: "No pericardial effusion."' in b and b.count('- DO NOT ASSERT: "') == 1
     assert b.rstrip().endswith('"Normal cardiac MRI."') and "## Confirmed Conclusion" in b
     assert "outrank every other rule" in b
+
+
+def test_dictated_findings_win_over_a_removed_sentence():
+    """Fidelity Q3: a DO NOT ASSERT line never removes or rewords a FINDINGS statement, even one about the same
+    structure; it forbids only the removed wording where nothing dictated says it."""
+    b = stack_brief(LEAN, "", ["No pericardial effusion."])
+    head, removed = b.split("## Removed by the Radiologist\n", 1)
+    rule, bullets = removed.split('- DO NOT ASSERT: "', 1)
+    assert rule.strip() and not rule.lstrip().startswith("-")          # the rule sits between heading and bullets
+    assert rule.startswith("FINDINGS statements always win") and "Dictated findings" not in rule
+    assert "same structure" in rule and "whether it names that structure differently or adds a value" in rule
+    assert "never removes, shortens or rewords" in rule and "where no FINDINGS statement says it" in rule
+
+
+def test_the_findings_inputs_own_do_not_assert_line_is_not_a_statement():
+    rule = stack_brief(LEAN, "", ["X."]).split("## Removed by the Radiologist\n", 1)[1].split("- DO NOT ASSERT", 1)[0]
+    assert "except its own DO NOT ASSERT line" in rule
+    assert "DO NOT ASSERT line excepted" in g.VERIFICATION_CHECKLIST_STACK
+
+
+def test_each_findings_statement_keeps_its_own_words():
+    rule = stack_brief(LEAN, "", ["X."]).split("## Removed by the Radiologist\n", 1)[1].split("- DO NOT ASSERT", 1)[0]
+    assert "Where a FINDINGS statement's wording would match a removed sentence, it keeps its own words" in rule and "removed sentence's wording is never used to express it" in rule
+
+
+def test_the_stack_checklist_lets_dictated_findings_win():
+    lines = [l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if "DO NOT ASSERT" in l or "same structure" in l]
+    no_assert = next(l for l in lines if l.startswith("- No DO NOT ASSERT statement"))
+    stays = next(l for l in lines if l.startswith("- Every FINDINGS statement stays"))
+    assert "in any wording" in no_assert and "unless a FINDINGS statement says it" in no_assert
+    assert "written in its own words" not in stays and "same structure" in stays and "would match a removed sentence, it keeps its own words" in stays and "same structure" not in no_assert
+
+
+def test_dictated_wording_rule_follows_the_examples_rule():
+    """Fidelity Q6 (2026-10-16): finding statements keep the dictated content; exact normals take the sheet's wording,
+    but restyling never drops the qualifier, a number or unit, a side or a named structure."""
+    lines = stack_brief("", "", []).splitlines()
+    i = next(n for n, l in enumerate(lines) if l.startswith("- **Examples are wording only:**"))
+    rule = lines[i + 1]
+    assert rule.startswith("- **Dictated wording:**")
+    for s in ("abnormal, incidental or benign finding", "joined with other findings",
+              "every size, number and unit, side, location, descriptor and comparison",
+              "stated certainty", "only that a structure is normal",
+              "skill sheet's wording and style for that same structure", "fuller normal wording",
+              "never drops or renames", "every number and unit", "any side",
+              "every structure it names"):
+        assert s in rule, s
+
+
+def test_a_whole_structure_normal_is_never_narrowed():
+    """Review A1 (2026-10-17): the qualifier may take the sheet's whole-structure word, never a single attribute."""
+    rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
+    assert ("that the whole structure is normal (normal, unremarkable, intact, or the sheet's own word for a "
+            "whole-structure normal), never narrowed to a single attribute such as size; every number and unit, any "
+            "side, and every structure it names stay as the radiologist gave them.") in rule
+    assert "in the sheet's word for it" not in rule
+
+
+def test_dictated_wording_adds_nothing_and_keeps_negatives():
+    """Q16 + review I1/I3 (2026-10-17): a same-structure fuller normal is style; another structure or item is an
+    addition; sheet wording matching a removed sentence is not used; a negative keeps what it rules out."""
+    rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
+    for s in ("Nothing is added", "no other structure, separately assessable item or statement",
+              "would match a DO NOT ASSERT sentence, the statement keeps its own words",
+              "A negative keeps the finding it rules out and its structure",
+              "only its phrasing may follow the skill sheet"):
+        assert s in rule, s
+
+
+def test_the_stack_checklist_keeps_dictated_meaning():
+    line = next(l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if l.startswith("- Each FINDINGS statement"))
+    for s in ("adds nothing", "abnormal, incidental or benign", "stated certainty", "normal statement",
+              "every number and unit", "any side", "every structure it names", "no other structure or item",
+              "a negative keeps the finding it rules out", "that the whole structure is normal",
+              "never narrowed to a single attribute", "no value, level or measurement from the sheet's wording"):
+        assert s in line, s
+
+
+def test_a_normal_never_gains_a_value_from_the_sheet():
+    """Q28 (2026-10-17): a sheet Measurement line never adds a value, level or measurement to a bare normal."""
+    rule = next(l for l in stack_brief("", "", []).splitlines() if l.startswith("- **Dictated wording:**"))
+    assert ("Nothing is added: no other structure, separately assessable item or statement from the sheet's wording "
+            "that the statement does not cover, and no value, level or measurement from the sheet's wording that the "
+            "statement does not give;") in rule
+
+
+def test_stack_voice_lets_the_sheet_own_phrasing():
+    """Review M3: the base guide's "do not copy input phrasing verbatim" pulls against dictated wording."""
+    assert "Do not copy input\nphrasing verbatim" not in g.GLOBAL_STYLE_GUIDE_STACK
+    assert ("Phrasing follows the skill sheet; content follows the input; a finding term the input uses is kept."
+            in g.GLOBAL_STYLE_GUIDE_STACK)
+    assert "Do not copy input\nphrasing verbatim" in g.GLOBAL_STYLE_GUIDE  # the base guide is unchanged
 
 
 def test_no_conclusion_or_removals_no_sections():
@@ -155,7 +247,7 @@ async def test_session_rules_reach_the_generation_system_prompt(capture):
         stack={"conclusion": "Dilated left ventricle.", "declined": []})
     sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
     for s in ("**Fixed lines:**", "a FIXED line never contradicts the input, the clinical history",
-              "**Examples are wording only:**", "the wording the report adds"):
+              "**Examples are wording only:**", "**Dictated wording:**", "the wording the report adds"):
         assert s in sp
 
 
