@@ -733,6 +733,16 @@ def _restates(new: str, existing: str) -> bool:
         and nums <= set(re.findall(r"\d+(?:\.\d+)?", existing))
 
 
+async def already_conveyed(report: str, sentences: List[str]) -> List[bool]:
+    """Per sentence: does the report already say it, in other words (L-47/L-49: Jev judges meaning)? One Jev call;
+    raises on any failure, so each caller decides its own fallback."""
+    if not sentences:
+        return []
+    ans = await asyncio.wait_for(rc._jev(f"REPORT:\n{report}", {
+        f"d{i}": {"type": "noul", "instructions": Q_CONVEYS + s} for i, s in enumerate(sentences)}), JEV_TIMEOUT_S)
+    return [float(ans[f"d{i}"]["noul"]) >= INSERT_DUP for i in range(len(sentences))]
+
+
 async def insert_findings(report: str, findings: str, items: List[str],
                           sections: Optional[List[ReportSection]] = None, protected: Optional[List[str]] = None,
                           suppressed: Optional[List[str]] = None) -> RepairResult:
@@ -766,9 +776,7 @@ async def insert_findings(report: str, findings: str, items: List[str],
     conveyed, dup_check = None, None
     if cands:
         try:
-            ans = await asyncio.wait_for(rc._jev(f"REPORT:\n{report}", {
-                f"d{i}": {"type": "noul", "instructions": Q_CONVEYS + s} for i, (_, s) in enumerate(cands)}), JEV_TIMEOUT_S)
-            conveyed = [float(ans[f"d{i}"]["noul"]) >= INSERT_DUP for i in range(len(cands))]
+            conveyed = await already_conveyed(report, [s for _, s in cands])
             dup_check = "jev"
         except Exception as e:
             logger.warning("insert duplicate check: Jev failed (%s: %s)", type(e).__name__, str(e)[:200])

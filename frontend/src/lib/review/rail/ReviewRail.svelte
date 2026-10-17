@@ -116,8 +116,9 @@
 			.map((g) => ({ section: g.section, items: urgentFirst(g.items.filter(isFlagged)) }))
 			.filter((g) => g.items.length > 0)
 	);
-	/** Quiet notes ("area never mentioned"): a muted line each, after the flagged items; never counted as open. */
-	const NOTE_KINDS = new Set(['structure_not_mentioned']);
+	/** Quiet notes ("area never mentioned", "value judged already said in other words, not added"): a muted line
+	 * each, after the flagged items; never counted as open. */
+	const NOTE_KINDS = new Set(['structure_not_mentioned', 'value_said_elsewhere']);
 	const notes = $derived(
 		$groupsStore
 			.flatMap((g) => g.items)

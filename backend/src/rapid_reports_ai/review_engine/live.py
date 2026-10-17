@@ -203,7 +203,8 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
     return items, log
 
 
-_FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing", "dictated_number_missing"}
+_FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing", "dictated_number_missing",
+               "value_said_elsewhere"}   # the last: a quiet note (cls info), never a flag to act on
 _FLAG_LABEL = {
     "undictated_number": "Number not in the dictation: {text}",
     "dictated_number_missing": "Dictated number not in the report: {text}",
@@ -229,6 +230,8 @@ def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         key_text = text or str(label)
         if kind == "dictated_number_missing" and e.get("text"):   # one item per missing number, not per sentence
             key_text = f"{key_text} | {e['text']}"
+        elif kind == "value_said_elsewhere":   # a value note names its value: two values from one sentence, two notes
+            key_text = f"{e.get('text') or ''}|{text}"
         key = item_key("accuracy", kind, key_text)
         if key in seen:
             continue

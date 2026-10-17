@@ -267,3 +267,149 @@ def test_a_report_without_a_preamble_starts_with_the_line():
     _, rec = apply_required_values(CMR, ["LVEF"])
     report = CMR_REPORT.split("\n\n", 1)[1]
     assert write_missing(report, CMR, rec["lists"])[0].startswith("Values not provided: LVEF.\n\nLEFT VENTRICLE\nNormal LV.")
+
+
+# ── a value the confirm gate filled from the dictation (P3 2026-10-15: a captured value listed as not provided) ──
+# SYNTHETIC: the writer dropped a dictated measurement; the gate had captured it with its sentence.
+
+async def test_a_filled_value_the_report_lacks_is_flagged_but_never_listed_as_not_provided():
+    _, rec = apply_required_values(SHEET, ["RVEF"])
+    lists, flags, b = await backstop("Findings:\nNormal LV.", rec["lists"], ["LVEF"], ask=_scores([0.1]),
+                                     list_missing=False)
+    assert lists[0]["na"] == ["RVEF"]                      # only what the radiologist marked N/A
+    assert [f["text"] for f in flags] == ["LVEF"] and b["missing"] == ["LVEF"]
+    assert "LVEF" not in write_missing("Findings:\nNormal LV.", SHEET, lists)[0]
+
+
+def _said(*answers, error=None, seen=None):
+    """A stand-in for the Jev duplicate check (report_review.already_conveyed): False (not said) unless told."""
+    async def conveys(report, sentences):
+        if seen is not None:
+            seen.append(list(sentences))
+        if error:
+            raise error
+        return [bool(answers[i]) if i < len(answers) else False for i in range(len(sentences))]
+    return conveys
+
+
+def _q(sentence, region):
+    return {"quote": sentence, "sentence": sentence, "region": region}
+
+
+async def test_restore_writes_the_dictated_sentence_at_the_end_of_its_region_section():
+    from rapid_reports_ai.template_required_values import restore_values
+    quotes = {"aortic root diameter": _q("aortic sinus measuring 41 mm", "ATRIA")}
+    out, edits, restored = await restore_values(CMR_REPORT, CMR, ["aortic root diameter"], quotes, conveys=_said())
+    assert "ATRIA\nNormal atria. Aortic sinus measuring 41 mm.\n\nSUMMARY" in out   # capitalised, terminated
+    assert edits == [{"type": "insertion", "sentence": "Aortic sinus measuring 41 mm."}]
+    assert restored == ["aortic root diameter"]
+
+
+async def test_restore_maps_a_paragraph_region_to_its_section():
+    from rapid_reports_ai.template_required_values import restore_values
+    sheet = CMR + '\n## Paragraph: Aortic root (ATRIA)\nCOVERS ["aortic root"]\nNORMAL [aortic root] "Normal root."\n'
+    quotes = {"aortic root diameter": _q("Aortic sinus measuring 41 mm.", "Aortic root")}
+    out, _, restored = await restore_values(CMR_REPORT, sheet, ["aortic root diameter"], quotes, conveys=_said())
+    assert "ATRIA\nNormal atria. Aortic sinus measuring 41 mm.\n\nSUMMARY" in out and restored
+
+
+@pytest.mark.parametrize("region,report", [
+    ("", CMR_REPORT),                                   # no region
+    ("Somewhere else", CMR_REPORT),                     # a region no report section is named for
+    ("SUMMARY", CMR_REPORT),                            # never into the conclusion
+    ("LEFT VENTRICLE", "Normal LV.\nDr A Smith"),       # no headers: never after a sign-off
+])
+async def test_restore_without_a_headed_section_for_the_region_is_flag_only(region, report):
+    from rapid_reports_ai.template_required_values import restore_values
+    quotes = {"LVEF": _q("Ejection fraction 47%.", region)}
+    assert await restore_values(report, CMR, ["LVEF"], quotes, conveys=_said()) == (report, [], [])
+
+
+async def test_restore_skips_a_sentence_already_in_the_report_and_an_item_without_a_quote():
+    """A filled chip without a quote (stated?, kept) is flag only: not written back, and not listed."""
+    from rapid_reports_ai.template_required_values import restore_values
+    report = CMR_REPORT.replace("Normal LV.", "Normal LV. Ejection fraction  47%.")
+    quotes = {"LVEF": _q("ejection fraction 47%.", "LEFT VENTRICLE"),
+              "aortic root diameter": _q("", "")}
+    out, edits, restored = await restore_values(report, CMR, ["LVEF", "aortic root diameter"], quotes, conveys=_said())
+    assert out == report and edits == [] and restored == ["LVEF"]   # already there: nothing vanished
+
+
+async def test_already_present_needs_a_whole_word_match():
+    from rapid_reports_ai.template_required_values import restore_values
+    report = CMR_REPORT.replace("Normal RV.", "Normal RV. RVEF 55%.")
+    out, edits, restored = await restore_values(report, CMR, ["LVEF"], {"LVEF": _q("EF 55%.", "LEFT VENTRICLE")}, conveys=_said())
+    assert "LEFT VENTRICLE\nNormal LV. EF 55%.\n\nRIGHT" in out and restored == ["LVEF"]
+
+
+async def test_restore_never_glues_onto_a_values_not_provided_line_and_write_missing_keeps_it():
+    from rapid_reports_ai.template_required_values import restore_values
+    end = CMR.replace("AT TOP | section: LEFT VENTRICLE", "AT END")
+    report = CMR_REPORT.replace("Normal atria.", "Normal atria.\nValues not provided: LVEF.")
+    out, _, _ = await restore_values(report, end, ["aortic root diameter"],
+                                     {"aortic root diameter": _q("Aortic sinus 41 mm.", "ATRIA")}, conveys=_said())
+    assert "Values not provided: LVEF.\nAortic sinus 41 mm.\n\nSUMMARY" in out
+    _, rec = apply_required_values(end, ["LVEF"])
+    final = write_missing(out, end, rec["lists"])[0]
+    assert "Aortic sinus 41 mm." in final
+    assert final.count("Values not provided") == 1
+
+
+async def test_restore_into_a_bulleted_section_uses_its_bullet():
+    from rapid_reports_ai.template_required_values import restore_values
+    report = CMR_REPORT.replace("Normal atria.", "- Normal atria.\n- No effusion.")
+    out, _, _ = await restore_values(report, CMR, ["aortic root diameter"],
+                                     {"aortic root diameter": _q("Aortic sinus 41 mm.", "ATRIA")}, conveys=_said())
+    assert "ATRIA\n- Normal atria.\n- No effusion.\n- Aortic sinus 41 mm.\n\nSUMMARY" in out
+
+
+async def test_restore_never_raises(monkeypatch):
+    import rapid_reports_ai.template_required_values as M
+    from rapid_reports_ai.template_required_values import restore_values
+
+    def boom(*a, **k):
+        raise RuntimeError("sections down")
+    monkeypatch.setattr(M, "_clean", boom)
+    monkeypatch.setattr("rapid_reports_ai.template_lean.report_sections", boom)
+    out, edits, restored = await restore_values(CMR_REPORT, CMR, ["LVEF"], {"LVEF": _q("LVEF 47%.", "ATRIA")},
+                                                conveys=_said())
+    assert (out, edits, restored) == (CMR_REPORT, [], [])
+
+
+async def test_restore_asks_whether_the_report_says_it_in_other_words_and_then_writes_nothing():
+    from rapid_reports_ai.template_required_values import restore_values
+    seen = []
+    quotes = {"aortic root diameter": _q("Aortic sinus 41 mm.", "ATRIA"), "LVEF": _q("LVEF 47%.", "LEFT VENTRICLE"),
+              "RVEF": _q("RVEF 50%.", "")}
+    out, edits, restored = await restore_values(CMR_REPORT, CMR, ["aortic root diameter", "LVEF", "RVEF"], quotes,
+                                                conveys=_said(True, False, seen=seen))
+    assert seen == [["Aortic sinus 41 mm.", "LVEF 47%."]]          # only sentences that would be written
+    assert "Aortic sinus" not in out and "LEFT VENTRICLE\nNormal LV. LVEF 47%." in out
+    assert edits == [{"type": "insertion", "sentence": "LVEF 47%."}]
+    assert restored == ["aortic root diameter", "LVEF"]            # judged stated: no flag; RVEF stays flagged
+
+
+async def test_restore_fails_closed_when_the_duplicate_check_errors():
+    from rapid_reports_ai.template_required_values import restore_values
+    report = CMR_REPORT.replace("Normal RV.", "Normal RV. RVEF 50%.")
+    quotes = {"LVEF": _q("LVEF 47%.", "LEFT VENTRICLE"), "RVEF": _q("RVEF 50%.", "RIGHT VENTRICLE")}
+    out, edits, restored = await restore_values(report, CMR, ["LVEF", "RVEF"], quotes,
+                                                conveys=_said(error=RuntimeError("jev down")))
+    assert out == report and edits == [] and restored == ["RVEF"]   # verbatim there: no flag; LVEF keeps its flag
+
+
+async def test_two_chips_from_one_sentence_write_it_once():
+    from rapid_reports_ai.template_required_values import restore_values
+    sent = "The LV is normal, LVEF 55%, LVEDV 150 ml."
+    quotes = {"LVEF": _q(sent, "LEFT VENTRICLE"), "LVEDV": _q(sent, "LEFT VENTRICLE")}
+    out, edits, restored = await restore_values(CMR_REPORT, CMR, ["LVEF", "LVEDV"], quotes, conveys=_said())
+    assert out.count(sent) == 1 and edits == [{"type": "insertion", "sentence": sent}]
+    assert restored == ["LVEF", "LVEDV"]
+
+
+async def test_a_value_judged_said_elsewhere_is_recorded_for_a_quiet_note():
+    from rapid_reports_ai.template_required_values import restore_values
+    rec = {}
+    quotes = {"LVEF": _q("LVEF 47%.", "LEFT VENTRICLE")}
+    await restore_values(CMR_REPORT, CMR, ["LVEF"], quotes, conveys=_said(True), rec=rec)
+    assert rec["said_elsewhere"] == [{"item": "LVEF", "sentence": "LVEF 47%."}]

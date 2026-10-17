@@ -625,7 +625,19 @@ async def test_a_stack_session_with_values_has_code_write_the_literal_na_line(mo
     assert out["required_values"]["stripped"] == 1 and out["required_values"]["lists"][0]["na"] == ["RVEF"]
 
 
-async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch):
+def _not_said_elsewhere(monkeypatch, *answers, error=None):
+    """The Jev duplicate check before a write-back (report_review.already_conveyed), stood in: not said unless told."""
+    async def conveys(report, sentences):
+        if error:
+            raise error
+        return [bool(answers[i]) if i < len(answers) else False for i in range(len(sentences))]
+    monkeypatch.setattr("rapid_reports_ai.report_review.already_conveyed", conveys)
+
+
+async def test_a_filled_value_the_report_lacks_is_never_listed_and_is_written_back(monkeypatch):
+    """P3 2026-10-15 (SYNTHETIC stand-in): the gate filled a value from the dictation, the writer dropped its
+    sentence, and the backstop listed it as not provided. A filled value was provided: its dictated sentence is
+    written back (a pre-applied insertion), never listed; one without a sentence is flagged only."""
     from rapid_reports_ai import template_required_values as trv
     calls, seen = {}, {}
     _gen_fakes(monkeypatch, calls)
@@ -633,17 +645,50 @@ async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch
 
     async def ask(report, items):
         seen.update(report=report, items=items)
-        return [0.1, 0.9]
+        return [0.1, 0.1]
     monkeypatch.setattr(trv, "ask_report_values", ask)
-    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%. RVEF 50%.",
-                                                 history="", case=None, signature=None,
-                                                 stack={"conclusion": "", "declined": [], "values_na": [],
-                                                        "values_filled": ["LVEF", "RVEF"]})
+    _not_said_elsewhere(monkeypatch)
+    out = await tl.generate_template_report_lean(
+        sheet=VALUES, scan_type="CMR", findings="Ejection fraction 47%. RVEF 50%.", history="", case=None,
+        signature=None, stack={"conclusion": "", "declined": [], "values_na": [], "values_filled": ["LVEF", "RVEF"],
+                               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%", "sentence": "Ejection fraction 47%.",
+                                                          "region": "Findings"}}})
     assert seen["items"] == ["LVEF", "RVEF"] and seen["report"].startswith("Findings:\nNormal LV.")
-    assert "Values not provided: LVEF.\n\nFindings:\nNormal LV." in out["report_content"]
-    assert {"kind": "value_missing", "text": "LVEF", "message": "Required value LVEF not found in the report"} \
-        in out["quality_check"]["review"]
-    assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF"], "error": None}
+    assert "Values not provided" not in out["report_content"]
+    assert "Findings:\nNormal LV. Ejection fraction 47%.\n\nConclusion:" in out["report_content"]
+    review = out["quality_check"]["review"]
+    assert not any(f.get("text") == "LVEF" for f in review)       # written back: no "not found" flag
+    assert {"kind": "value_missing", "text": "RVEF", "message": "Required value RVEF not found in the report"} in review
+    assert {"type": "insertion", "sentence": "Ejection fraction 47%."} in out["quality_check"]["applied_edits"]
+    assert out["quality_check"]["pre_edit_report"] == "Findings:\nNormal LV.\n\nConclusion:\nNormal.\nCHECKED"
+    assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF", "RVEF"], "error": None}
+    assert out["required_values"]["restored"] == ["LVEF"]
+
+
+async def test_a_written_back_value_is_never_glued_onto_an_at_end_list_line(monkeypatch):
+    """Review 2026-10-15 (SYNTHETIC): with the list AT END, the write-back went onto the "Values not provided" line,
+    where a later pass would delete it. It runs before the line is written, and never joins that line."""
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def ask(report, items):
+        return [0.1]
+
+    async def check(report, findings, scan, options, **kw):   # no "CHECKED" line: Findings is the last section
+        return report, options, {"enabled": True}
+    monkeypatch.setattr(trv, "ask_report_values", ask)
+    monkeypatch.setattr(tl, "run_quality_check", check)
+    _not_said_elsewhere(monkeypatch)
+    out = await tl.generate_template_report_lean(
+        sheet=VALUES.replace("AT TOP", "AT END"), scan_type="CMR", findings="Ejection fraction 47%.", history="",
+        case=None, signature=None,
+        stack={"conclusion": "", "declined": [], "values_na": ["RVEF"], "values_filled": ["LVEF"],
+               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%", "sentence": "Ejection fraction 47%.",
+                                          "region": "Findings"}}})
+    assert "Findings:\nNormal LV. Ejection fraction 47%.\n\nValues not provided: RVEF.\n\nConclusion:" \
+        in out["report_content"]
 
 
 async def test_a_backstop_failure_leaves_the_report_and_flags_only_that_it_could_not_check(monkeypatch):
@@ -763,3 +808,33 @@ async def test_without_a_cluster_a_jev_failure_flags_and_writes_no_line(monkeypa
         assert "jev: incomplete answers" in out["required_values"]["backstop"]["error"]
         if out.get("options_job") is not None:
             await out["options_job"]
+
+
+@pytest.mark.parametrize("said,error,flagged", [(True, None, False), (False, RuntimeError("jev down"), True)])
+async def test_a_value_said_in_other_words_or_unchecked_is_not_written_back(monkeypatch, said, error, flagged):
+    """Q2 2026-10-15 (SYNTHETIC): before the write-back, the quick path's duplicate check asks whether the report
+    already says it in other words. Said: nothing written, no flag. The check failed: nothing written, the flag stays."""
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV, EF forty-seven percent.\n\nConclusion:\nNormal.")
+
+    async def ask(report, items):
+        return [0.1]
+    monkeypatch.setattr(trv, "ask_report_values", ask)
+    _not_said_elsewhere(monkeypatch, said, error=error)
+    out = await tl.generate_template_report_lean(
+        sheet=VALUES, scan_type="CMR", findings="Ejection fraction 47%.", history="", case=None, signature=None,
+        stack={"conclusion": "", "declined": [], "values_na": [], "values_filled": ["LVEF"],
+               "values_quotes": {"LVEF": {"quote": "Ejection fraction 47%", "sentence": "Ejection fraction 47%.",
+                                          "region": "Findings"}}})
+    assert "Ejection fraction 47%" not in out["report_content"]
+    assert "Values not provided" not in out["report_content"]
+    assert not (out["quality_check"].get("applied_edits") or [])
+    review = out["quality_check"].get("review") or []
+    assert any(f.get("kind") == "value_missing" and f.get("text") == "LVEF" for f in review) is flagged
+    notes = [f for f in review if f.get("kind") == "value_said_elsewhere"]
+    assert notes == ([] if flagged else [{"kind": "value_said_elsewhere", "severity": "low", "text": "LVEF",
+                                          "sentence": "Ejection fraction 47%.",
+                                          "message": "LVEF judged already in the report in other words; not added: "
+                                                     "Ejection fraction 47%."}])

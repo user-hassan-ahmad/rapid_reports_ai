@@ -56,6 +56,20 @@ gate.
 ("Answered by the radiologist: LVEF 45%"). N/A items produce the template's "Values not provided: …" line at its
 `position`, so that line is now the radiologist's explicit choice. `LIST_MISSING` stays in the stack brief.
 
+**A filled value the report lacks (approved by Hassan 2026-10-15; replaces "list it as not provided").** After
+Generate, the backstop (Jev) asks whether the report states each filled value. A value the gate filled from the
+dictation was provided, so it never joins the "Values not provided" line. Code writes its dictated sentence back,
+verbatim, as a pre-applied insertion shown on the rail (undo there):
+- The sentence is the dictated unit holding the value's clause (never the bare clause), capitalised and
+  terminated. It is checked on the server against the request's units; one holding removed text is never written.
+- It goes at the end of the headed report section named for the value's region (a paragraph region maps to its
+  section), with the section's bullet marker if it is a list, and before the "Values not provided" line is written.
+- Before writing, the quick path's duplicate check (Jev, "already said in other words?") runs. Said: nothing is
+  written and there is no flag.
+- Flag only (value_missing, nothing written, not listed): no dictated sentence (a "stated?" or kept chip), no
+  region, no headed section for the region, a region naming the conclusion, a report without headers, or the
+  duplicate check failing (fail closed).
+
 **Template editor.** The sheet is never shown to the user (standing rule); requirements are shown as report
 behaviour. After the sheet is built, `SkillSheetCreator.svelte` / `TemplateRefinePanel.svelte` show "Every report
 will include:" as removable chips with "+ add", derived from the parsed structure. A chip edit is applied by code
@@ -110,6 +124,7 @@ any assumed normal; each no shows nothing. The answers go into `gateKey`.
   precision before wiring.
 - Frontend: chip states, Mark rest N/A, Confirm blocked until all resolved, gate re-arms on edit.
 - Endpoint: N/A items produce the "Values not provided" line; entered values appear as statements.
+- Endpoint: a filled value the report lacks is written back (or flagged), never listed as not provided.
 
 ## Open questions
 

@@ -274,3 +274,52 @@ def test_template_flags_a_dictated_number_the_report_dropped(authed, db_session,
     events = _events(authed.post("/api/canvas/stack/generate",
                                  json=_num_body(kind="template", template_id=str(t.id), structure_key=_template_key(t))))
     assert [f["text"] for f in _flags(events)] == ["55%"]   # 14 mm is written; the typed value is not
+
+
+def test_template_generate_hands_the_writer_each_filled_values_sentence_and_region(authed, db_session, user,
+                                                                                 monkeypatch):
+    """P3 2026-10-15 (SYNTHETIC): a value the gate filled reaches Generate with the dictated sentence it was read
+    from and that sentence's region, so code can write it back if the writer drops it."""
+    seen = {}
+    units = [{**UNITS[0], "id": 1, "text": "Liver span 17 cm.", "group": "Liver"},
+             {**UNITS[0], "id": 2, "text": "Spleen normal.", "group": "Spleen"}]
+
+    async def lean(**kw):
+        seen["stack"] = kw["stack"]
+        return {"report_content": "FINDINGS\nSpleen normal.", "description": "d", "model_used": "m",
+                "quality_check": {"enabled": True, "review": []}, "sections": ["FINDINGS"]}
+
+    async def reconcile(removed, plain):
+        return list(removed), []
+
+    async def guard(report, removed, plain):
+        return report, [], []
+
+    async def describe(findings, history, scan_type):
+        return "d"
+
+    monkeypatch.setattr(SR, "generate_template_report_lean", lean)
+    monkeypatch.setattr(SR, "_describe", describe)
+    monkeypatch.setattr(SR, "reconcile", reconcile)
+    monkeypatch.setattr(SR, "guard", guard)
+    monkeypatch.setattr(SR, "template_structure", lambda cfg: object())
+    monkeypatch.setattr(SR, "schedule_review", lambda rid: None)
+    t = Template(name="T", template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nx"},
+                 user_id=user.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    body = _body(kind="template", template_id=str(t.id), structure_key=_template_key(t), units=units,
+                 groups=["Liver", "Spleen"])
+    body["gate"]["findings_hash"] = findings_hash([StackUnit.model_validate(u) for u in units])
+    body["gate"]["values"] = [
+        {"item": "Liver span", "state": "filled", "value": "17 cm", "quote": "Liver span 17 cm."},
+        {"item": "Spleen length", "state": "picked", "value": "11 cm", "quote": "Spleen 11 cm"},
+        {"item": "Portal vein", "state": "filled", "value": None, "quote": None, "kept": True},
+        {"item": "CBD", "state": "na", "value": None, "quote": None}]
+    events = _events(authed.post("/api/canvas/stack/generate", json=body))
+    assert events[0][0] == "candidate"
+    assert seen["stack"]["values_na"] == ["CBD"]
+    assert seen["stack"]["values_filled"] == ["Liver span", "Spleen length", "Portal vein"]
+    # a quote no dictated unit holds is dropped (flag only); a chip without one has no entry
+    assert seen["stack"]["values_quotes"] == {"Liver span": {"quote": "Liver span 17 cm.",
+                                                             "sentence": "Liver span 17 cm.", "region": "Liver"}}

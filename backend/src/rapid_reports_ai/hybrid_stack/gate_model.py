@@ -25,6 +25,7 @@ class ValueChip(BaseModel):
     item: str
     state: str
     value: Optional[str] = None
+    quote: Optional[str] = None   # the dictated sentence a filled value was read from
 
 
 class AppliedValue(BaseModel):

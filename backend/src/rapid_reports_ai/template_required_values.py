@@ -11,7 +11,8 @@ typed, or marked N/A. Code owns the missing-values list (Hassan 2026-10-13: alwa
   findings one) goes at the TOP or END of that section; with no findings section found, the report itself.
 - backstop: before the line is written, Jev asks whether the generated report states each value whose chip was
   filled (a false "stated" must never let a value vanish from both the report and the line); each "no" joins its
-  list's N/A items and becomes a value_missing review flag.
+  list's N/A items and becomes a value_missing review flag. A value the scratchpad gate filled from the dictation
+  was provided, so it never joins the line: restore_values writes its dictated sentence back (P3 2026-10-15).
 The stored sheet is never changed. Regex here only reads the grammar's own syntax and our own literal line. Never
 raises: a sheet that does not parse clean, or any error, leaves things as they came with the reason in the record;
 values_applied() then says the generator must not be told the values were decided."""
@@ -22,13 +23,14 @@ import re
 from typing import List, Optional, Sequence, Tuple
 
 from .hybrid_stack.jev_stack import BACKSTOP_MIN, ask_report_values
-from .hybrid_stack.template import norm_key
+from .hybrid_stack.template import norm_key, paragraph_regions
 from .template_context_rules import _clean
 
 logger = logging.getLogger(__name__)
 
 NA_PREFIX = "Values not provided"
 VALUE_MISSING = "value_missing"
+VALUE_SAID_ELSEWHERE = "value_said_elsewhere"   # Jev: already said in other words, so not written back (quiet note)
 VALUE_CHECK_UNAVAILABLE = "value_check_unavailable"   # the backstop could not run: never a silent failure
 _NA_LINE = re.compile(r"(?im)^[ \t]*(?:[-*•][ \t]*)?values not provided\b[^\n]*\n?")
 
@@ -83,11 +85,14 @@ def values_applied(rec: dict) -> bool:
             and all(e.get("outcome") == "applied" for e in rec["lists"]))
 
 
-async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=None) -> Tuple[List[dict], List[dict], dict]:
+async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=None,
+                   list_missing: bool = True) -> Tuple[List[dict], List[dict], dict]:
     """The post-generation backstop: (lists with every filled value the report does not state added to its list's
     N/A items, value_missing review flags, record). Jev decides (ask_report_values, BACKSTOP_MIN); code lists and
     flags. A Jev failure or a short reply changes nothing and adds one value_check_unavailable flag (never silent);
-    no filled items: no call."""
+    no filled items: no call. `list_missing` False (the value cluster: the gate filled these values from the
+    dictation): a value the report lacks was provided, so it is flagged and recorded but never listed as not
+    provided; the caller writes it back (restore_values)."""
     rec: dict = {"asked": 0, "missing": [], "error": None}
     required = {norm_key(x) for e in lists for x in e["items"]}   # the client's items, checked against the template
     items = list(dict.fromkeys(x.strip() for x in filled
@@ -110,6 +115,10 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
     rec["missing"] = missing
     if not missing:
         return lists, [], rec
+    flags = [{"kind": VALUE_MISSING, "text": i, "message": f"Required value {i} not found in the report"} for i in missing]
+    logger.info("[template.required_values] backstop asked=%d missing=%d", len(items), len(missing))
+    if not list_missing:
+        return lists, flags, rec
     out = [dict(e, na=list(e["na"])) for e in lists]
     listed = {norm_key(x) for e in out for x in e["na"]}
     for item in missing:
@@ -118,9 +127,129 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
             continue
         listed.add(k)
         next(e for e in out if k in {norm_key(x) for x in e["items"]})["na"].append(item)
-    flags = [{"kind": VALUE_MISSING, "text": i, "message": f"Required value {i} not found in the report"} for i in missing]
-    logger.info("[template.required_values] backstop asked=%d missing=%d", len(items), len(missing))
     return out, flags, rec
+
+
+def _flat(s: str) -> str:
+    return " ".join((s or "").split()).rstrip(".").lower()
+
+
+_BULLET = re.compile(r"^([-*•]|(\d+)([.)]))\s")
+
+
+def _present(sentence: str, text: str) -> bool:
+    """The sentence is in the text as whole words ("EF 55%" is not inside "RVEF 55%")."""
+    return re.search(r"(?<!\w)" + re.escape(_flat(sentence)) + r"(?!\w)", " ".join((text or "").split()).lower()) is not None
+
+
+def _append(text: str, a: int, b: int, sentence: str) -> str:
+    """The sentence at the end of text[a:b]: after its last sentence on the same line; on its own line after a list
+    item (with the list's marker) or after a "Values not provided" line (never joined onto it)."""
+    k = a + len(text[a:b].rstrip())
+    last = text[a:k].rsplit("\n", 1)[-1].strip()
+    bullet = _BULLET.match(last)
+    if last and last[-1] in ".!?" and not bullet and not _NA_LINE.match(last):
+        return text[:k] + " " + sentence + text[k:]
+    if bullet:
+        n = bullet.group(2)
+        sentence = (f"{int(n) + 1}{bullet.group(3)} " if n else bullet.group(1) + " ") + sentence
+    sep = "\n" if k > a or (k > 0 and text[k - 1] != "\n") else ""
+    return text[:k] + sep + sentence + text[k:]
+
+
+def _section_aliases(st) -> dict:
+    """A scratchpad region (a sheet section's name or header, or a findings paragraph's region name) -> the names
+    the report gives that section (its name and its header line)."""
+    names = {}
+    for s in (st.sections if st else []):
+        header = (s.header or s.name).strip().rstrip(":").strip().upper()
+        names[s.name] = {s.name.upper(), header}
+    alias = {}
+    for s in (st.sections if st else []):
+        for n in (s.name, (s.header or "").strip().rstrip(":").strip()):
+            if n:
+                alias[" ".join(n.split()).upper()] = names[s.name]
+    if st:
+        sec = {p.id: p.section for p in st.paragraphs}
+        for pid, region in paragraph_regions(st).items():
+            alias.setdefault(" ".join(region.split()).upper(), names.get(sec.get(pid), set()))
+    return alias
+
+
+async def restore_values(report: str, sheet: str, missing: Sequence[str], quotes: dict,
+                         conveys=None, rec: Optional[dict] = None) -> Tuple[str, List[dict], List[str]]:
+    """A value the gate filled from the dictation never vanishes (P3 2026-10-15): (the report with each missing
+    value's dictated sentence written back, the insertion edits, the items the report now holds). `quotes`: item ->
+    {"sentence": the dictated sentence holding the value, "region": its scratchpad region}
+    (hybrid_stack.findings.filled_value_quotes). The sentence goes at the end of the report's headed section named
+    for its region, as dictated (capitalised, terminated; a bulleted section's marker). Flag only (the item is not
+    returned, so its value_missing flag stays; it is never listed as not provided): no sentence (a stated? or kept
+    chip), no region, a region no headed report section is named for, a region naming the conclusion, or a report
+    without headers. A sentence already in the report word for word is not written again. Before writing, the quick
+    path's duplicate check (`conveys`, default report_review.already_conveyed: Jev) asks whether the report already
+    says each sentence in other words: said, it is not written and the item is held (no value_missing flag; it goes
+    in rec["said_elsewhere"] for a quiet note, so a wrong answer never loses the value without trace); the check
+    failing writes nothing and keeps every such flag (fail closed). A sentence two chips share is written once.
+    Run before write_missing. Never raises: on any error the
+    report comes back as it was."""
+    try:
+        from . import report_review as rr
+        from .template_lean import report_sections
+        by = {norm_key(k): v for k, v in (quotes or {}).items() if isinstance(v, dict)}
+        alias = _section_aliases(_clean(sheet))
+        text = report or ""
+        bare = _NA_LINE.sub("", text)
+        held, todo = [], []   # todo: (item, sentence, the report names of its section)
+        for item in missing:
+            q = by.get(norm_key(item)) or {}
+            sent = " ".join(str(q.get("sentence") or "").split())
+            if not sent:
+                continue
+            sent = sent[0].upper() + sent[1:]
+            sent = sent if sent[-1] in ".!?" else sent + "."
+            if _present(sent, bare):
+                held.append(item)
+                continue
+            region = " ".join(str(q.get("region") or "").split()).upper()
+            if not region:
+                continue
+            want = alias.get(region, {region})
+            spans = rr.section_spans(text, report_sections(text, sheet))
+            if any(s.header and s.role != "impression" and s.name in want for s, _, _ in spans):
+                todo.append((item, sent, want))
+        said = [False] * len(todo)
+        if todo:
+            try:
+                said = list(await (conveys or rr.already_conveyed)(bare, [t[1] for t in todo]))
+                if len(said) != len(todo):
+                    raise ValueError(f"{len(said)} answers for {len(todo)} sentences")
+            except Exception as e:  # noqa: BLE001 -- fail closed: nothing written, the flags stay
+                logger.warning("[template.required_values] restore duplicate check failed (%s: %s)",
+                               type(e).__name__, str(e)[:200])
+                todo, said = [], []
+        edits, elsewhere = [], []
+        for (item, sent, want), dup in zip(todo, said):
+            if dup:
+                held.append(item)
+                elsewhere.append({"item": item, "sentence": sent})
+                continue
+            if _present(sent, _NA_LINE.sub("", text)):   # already written for another chip from the same sentence
+                held.append(item)
+                continue
+            spans = rr.section_spans(text, report_sections(text, sheet))
+            hit = next(((a, b) for s, a, b in spans if s.header and s.role != "impression" and s.name in want), None)
+            if hit is None:
+                continue
+            text = _append(text, hit[0], hit[1], sent)
+            edits.append({"type": "insertion", "sentence": sent})
+            held.append(item)
+        if rec is not None:
+            rec["said_elsewhere"] = elsewhere
+        logger.info("[template.required_values] restored=%d held=%d", len(edits), len(held))
+        return text, edits, [i for i in missing if i in held]
+    except Exception as e:  # noqa: BLE001 -- never break Generate
+        logger.warning("[template.required_values] restore error=%s", f"{type(e).__name__}: {e}"[:200])
+        return report, [], []
 
 
 def _insert(text: str, a: int, b: int, line: str, end: bool) -> str:
