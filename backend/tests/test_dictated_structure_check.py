@@ -148,3 +148,93 @@ async def test_ask_same_site_sends_one_request_and_refuses_a_partial_answer(monk
     with pytest.raises(ValueError):
         await dsc.ask_same_site(ps)
 
+
+
+# --- the edit (spec §3.5) ---
+
+async def test_a_moved_value_carries_the_edit_and_the_apply_label():
+    report = "FINDINGS\nAortic root 4.1 cm.\nLiver normal."
+    items, _ = await run(report, "Aortic sinus 4.1 cm.", p_of={"Aortic root 4.1 cm.": 0.2})
+    assert items == [{"kind": "dictated_structure_changed", "severity": "high", "text": "4.1 cm",
+                      "sentence": "Aortic root 4.1 cm.", "dictated_quote": "Aortic sinus 4.1 cm.",
+                      "message": "Different site from your dictation? Apply puts your sentence back.",
+                      "edit": {"mode": "replace", "find": "Aortic root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}}]
+
+
+async def test_the_edit_capitalises_the_dictated_sentence_and_adds_a_full_stop():
+    items, _ = await run("Cyst approx. 4 cm in the left lobe.", "cyst approx. 4 cm in segment 6", default=0.1)
+    assert items[0]["edit"] == {"mode": "replace", "find": "Cyst approx. 4 cm in the left lobe.",
+                                "replace": "Cyst approx. 4 cm in segment 6."}
+
+
+async def test_no_edit_when_the_find_occurs_twice():
+    items, _ = await run("Aortic root 4.1 cm. Prior: Aortic root 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert [i["edit"] for i in items] == [None]
+    assert items[0]["message"] == "Different site from your dictation? Check this sentence."
+
+
+async def test_no_edit_when_a_number_free_clause_was_merged_in():
+    items, _ = await run("Aortic root 4.1 cm with no aortic regurgitation.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert [i["edit"] for i in items] == [None]
+
+
+async def test_no_edit_when_the_writer_merged_a_word_from_another_statement():
+    items, _ = await run("Simple cyst 3 cm in the right lobe.", "Cyst 3 cm in segment 6.", "The cyst is simple.",
+                         default=0.1)
+    assert [i["edit"] for i in items] == [None]
+
+
+async def test_no_edit_on_a_reverse_split():
+    # dictated as one sentence with two values, written as two: the report sentence lacks a dictated chain
+    items, _ = await run("Right kidney 11 cm. Spleen 13 cm.", "Left kidney 11 cm, spleen 13 cm.",
+                         p_of={"Right kidney 11 cm.": 0.1})
+    assert [(i["text"], i["edit"]) for i in items] == [("11 cm", None)]
+
+
+async def test_no_edit_when_two_values_share_the_report_sentence():
+    items, _ = await run("Right kidney 11 cm and right adrenal 2 cm.",
+                         "Left kidney 11 cm.", "Left adrenal 2 cm.", default=0.1)
+    assert [i["edit"] for i in items] == [None, None]
+
+
+async def test_no_edit_with_an_extra_joiner():
+    items, _ = await run("Aortic root, ascending, 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert [i["edit"] for i in items] == [None]
+
+
+async def test_side_words_from_another_statement_do_not_withhold_the_edit():
+    items, _ = await run("Left kidney 11 cm. Right kidney 10 cm.", "Right kidney 11 cm.", "Left kidney 10 cm.",
+                         default=0.1)
+    assert [i["edit"] for i in items] == [
+        {"mode": "replace", "find": "Left kidney 11 cm.", "replace": "Right kidney 11 cm."},
+        {"mode": "replace", "find": "Right kidney 10 cm.", "replace": "Left kidney 10 cm."}]
+    items, _ = await run("Bilateral renal cyst 2 cm.", "Left renal cyst 2 cm.", "Bilateral pleural effusions.",
+                         default=0.1)
+    assert [i["edit"] for i in items] == [
+        {"mode": "replace", "find": "Bilateral renal cyst 2 cm.", "replace": "Left renal cyst 2 cm."}]
+
+
+async def test_a_vertebral_level_is_never_a_merged_word():
+    # levels hold digits, so they are never content words: the other statement's L5/S1 cannot withhold the edit
+    items, _ = await run("Disc protrusion at L5/S1 4 mm.", "Disc protrusion at L4/5 4 mm.", "L5/S1 disc normal.",
+                         default=0.1)
+    assert [i["edit"] for i in items] == [
+        {"mode": "replace", "find": "Disc protrusion at L5/S1 4 mm.", "replace": "Disc protrusion at L4/5 4 mm."}]
+
+
+async def test_no_edit_for_a_joined_value_only_fragment():
+    items, seen = await run("Liver normal. Cyst 2 cm.", "Segment 6 cyst 2 cm.", default=0.1)
+    assert seen["pairs"] == [("Segment 6 cyst 2 cm.", "Liver normal. Cyst 2 cm.")]
+    assert [(i["sentence"], i["edit"]) for i in items] == [("Liver normal. Cyst 2 cm.", None)]
+
+
+async def test_jev_sees_the_line_label_and_a_label_naming_another_site_withholds_the_edit():
+    items, seen = await run("FINDINGS\nRIGHT KIDNEY: Cyst 2 cm.", "Left kidney cyst 2 cm.", default=0.1)
+    assert seen["pairs"] == [("Left kidney cyst 2 cm.", "RIGHT KIDNEY: Cyst 2 cm.")]
+    assert [(i["sentence"], i["edit"]) for i in items] == [("RIGHT KIDNEY: Cyst 2 cm.", None)]
+
+
+async def test_a_label_the_dictated_sentence_also_names_keeps_the_edit_on_the_unlabelled_text():
+    items, _ = await run("FINDINGS\nAORTIC SINUS: Root 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert items[0]["sentence"] == "AORTIC SINUS: Root 4.1 cm."
+    assert items[0]["edit"] == {"mode": "replace", "find": "Root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}

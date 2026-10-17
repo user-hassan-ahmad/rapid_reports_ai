@@ -14,7 +14,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Awaitable, Callable, Dict, Iterable, List, Optional
+import re
+from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Set
 
 from . import dictated_number_check as dnc
 
@@ -27,6 +28,13 @@ MAX_PAIRS = 12
 TIMEOUT_S = 3.0        # as jev_stack.TIMEOUT_S
 LABEL = "Different site from your dictation? Apply puts your sentence back."
 LABEL_NO_EDIT = "Different site from your dictation? Check this sentence."
+
+_JOINER = re.compile(r"(?i)\band\b|\bwith\b|;|,")
+_LETTERS = re.compile(r"[a-z][a-z']+")   # digits never count: a level ("L4/5", "C5-6") is never a content word
+_STOP = frozenset("""a an the of in at on to is are was were be been with and or there this that its it as by for from
+into measures measure measuring measured measurement seen present noted demonstrated identified shows has have no not
+without other up than less more over about approx approximately""".split())
+_SIDE = frozenset({"left", "right", "bilateral", "bilaterally"})   # what the check corrects: never "merged content"
 
 
 Ask = Callable[[List[dnc.Pair]], Awaitable[List[float]]]
@@ -71,6 +79,45 @@ def code_pass(p: dnc.Pair) -> bool:
     return dnc.norm(p.dictated) in dnc.norm(p.report)
 
 
+def _words(text: str) -> Set[str]:
+    return set(_LETTERS.findall(text.lower()))
+
+
+def _statements(sources: Iterable[Optional[str]]) -> List[str]:
+    return [dnc.strip_prefix(src[s:e]) for src in sources if src for s, e in dnc.sentence_spans(src)]
+
+
+def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Optional[dict]:
+    """A replace edit putting the dictated sentence back, or None when replacing the whole sentence could lose or
+    repeat content (spec §3.5): more than one sentence (a joined fragment), a line label naming something the
+    dictated sentence does not, other values in it, an extra clause joiner, a word merged in from another dictated
+    statement (side words aside), or a find that does not occur exactly once. `find` is the report sentence without
+    its line label."""
+    find = dnc.strip_prefix(p.report)
+    if len(dnc.sentence_spans(find)) > 1:
+        return None
+    own = _words(p.dictated)
+    if (_words(p.report[:len(p.report) - len(find)]) - _STOP) - own:   # "RIGHT KIDNEY:" kept above a left-kidney value
+        return None
+    if dnc.chain_keys(find) != dnc.chain_keys(p.dictated):
+        return None
+    if len(_JOINER.findall(find)) > len(_JOINER.findall(p.dictated)):
+        return None
+    if report.count(find) != 1:
+        return None
+    other: Set[str] = set()
+    for s in _statements(sources):
+        if s != p.dictated:
+            other |= _words(s)
+    if any(w in other and w not in own for w in _words(find) - _STOP - _SIDE):
+        return None
+    rep = p.dictated.strip()
+    rep = rep[:1].upper() + rep[1:]
+    if not rep.endswith((".", "!", "?")):
+        rep += "."
+    return {"mode": "replace", "find": find, "replace": rep}
+
+
 async def changed_structures(report: Optional[str], sources: Iterable[Optional[str]], removed: Iterable[str] = (),
                              ask: Optional[Ask] = None) -> List[dict]:
     """[{"kind", "severity": "high", "text", "sentence", "dictated_quote", "message", "edit"}], one per dictated
@@ -102,8 +149,9 @@ async def changed_structures(report: Optional[str], sources: Iterable[Optional[s
         for (dictated, chain), gp in groups.items():
             if any(same[p] is not False for p in gp):   # passes if any sentence is the same site; unasked: unknown
                 continue
+            edit = edit_for(gp[0], report, sources)
             out.append({"kind": KIND, "severity": "high", "text": chain, "sentence": gp[0].report,
-                        "dictated_quote": dictated, "message": LABEL_NO_EDIT, "edit": None})
+                        "dictated_quote": dictated, "message": LABEL if edit else LABEL_NO_EDIT, "edit": edit})
         return out
     except Exception as e:  # noqa: BLE001 - a flag is never worth a failed report
         logger.info("structure_name_check_unavailable (%s: %s)", type(e).__name__, str(e)[:200])
@@ -111,4 +159,4 @@ async def changed_structures(report: Optional[str], sources: Iterable[Optional[s
 
 
 __all__ = ["KIND", "FLAG", "SAME_SITE_MIN", "MAX_PAIRS", "TIMEOUT_S", "LABEL", "LABEL_NO_EDIT", "enabled", "question",
-           "state", "ask_same_site", "code_pass", "changed_structures"]
+           "state", "ask_same_site", "code_pass", "edit_for", "changed_structures"]
