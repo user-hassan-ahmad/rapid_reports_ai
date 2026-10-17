@@ -666,6 +666,15 @@ class TemplateCreate(BaseModel):
     is_pinned: Optional[bool] = False
 
 
+class NormalConfirmRequest(BaseModel):
+    """A normals confirm (spec 2026-10-15-stable-line-ids-design): the group and the sheet the radiologist saw. Any
+    other field (a unit list, a user id) is ignored: the units are worked out from the stored sheet, the user from
+    the session."""
+    group: str = Field(max_length=64)
+    sheet_rev: int
+    sheet_hash: str = Field(max_length=128)
+
+
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -1726,7 +1735,8 @@ def _normalize_template_config_styles(config: dict) -> dict:
 
 
 def _carry_structure(new_config: dict, old_config: dict) -> dict:
-    """sheet_structure is server-written only: drop any client copy, carry the stored one when the sheet is unchanged."""
+    """sheet_structure and the stable-line-ID keys (tsave.SERVER_WRITTEN) are server-written only: drop any client
+    copy, carry the stored one (sheet_structure only while the sheet is unchanged)."""
     new = {k: v for k, v in (new_config or {}).items() if k != "sheet_structure"}
     old = old_config or {}
     if new.get("skill_sheet") and old.get("skill_sheet") == new["skill_sheet"] and old.get("sheet_structure"):
@@ -1741,6 +1751,12 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     new.pop("ledger_unmatched", None)
     if old.get("ledger_unmatched"):
         new["ledger_unmatched"] = old["ledger_unmatched"]
+    # stable line IDs (spec 2026-10-15): the registry, `uncertain` (slice 4), the normals confirms and the sheet
+    # revision are server-written only: a client (or a restored version's) copy is dropped, the stored one kept
+    for k in tsave.SERVER_WRITTEN:
+        new.pop(k, None)
+        if k in old:
+            new[k] = old[k]
     return new
 
 
@@ -1754,7 +1770,8 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
     cards: whole decided items a chat edit would have removed (kept; the notice says to use the card). The ledger
     entries the sheet could not take are stored as ledger_unmatched and shown as cards at the next review (/decide).
     Also refuses emptying a guided sheet (or creating a guided template without one) and switching a
-    grammar-sheet template to another generation mode."""
+    grammar-sheet template to another generation mode. The save itself is template_sheet_save.persist_sheet (the line
+    registry, the ledger's uids, sheet_rev)."""
     old = old_cfg or {}
     before = old.get("skill_sheet") or ""
     if not new_cfg:
@@ -1774,18 +1791,18 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
     ledger = td.clean_ledger(new_cfg["decisions"]) if isinstance(new_cfg.get("decisions"), list) else stored
     if sheet == before and ledger == stored:
         return new_cfg, "", "", []
-    out = await tsave.vet_sheet(sheet, origin=origin, previous=before, ledger=ledger or None)
+    saved = await tsave.persist_sheet(new_cfg, old, origin, ledger=ledger or None)
+    out = saved.outcome
     if out.status == "refused":
         return None, out.message, "", []
+    # persist_sheet returns skill_sheet (the stored one when unchanged), coverage_sections only for a changed sheet,
+    # decisions stamped with their uids, line_registry and sheet_rev
     if ledger:
-        cfg = {**new_cfg, "decisions": out.ledger, "ledger_unmatched": out.ledger_unmatched}
+        cfg = {**saved.config, "ledger_unmatched": out.ledger_unmatched}
     else:
-        cfg = {k: v for k, v in new_cfg.items() if k != "ledger_unmatched"}
+        cfg = {k: v for k, v in saved.config.items() if k != "ledger_unmatched"}
     notice = " ".join(x for x in [out.message or "", *tsave.ledger_notes(out)] if x)
-    if out.status == "unchanged":   # the stored sheet stands (the ledger may have put back what the edit changed)
-        return {**cfg, "skill_sheet": out.sheet}, "", notice, out.ledger_cards
-    return ({**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice,
-            out.ledger_cards)
+    return cfg, "", notice, out.ledger_cards
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
@@ -1843,6 +1860,14 @@ async def create_template_endpoint(
         return {"success": False, "error": str(e)}
 
 
+def _locked_confirm_keys(db: Session, template_id) -> dict:
+    """The stored confirm keys (tsave.CONFIRM_KEYS) re-read under a row lock held until the caller commits, so a
+    confirm committed while a save was vetting is kept (as scripts.template_upgrade_apply._write; end review I1)."""
+    row = db.query(Template).filter(Template.id == template_id).with_for_update().populate_existing().first()
+    stored = (row.template_config if row else None) or {}
+    return {k: stored[k] for k in tsave.CONFIRM_KEYS if k in stored}
+
+
 @app.put("/api/templates/{template_id}")
 async def update_template_endpoint(
     template_id: str,
@@ -1866,6 +1891,8 @@ async def update_template_endpoint(
                                                                           "chat")
             if refusal:
                 return {"success": False, "error": refusal}
+            template_config = {k: v for k, v in template_config.items() if k not in tsave.CONFIRM_KEYS}
+            template_config.update(_locked_confirm_keys(db, existing.id))
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1891,6 +1918,42 @@ async def update_template_endpoint(
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/{template_id}/normal-confirms")
+async def normal_confirm_endpoint(
+    template_id: str,
+    request: NormalConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Record a normals confirm for one group of a saved template (spec 2026-10-15-stable-line-ids-design). 404: no
+    such template (confirms exist only once a template is saved); 409: the sheet changed since the radiologist saw it
+    (sheet_rev / sheet_hash differ), so a concurrent edit is never attested unseen; 422: no such group. The units and
+    their text_hash come from the stored sheet and registry; user_id from the session."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from . import template_normal_confirms as tnc
+    template = get_template(db, template_id, user_id=str(current_user.id))
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    row = db.query(Template).filter(Template.id == template.id).with_for_update().populate_existing().first()
+    cfg = dict(row.template_config or {})
+    sheet = cfg.get("skill_sheet") or ""
+    if request.sheet_rev != tsave.stored_rev(cfg.get("sheet_rev")) or request.sheet_hash != tss.sheet_hash(sheet):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The template has changed; reload it and confirm again.")
+    st = tsg.parse_sheet(sheet, mode="template").structure if tsg.is_grammar_sheet(sheet) else None
+    built = tnc.build_confirms(st, sheet, cfg.get("line_registry"), ids=[request.group], sheet_rev=request.sheet_rev,
+                               sheet_hash=request.sheet_hash, user_id=str(current_user.id)) if st is not None else None
+    if not built or not built.picked:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Unknown group.")
+    group, rec = built.picked[0], built.records[built.picked[0].id]
+    confirms = cfg.get("normal_confirms") if isinstance(cfg.get("normal_confirms"), dict) else {}
+    row.template_config = {**cfg, "normal_confirms": {**confirms, group.id: rec}}
+    flag_modified(row, "template_config")
+    db.commit()
+    return {"success": True, "confirm": rec, "state": tnc.confirm_state(group, rec, cfg.get("line_registry"))}
 
 
 @app.delete("/api/templates/{template_id}")

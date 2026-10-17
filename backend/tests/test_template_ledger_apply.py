@@ -555,3 +555,334 @@ def test_editing_a_pending_habit_card_leaves_exactly_one_habit_line():
     habit_lines = [n for n in st.negatives if n.condition] + [r for r in st.rules if r.effect == "ask"]
     assert [(u.condition) for u in habit_lines] == ["a focal liver abnormality in the left part is reported"]
     assert res.pending == []
+
+
+# ── stable line IDs: uid first, key second (spec 2026-10-15-stable-line-ids-design, "Ledger changes") ───────────
+
+from rapid_reports_ai import template_line_registry as tlr
+
+NEG = td.negative_key("Liver", "No focal liver lesion.")
+SUPPRESS = 'RULE WHEN [context: the dictation states contrast was given] SUPPRESS "No focal liver lesion."'
+
+
+def _reg(sheet):
+    return tlr.rebind(None, _clean(sheet), now="T")[0]
+
+
+def _uid(sheet, reg, ref):
+    return tlr.uids_for(_clean(sheet), reg)[ref]
+
+
+def _with_uid(entry, uid):
+    return {**entry, "uid": uid}
+
+
+def test_registry_none_is_todays_key_matching():
+    led = _led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}))
+    a, b = tla.apply_ledger(LEDGER_SHEET, led), tla.apply_ledger(LEDGER_SHEET, led, registry=None)
+    assert (a.sheet, a.applied, a.unmatched) == (b.sheet, b.applied, b.unmatched)
+    assert b.carried == {} and b.satisfied == [] and b.rekeyed == [] and b.ledger == led
+
+
+def test_uid_first_finds_a_negative_across_a_paragraph_rename_and_rekeys_it():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.apply_ledger(renamed, led).unmatched == led                 # today: paragraph not found, a card
+    res = tla.apply_ledger(renamed, led, registry=reg)
+    assert not res.unmatched and 'NEGATIVE "No focal liver lesion."' in res.sheet
+    assert res.ledger[0]["key"] == 'Hepatobiliary :: "No focal liver lesion."' and res.ledger[0]["uid"] == uid
+    assert res.rekeyed == [{"kind": "normal", "uid": uid, "old": NEG, "new": res.ledger[0]["key"]}]
+
+
+def test_a_negative_the_writer_reworded_is_not_found_by_uid():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid)]
+    rebuilt = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    res = tla.apply_ledger(rebuilt, led, registry=reg)                    # exact matching only: lost, a card
+    assert res.unmatched == led and not res.rekeyed and res.carried == {}
+
+
+def test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "m0")
+    led = [_with_uid(_led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}))[0], uid)]
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.apply_ledger(renamed, led).unmatched == led                 # today: paragraph not found
+    res = tla.apply_ledger(renamed, led, registry=reg)                     # the line unchanged: its uid finds it
+    assert 'NORMAL [liver] "The liver is unremarkable."' in res.sheet and not res.unmatched
+    assert res.ledger[0]["key"] == "Hepatobiliary :: liver" and uid in res.carried
+    reworded = renamed.replace('"The liver is normal in size."\nNEGATIVE', '"Normal liver size."\nNEGATIVE')
+    res2 = tla.apply_ledger(reworded, led, registry=reg)                   # renamed and reworded: asked again
+    assert res2.unmatched == led and res2.sheet == reworded
+
+
+def test_a_uid_the_registry_does_not_know_is_no_uid():
+    reg = _reg(LEDGER_SHEET)
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal hepatic lesion."}))[0], "g_zzzzzz")]
+    res = tla.apply_ledger(LEDGER_SHEET, led, registry=reg)
+    assert 'NEGATIVE "No focal hepatic lesion."' in res.sheet and res.rekeyed == []
+
+
+def test_carried_includes_the_context_rule_a_normal_rewrite_retargets():
+    sheet = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', f'NEGATIVE "No focal liver lesion."\n{SUPPRESS}\n')
+    reg = _reg(sheet)
+    neg, rule = _uid(sheet, reg, "n0"), _uid(sheet, reg, "r0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal hepatic lesion."}))[0], neg)]
+    res = tla.apply_ledger(sheet, led, registry=reg)
+    assert res.carried == {neg: 'NEGATIVE "No focal hepatic lesion."',
+                           rule: SUPPRESS.replace("liver lesion", "hepatic lesion")}
+    _, rep = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
+    assert sorted(rep["carried"]) == sorted([neg, rule]) and rep["gone"] == [] and rep["new"] == []
+
+
+def test_a_line_edited_by_two_steps_carries_its_final_text(monkeypatch):
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    first, second = 'NEGATIVE "No focal hepatic lesion."', 'NEGATIVE "No hepatic lesion."'
+
+    def step(old, new):
+        def op(lines, st, entry):
+            out = [new if ln == old else ln for ln in lines]
+            return out, [{"kind": entry["kind"], "key": entry["key"], "action": "rewritten"}], [], [], [(old, new)]
+        return op
+    monkeypatch.setattr(tla, "_OPS", [("fixed", step('NEGATIVE "No focal liver lesion."', first)),
+                                      ("normal", step(first, second))])
+    led = _led(("fixed", "Axial images were acquired.", {"keep": "always"}),
+               ("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}))
+    res = tla.apply_ledger(LEDGER_SHEET, led, registry=reg)
+    assert res.carried == {uid: second}
+
+
+def test_a_carried_line_deleted_later_never_moves_its_uid_to_an_identical_line_elsewhere(monkeypatch):
+    other, mine = 'NEGATIVE "No hepatic lesion."', 'NEGATIVE "No focal liver lesion."'
+    sheet = HABIT_SHEET.replace('NORMAL [delta] "Delta is normal."', f'NORMAL [delta] "Delta is normal."\n{other}')
+    reg = _reg(sheet)
+    liver, lower = _uid(sheet, reg, "n0"), _uid(sheet, reg, "n1")
+
+    def rewrite(lines, st, entry):      # step 1: the Liver negative takes the Lower negative's exact text
+        out = list(lines)
+        out[out.index(mine)] = other
+        return out, [{"kind": entry["kind"], "key": entry["key"], "action": "rewritten"}], [], [], [(mine, other)]
+
+    def delete(lines, st, entry):       # step 2: the first copy (the Liver one) is removed
+        i = lines.index(other)
+        return lines[:i] + lines[i + 1:], [{"kind": entry["kind"], "key": entry["key"], "action": "removed"}], [], []
+    monkeypatch.setattr(tla, "_OPS", [("fixed", rewrite), ("normal", delete)])
+    led = _led(("fixed", "Axial images were acquired.", {"keep": "always"}),
+               ("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}))
+    res = tla.apply_ledger(sheet, led, registry=reg)
+    assert res.carried == {liver: other}
+    st = _clean(res.sheet)
+    assert tla._uid_map(st, reg, res.carried)["n0"] == lower        # the Lower line keeps its own uid
+    _, rep = tlr.rebind(reg, st, res.carried, now="T")
+    assert liver in rep["gone"] and lower in rep["exact"] and not rep["carried"]
+
+
+def test_a_removal_is_satisfied_only_when_its_line_is_shown_absent():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    removal = _led(("normal", NEG, {"text": ""}))[0]
+    reworded = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    # no uid: nothing shows the line is gone (a reworded negative) -> a card, as today
+    assert [e["key"] for e in tla.apply_ledger(reworded, [removal], registry=reg).unmatched] == [NEG]
+    # with its uid: a new (reworded) negative stands beside where it was -> still a card, never satisfied (C1, 4th)
+    res = tla.apply_ledger(reworded, [_with_uid(removal, uid)], registry=reg)
+    assert res.sheet == reworded and res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+    # paragraph renamed with the negative still there, no uid: a card (never silently satisfied)
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Abdomen (FINDINGS)")
+    assert [e["key"] for e in tla.apply_ledger(renamed, [removal], registry=_reg(renamed)).unmatched] == [NEG]
+    # the same rename with the uid: the line is found through it and removed
+    out = tla.apply_ledger(renamed, [_with_uid(removal, uid)], registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' not in out.sheet and out.unmatched == []
+
+
+def test_is_removal():
+    assert tla.is_removal({"kind": "fixed", "choice": {"keep": "remove"}})
+    assert tla.is_removal({"kind": "normal", "choice": {"text": ""}})
+    assert not tla.is_removal({"kind": "normal", "choice": {"text": "x"}})
+    assert not tla.is_removal({"kind": "habit", "choice": {"mode": "removed"}})
+
+
+def test_locate_names_one_unit_or_none():
+    st = _clean(LEDGER_SHEET)
+    assert tla.locate({"kind": "normal", "key": "Liver :: liver", "choice": {"text": "x"}}, st) == "m0"
+    assert tla.locate({"kind": "normal", "key": NEG, "choice": {"text": ""}}, st) == "n0"
+    assert tla.locate({"kind": "fixed", "key": "No previous imaging available", "choice": {"keep": "always"}}, st) == "f1"
+    assert tla.locate({"kind": "normal", "key": "Spleen :: spleen", "choice": {"text": "x"}}, st) is None
+    assert tla.locate({"kind": "value", "key": "LVEF", "choice": {"need": "every"}}, st) is None
+
+
+def test_stamp_uids_sets_known_uids_drops_unknown_ones_and_keeps_an_orphans():
+    reg = _reg(LEDGER_SHEET)
+    st = _clean(LEDGER_SHEET)
+    led = _led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}),
+               ("fixed", "A line the sheet lacks.", {"keep": "always"}), ("value", "LVEF", {"need": "every"}))
+    led = [led[0], _with_uid(led[1], "f_zzzzzz"), led[2]]
+    out = tla.stamp_uids(led, st, reg)
+    assert out[0]["uid"] == tlr.uids_for(st, reg)["m0"] and "uid" not in out[1] and "uid" not in out[2]
+    orphan = _with_uid(led[1], tlr.uids_for(st, reg)["f0"])
+    assert tla.stamp_uids([orphan], st, reg) == [orphan]
+    assert led[1]["uid"] == "f_zzzzzz"                                   # never mutated
+
+
+def test_reconcile_chat_clears_the_uid_of_a_rekeyed_entry_and_the_stamp_restores_the_right_one():
+    reg = _reg(LEDGER_SHEET)
+    old_uid = _uid(LEDGER_SHEET, reg, "f0")
+    led = [_with_uid(_led(("fixed", "Axial images were acquired.", {"keep": "always"}))[0], old_uid)]
+    after = LEDGER_SHEET.replace('FIXED "Axial images were acquired."', 'FIXED "Axial images acquired."')
+    out, changes, _ = tla.reconcile_chat(LEDGER_SHEET, after, led)
+    assert out[0]["key"] == "Axial images acquired." and "uid" not in out[0] and changes
+    res = tla.apply_ledger(after, out, registry=reg)
+    reg2, _ = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
+    stamped = tla.stamp_uids(res.ledger, _clean(res.sheet), reg2)
+    assert stamped[0]["uid"] == tlr.uids_for(_clean(res.sheet), reg2)["f0"] != old_uid
+
+
+def test_uid_share_counts_line_bound_entries_by_uid_and_by_text():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid),
+           *_led(("value", "LVEF", {"need": "every"}))]
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    assert tla.uid_share(led, renamed, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert tla.uid_share(led, reworded, reg) == {"line_bound": 1, "by_uid": 0, "by_text": 0}   # exact matching only
+    assert tla.uid_share(led, "# free", reg) == {"line_bound": 0, "by_uid": 0, "by_text": 0}
+
+
+# ── a removal is satisfied only on positive evidence of absence (end review C1) ─────────────────────────────────
+
+# renamed with a different COVERS set: the rename rule cannot pair it (a new paragraph uid)
+NO_COVERS = LEDGER_SHEET.replace('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\n',
+                                 '## Paragraph: Abdomen (FINDINGS)\nCOVERS ["abdomen"]\n')
+TWO_NEGS = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\nNEGATIVE "No biliary dilatation."\n')
+
+
+def test_a_removal_is_a_card_when_its_paragraph_was_renamed_beyond_the_rename_rule_and_the_negative_is_still_there():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    res = tla.apply_ledger(NO_COVERS, [removal], registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_normal_removal_is_a_card_when_its_paragraph_was_renamed_beyond_the_rename_rule_and_the_normal_is_still_there():
+    reg = _reg(LEDGER_SHEET)
+    key = td.normal_key("Liver", "liver")
+    removal = _with_uid(_led(("normal", key, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "m0"))
+    res = tla.apply_ledger(NO_COVERS, [removal], registry=reg)
+    assert 'NORMAL [liver]' in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [key]
+
+
+def test_a_removal_is_a_card_when_its_line_moved_to_another_paragraph():
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    moved = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\nNEGATIVE "No focal liver lesion."\n')
+    _clean(moved)
+    res = tla.apply_ledger(moved, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_removal_whose_line_is_genuinely_absent_is_satisfied():
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    absent = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '')
+    res = tla.apply_ledger(absent, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG] and res.sheet == absent
+
+
+def test_a_removal_is_a_card_when_a_new_line_of_its_kind_stands_elsewhere_in_its_section():   # second review M2
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    # the paragraph's negative is gone and a reworded one stands at section level (Report-wide, no paragraph)
+    to_section = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No focal hepatic lesion."\n')
+    assert ("", "S:FINDINGS") in [(u.paragraph, u.section) for u in tlr.units(_clean(to_section)) if u.kind == "negative"]
+    res = tla.apply_ledger(to_section, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_section_level_line_is_not_shown_absent_while_a_new_line_of_its_kind_stands_in_a_paragraph_of_its_section():
+    sheet = LEDGER_SHEET.replace('TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No ascites."\n')
+    reg = _reg(sheet)
+    ref = next(u.ref for u in tlr.units(_clean(sheet)) if u.kind == "negative" and not u.paragraph)
+    uid = _uid(sheet, reg, ref)
+    known = tlr.load(reg)["units"]
+
+    def absent(edited):
+        st = _clean(edited)
+        return tla._shown_absent(uid, st, tla._uid_map(st, reg, {}), known)
+    gone = sheet.replace('NEGATIVE "No ascites."\n', '')
+    assert absent(gone)                                            # genuinely gone: absent
+    to_para = gone.replace('NEGATIVE "No focal liver lesion."\n',
+                           'NEGATIVE "No focal liver lesion."\nNEGATIVE "No free fluid."\n')
+    assert not absent(to_para)                                     # a new negative in a paragraph of its section
+
+
+# a removal whose edit finds nothing ("kept") still goes through the absence check when it has a uid (third review)
+
+def test_a_negative_removal_not_found_in_its_paragraph_is_a_card_when_reworded_at_section_level():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    sheet = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No focal hepatic lesion."\n')
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG] and res.applied == []
+    assert [a["action"] for a in tla.apply_ledger(sheet, [removal]).applied] == ["kept"]   # no registry: as today
+
+
+def test_a_normal_removal_is_a_card_when_the_same_sentence_was_relabelled():
+    reg = _reg(LEDGER_SHEET)
+    key = td.normal_key("Liver", "liver")
+    removal = _with_uid(_led(("normal", key, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "m0"))
+    sheet = LEDGER_SHEET.replace("NORMAL [liver]", "NORMAL [hepatic parenchyma]")
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert "NORMAL [hepatic parenchyma]" in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [key]
+
+
+def test_a_fixed_removal_is_a_card_when_the_line_was_reworded():
+    reg = _reg(LEDGER_SHEET)
+    fixed = "No previous imaging available."
+    ref = next(u.ref for u in tlr.units(_clean(LEDGER_SHEET)) if u.kind == "fixed" and u.text == fixed)
+    removal = _with_uid(_led(("fixed", fixed, {"keep": "remove"}))[0], _uid(LEDGER_SHEET, reg, ref))
+    sheet = LEDGER_SHEET.replace(f'FIXED "{fixed}"', 'FIXED "No prior imaging is available."')
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [fixed]
+    gone = LEDGER_SHEET.replace(f'FIXED "{fixed}"\n', '')
+    res = tla.apply_ledger(gone, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [fixed]
+
+
+def test_a_negative_removal_not_found_and_genuinely_gone_is_satisfied():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    gone = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', '')
+    res = tla.apply_ledger(gone, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG] and res.sheet == gone
+
+
+def test_an_orphaned_removal_uid_never_satisfies_on_a_later_save():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    led, sheet = [removal], NO_COVERS
+    for _ in range(3):   # save after save: apply -> rebind -> stamp, as persist_sheet does
+        res = tla.apply_ledger(sheet, led, registry=reg)
+        assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+        reg, _ = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
+        led, sheet = tla.stamp_uids(res.ledger, _clean(res.sheet), reg), res.sheet
+
+
+def test_paired_rewrites_pair_rule_lines_only_with_the_same_condition():   # end review M1
+    fixed = 'FIXED "No previous imaging available."'
+    a = 'RULE WHEN [context: the dictation names a previous study] SUPPRESS "No previous imaging available."'
+    b = 'RULE WHEN [context: the dictation names a previous study] REPLACE "No previous imaging available." WITH "x."'
+    c = 'RULE WHEN [context: the dictation states contrast was given] SUPPRESS "No previous imaging available."'
+    assert tla._paired_rewrites([fixed, a], [fixed, b]) == [(a, b)]
+    assert tla._paired_rewrites([fixed, a], [fixed, c]) == []

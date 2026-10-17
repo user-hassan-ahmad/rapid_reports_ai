@@ -238,3 +238,22 @@ def test_habit_set_find_describe_and_clean():
         'asked: "Extension beyond alpha?" → always stated: "No extension beyond alpha.".')
     assert td.state_label("habit", {**HASK, "mode": "removed"}) == "not used"
     assert td.clean_ledger(led) == led
+
+
+# ── stable line IDs: an entry may carry its line's uid (spec 2026-10-15-stable-line-ids-design) ─────────────────
+
+def test_clean_ledger_keeps_a_well_formed_uid_on_line_bound_entries_only():
+    led, _ = td.set_decision([], "normal", "Liver :: liver", {"text": "The liver is normal."}, source="creation", at="t")
+    val, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation", at="t")
+    out = td.clean_ledger([{**led[0], "uid": "n_abc234"}, {**val[0], "uid": "n_abc234"},
+                           {**led[0], "key": "Kidney :: kidney", "uid": "<script>"}])
+    assert out[0]["uid"] == "n_abc234" and "uid" not in out[1] and "uid" not in out[2]
+
+
+def test_a_new_answer_on_the_same_line_keeps_the_uid_and_a_rekey_drops_it():
+    led, _ = td.set_decision([], "fixed", "Line one.", {"keep": "always"}, source="creation", at="t")
+    led = [{**led[0], "uid": "f_abc234"}]
+    again, change = td.set_decision(led, "fixed", "Line one.", {"keep": "remove"}, source="chat")
+    assert again[0]["uid"] == "f_abc234" and change is not None
+    moved, _ = td.rekey_decision(led, "fixed", "Line one.", "Line two.", source="chat")
+    assert moved[0]["key"] == "Line two." and "uid" not in moved[0]

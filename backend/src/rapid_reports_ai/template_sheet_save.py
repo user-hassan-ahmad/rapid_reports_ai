@@ -14,14 +14,16 @@ one (a new template has no previous; a rebuild may legitimately reword units, a 
 Voice lines: a prose line under a paragraph (Opening:, Order:, Abnormal pattern: …) is wording, not content. On an
 automatic write, such a line that still fails the lint after the one repair is dropped (reported in `dropped`) rather
 than refusing the whole sheet; the sheet is then re-parsed and its units checked as usual. A user's edit (chat,
-restore) with such a line is refused, and so is any sheet left unusable for another reason."""
+restore) with such a line is refused, and so is any sheet left unusable for another reason.
+
+persist_sheet is the persisted save: vet_sheet with the stored line registry, then the rebind, the ledger's uids and sheet_rev (spec 2026-10-15-stable-line-ids-design)."""
 from __future__ import annotations
 
 import dataclasses
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Set, TypedDict
+from typing import Dict, List, Literal, Optional, Set, TypedDict
 
 from . import template_sheet_grammar as tsg
 from . import template_sheet_lab_prompts as P
@@ -74,6 +76,8 @@ class VetOutcome:
     ledger_warnings: List[dict] = field(default_factory=list)   # lint warnings, never blocking: prose quoting a
                                                                 # decided concept's line (tla.restated_quotes)
     habits_pending: List[dict] = field(default_factory=list)    # habit lines with no ledger entry: inactive, asked
+    carried: Dict[str, str] = field(default_factory=dict)        # with a registry: {uid: final raw line} of every
+                                                                 # line the ledger rewrote (rebind keeps those uids)
 
 
 def _shape(sheet: str) -> tuple:
@@ -217,17 +221,19 @@ async def _vet(sheet: str, origin: Origin, previous: str = "") -> VetOutcome:
     return VetOutcome("saved", sheet, message=notice, dropped=dropped, coverage_sections=coverage)
 
 
-async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Optional[List[dict]] = None) -> VetOutcome:
+async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Optional[List[dict]] = None,
+                    registry: Optional[dict] = None) -> VetOutcome:
     """Vet a sheet before it is stored (see _vet), then apply the decision ledger by code as the last step
     (template_ledger_apply.apply_ledger), on every origin. `ledger` is template_config["decisions"]; None leaves the
     save exactly as before the Rules step. Only a chat edit folds its own changes to decided items back into the
     ledger (reported in ledger_changes), except one that removes a whole decided item: that entry is kept and
     returned as a card (ledger_cards; product decision D3). Every other origin is overwritten by the ledger
-    (counted in ledger_drift)."""
+    (counted in ledger_drift). `registry` (the stored line registry; persist_sheet only): the ledger resolves uid
+    first and the outcome carries `carried`; None (every stateless caller) is exactly the key and text matching."""
     out = await _vet(sheet, origin, previous)
     if ledger is None:
         return _with_pending_habits(out)
-    return _with_ledger(out, origin, previous, list(ledger))
+    return _with_ledger(out, origin, previous, list(ledger), registry)
 
 
 def _with_pending_habits(out: VetOutcome) -> VetOutcome:
@@ -242,7 +248,8 @@ def _with_pending_habits(out: VetOutcome) -> VetOutcome:
     return dataclasses.replace(out, habits_pending=pending)
 
 
-def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]) -> VetOutcome:
+def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict],
+                 registry: Optional[dict] = None) -> VetOutcome:
     from . import template_ledger_apply as tla
     if out.status == "refused":
         return dataclasses.replace(out, ledger=ledger)
@@ -250,7 +257,7 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     cards: List[dict] = []
     if origin == "chat" and previous and out.status == "saved":
         ledger, changes, cards = tla.reconcile_chat(previous, out.sheet, ledger)
-    res = tla.apply_ledger(out.sheet, ledger, before=previous)
+    res = tla.apply_ledger(out.sheet, ledger, before=previous, registry=registry)
     drift = res.changed if origin in AUTOMATIC else 0
     if res.failed:
         logger.error("[sheet-save] %s: ledger entries not applied (a bug): %s", origin,
@@ -265,11 +272,11 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
         coverage = [s.name for s in sorted(st.sections, key=lambda s: s.order)]
     if previous and res.sheet == previous:   # the ledger put back what the edit changed: nothing was applied
         status = "unchanged"
-    return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
+    return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=res.ledger,
                                ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
                                ledger_unmatched=res.unmatched,
                                ledger_drift=drift, stale_quotes=res.stale_quotes, ledger_warnings=res.restated,
-                               habits_pending=res.pending)
+                               habits_pending=res.pending, carried=res.carried)
 
 
 LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."
@@ -290,3 +297,80 @@ def ledger_notes(out: VetOutcome) -> List[str]:
     if out.ledger_warnings:
         notes.append(LEDGER_RESTATED)
     return notes
+
+
+# ── the persisted save (spec 2026-10-15-stable-line-ids-design, "Where rebind runs") ─────────────────────────────
+
+@dataclass
+class Persisted:
+    outcome: VetOutcome
+    config: Optional[dict]                        # the config to store; None when the save function refused
+    report: dict = field(default_factory=dict)    # the rebind report ({} for a non-grammar sheet)
+
+
+# Server-written config keys (stable line IDs spec): never taken from a client config. persist_sheet writes
+# line_registry and sheet_rev; normal_confirms is written only through template_normal_confirms.build_confirms, by the
+# confirm endpoint or a save carrying ticked groups; `uncertain` is reserved for slice 4 (no writer yet).
+# main._carry_structure keeps the stored copies on a PUT or a restore.
+SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
+# The server-written keys a save does not own: every writer re-reads them from the stored row (under its lock, where
+# it holds one) and keeps them, so a confirm recorded meanwhile is never overwritten.
+CONFIRM_KEYS = ("uncertain", "normal_confirms")
+
+
+def stored_rev(v) -> int:
+    """A stored sheet_rev as an int (absent or malformed: 0, a template saved before sheet_rev existed)."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+async def persist_sheet(config: dict, stored_config: Optional[dict], origin: Origin, *,
+                        ledger: Optional[List[dict]] = None, now: Optional[str] = None) -> Persisted:
+    """The one persisted save of a grammar sheet: load the stored registry -> vet_sheet(registry=...) -> rebind ->
+    stamp the ledger's uids -> sheet_rev. Every path that writes a template's sheet to the database calls this
+    (main._vet_config, scripts.template_upgrade_apply); stateless callers use vet_sheet and never mint a uid.
+    `stored_config`: the template's stored config ({} or None for a new template): its registry and sheet_rev are the
+    only ones trusted. `ledger`: the cleaned decisions (None: none). The returned config holds skill_sheet,
+    coverage_sections (a changed sheet), line_registry, sheet_rev and decisions (stamped, when a ledger was given).
+    sheet_rev is incremented from the stored value when the stored sheet changes; the pair (sheet_rev, sheet_hash)
+    is the reference, never sheet_rev alone."""
+    from . import template_ledger_apply as tla
+    from . import template_line_registry as tlr
+    stored = stored_config or {}
+    previous = stored.get("skill_sheet") or ""
+    registry = tlr.load(stored.get("line_registry"))
+    if origin == "rebuild" and ledger:
+        try:   # a logged metric: never fails the save
+            logger.info("[line-registry] rebuild resolution %s",
+                        tla.uid_share(ledger, config.get("skill_sheet") or "", registry))
+        except Exception as e:
+            logger.error("[line-registry] rebuild resolution failed: %s: %s", type(e).__name__, str(e)[:200])
+    out = await vet_sheet(config.get("skill_sheet") or "", origin=origin, previous=previous, ledger=ledger,
+                          registry=registry)
+    if out.status == "refused":
+        return Persisted(out, None)
+    cfg = {k: v for k, v in config.items() if k not in SERVER_WRITTEN}   # a client copy is never trusted (L2)
+    cfg.update({k: stored[k] for k in CONFIRM_KEYS if k in stored})
+    cfg["skill_sheet"] = out.sheet
+    if out.status != "unchanged":
+        cfg["coverage_sections"] = out.coverage_sections
+    if ledger is not None:
+        cfg["decisions"] = out.ledger
+    report: dict = {}
+    if tsg.is_grammar_sheet(out.sheet):
+        st = tsg.parse_sheet(out.sheet, mode="template").structure
+        try:
+            registry, report = tlr.rebind(registry, st, out.carried, now=now)
+        except Exception as e:   # a registry code cannot read never makes a template unsaveable (end review I2)
+            logger.error("[line-registry] rebind failed, starting a fresh registry: %s: %s", type(e).__name__,
+                         str(e)[:200])
+            registry, report = tlr.rebind(None, st, None, now=now)
+        if ledger is not None:
+            cfg["decisions"] = tla.stamp_uids(out.ledger, st, registry)
+        # gone units capped (end review M3); a uid a ledger entry or confirm still names is never pruned
+        keep = tlr.referenced_uids([*(cfg.get("decisions") or []), *(stored.get("decisions") or [])],
+                                   cfg.get("normal_confirms"))
+        cfg["line_registry"] = registry = tlr.prune(registry, keep)
+        logger.info("[line-registry] origin=%s %s drift=%d", origin, tlr.summary(report), out.ledger_drift)
+    rev = stored_rev(stored.get("sheet_rev"))
+    cfg["sheet_rev"] = rev + 1 if out.sheet != previous else rev
+    return Persisted(out, cfg, report)

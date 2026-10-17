@@ -227,6 +227,7 @@ async def test_update_endpoint_drops_client_structure_carries_stored_and_queues(
         return _Tpl(id=kw["template_id"], template_config=kw["template_config"])
 
     monkeypatch.setattr(main, "update_template", fake_update)
+    monkeypatch.setattr(main, "_locked_confirm_keys", lambda db, tid: {})   # no database here
     same = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": _FORGED}
     await main.update_template_endpoint("t9", main.TemplateUpdate(template_config=same), _USER, None)
     assert written["template_config"]["sheet_structure"] == {"sheet_hash": "stored"}

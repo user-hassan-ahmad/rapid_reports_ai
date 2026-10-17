@@ -387,3 +387,94 @@ async def test_old_lint_errors_do_not_excuse_new_damage(no_jev, monkeypatch, cha
     monkeypatch.setattr(S, "_repair", _no_repair)
     out = await S.vet_sheet(edited, origin="chat", previous=prev)
     assert out.status == "refused" and out.sheet == prev and "readable" in out.message
+
+
+# ── persist_sheet: the one persisted save (stable line IDs spec, "Where rebind runs") ─────────────────────────────
+
+from rapid_reports_ai import template_decisions as td
+from rapid_reports_ai import template_line_registry as tlr
+from tests.template_sheet_fixtures import LEDGER_SHEET
+
+
+def _cfg(sheet, **extra):
+    return {"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, **extra}
+
+
+def _uids(sheet, reg):
+    return tlr.uids_for(tsg.parse_sheet(sheet).structure, reg)
+
+
+async def test_a_first_save_mints_the_registry_and_sheet_rev_1(no_jev):
+    p = await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")
+    assert p.outcome.status == "saved" and p.config["sheet_rev"] == 1
+    assert len(p.report["new"]) == len(p.config["line_registry"]["units"]) == 10
+    assert p.config["coverage_sections"] == ["TECHNIQUE", "FINDINGS", "IMPRESSION"]
+
+
+async def test_sheet_rev_increments_from_the_stored_value_only_on_a_sheet_change(no_jev):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    stored = {**first, "sheet_rev": 7}
+    same = await S.persist_sheet(_cfg(LEDGER_SHEET, sheet_rev=99), stored, "chat", now="T")
+    assert same.outcome.status == "unchanged" and same.config["sheet_rev"] == 7
+    edited = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n', "")
+    changed = await S.persist_sheet(_cfg(edited, sheet_rev=99), stored, "chat", now="T")
+    assert changed.config["sheet_rev"] == 8 and len(changed.report["gone"]) == 1
+
+
+async def test_the_stored_registry_is_used_never_the_clients(no_jev):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    forged = {"v": 1, "units": {"n_aaaaaa": {"kind": "normal", "identity": {}, "status": "live"}}}
+    p = await S.persist_sheet(_cfg(LEDGER_SHEET, line_registry=forged), first, "chat", now="T")
+    assert p.config["line_registry"] == first["line_registry"]
+
+
+async def test_the_ledger_is_stamped_after_the_rebind(no_jev):
+    led, _ = td.set_decision([], "normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."},
+                             source="creation", at="t")
+    p = await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", ledger=led, now="T")
+    reg = p.config["line_registry"]
+    assert p.config["decisions"][0]["uid"] == _uids(p.config["skill_sheet"], reg)["m0"]
+
+
+async def test_a_refused_sheet_persists_nothing(no_jev):
+    p = await S.persist_sheet(_cfg("# Free\nprose"), {}, "analyser", now="T")
+    assert p.outcome.status == "refused" and p.config is None
+
+
+async def test_persist_strips_client_server_written_keys_and_keeps_the_stored_ones(no_jev):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    client = _cfg(LEDGER_SHEET, uncertain=[{"uid": "x"}], normal_confirms={"x": {}}, sheet_rev=50)
+    fresh = await S.persist_sheet(client, {}, "analyser", now="T")
+    assert "uncertain" not in fresh.config and "normal_confirms" not in fresh.config and fresh.config["sheet_rev"] == 1
+    stored = {**first, "uncertain": [{"uid": "kept"}], "normal_confirms": {"g": {"kept": True}}}
+    again = await S.persist_sheet(client, stored, "chat", now="T")
+    assert again.config["uncertain"] == [{"uid": "kept"}] and again.config["normal_confirms"] == {"g": {"kept": True}}
+
+
+async def test_a_registry_error_starts_a_fresh_registry_and_never_fails_the_save(no_jev, monkeypatch):
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    real = tlr.rebind
+
+    def boom(registry, st, carried=None, *, now=None):
+        if tlr.load(registry)["units"]:
+            raise TypeError("malformed registry")
+        return real(registry, st, carried, now=now)
+    monkeypatch.setattr(tlr, "rebind", boom)
+    edited = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n', "")
+    p = await S.persist_sheet(_cfg(edited), first, "chat", now="T")
+    assert p.outcome.status == "saved" and p.config["sheet_rev"] == 2
+    assert len(p.config["line_registry"]["units"]) == 9 and len(p.report["new"]) == 9
+
+
+async def test_persist_prunes_gone_units_but_keeps_those_the_ledger_or_confirms_name(no_jev, monkeypatch):
+    monkeypatch.setattr(tlr, "MAX_GONE", 1)
+    first = (await S.persist_sheet(_cfg(LEDGER_SHEET), {}, "analyser", now="T")).config
+    uids = _uids(LEDGER_SHEET, first["line_registry"])
+    gone_fixed, gone_neg = uids["f1"], uids["n0"]
+    edited = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n', "").replace(
+        'NEGATIVE "No focal liver lesion."\n', "").replace('FIXED "Axial images were acquired."\n', "")
+    stored = {**first, "normal_confirms": {"g": {"units": {gone_neg: "sha256:x"}}}}
+    p = await S.persist_sheet(_cfg(edited), stored, "chat", now="T")
+    units = p.config["line_registry"]["units"]
+    assert len(p.report["gone"]) == 3 and gone_neg in units
+    assert len([u for u, e in units.items() if e["status"] == "gone"]) == 2   # the cap (1) + the referenced one

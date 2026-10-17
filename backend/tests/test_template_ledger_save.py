@@ -225,3 +225,27 @@ async def test_habit_lines_nobody_confirmed_are_kept_inactive_and_reported():
         assert [e["key"] for e in out.habits_pending] == ["Liver :: a focal liver abnormality is reported"], ledger
     plain = await S.vet_sheet(HABIT_SHEET, origin="analyser")
     assert plain.sheet == HABIT_SHEET and plain.habits_pending == []
+
+
+# ── stable line IDs: the registry reaches apply_ledger only through vet_sheet(registry=...) ───────────────────────
+
+async def test_with_a_registry_the_ledger_resolves_uid_first_across_a_rename():
+    from rapid_reports_ai import template_line_registry as tlr
+    from rapid_reports_ai import template_sheet_grammar as tsg
+    st = tsg.parse_sheet(LEDGER_SHEET).structure
+    reg, _ = tlr.rebind(None, st, now="T")
+    uid = tlr.uids_for(st, reg)["n0"]
+    key = td.negative_key("Liver", "No focal liver lesion.")
+    led = [{**_led(("normal", key, {"text": "No focal liver lesion."}))[0], "uid": uid}]
+    rebuilt = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)")
+    out = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=led, registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' in out.sheet and out.ledger_unmatched == []
+    assert out.carried == {} and out.ledger[0]["uid"] == uid
+    assert out.ledger[0]["key"] == td.negative_key("Hepatobiliary", "No focal liver lesion.")
+    plain = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=led)
+    assert plain.carried == {} and [e["key"] for e in plain.ledger_unmatched] == [key]
+    m_uid = tlr.uids_for(st, reg)["m0"]
+    m_led = [{**_led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}))[0],
+              "uid": m_uid}]
+    moved = await S.vet_sheet(rebuilt, origin="rebuild", previous=LEDGER_SHEET, ledger=m_led, registry=reg)
+    assert moved.carried == {m_uid: 'NORMAL [liver] "The liver is unremarkable."'}   # a rewrite is carried

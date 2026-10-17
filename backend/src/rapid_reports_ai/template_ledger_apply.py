@@ -18,16 +18,22 @@ it stays in the sheet, inactive, and is returned in `pending` (template_rules_ca
 next review). A habit edit the grammar refuses is `failed` and also `unmatched` (a card at the next review).
 
 observe() reads what a sheet currently says for a ledger item; reconcile_chat() folds a chat rewrite's changes to
-ledger items back into the ledger (source "chat") before the ledger is applied."""
+ledger items back into the ledger (source "chat") before the ledger is applied.
+
+With a registry (persisted saves only, template_sheet_save.persist_sheet) an entry resolves uid first: its uid's unit
+in the current parse re-keys it before the edit, and every rewritten line is reported in `carried` so the rebind keeps
+its uid."""
 from __future__ import annotations
 
 import functools
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from . import template_decisions as td
+from . import template_line_match as tlm
+from . import template_line_registry as tlr
 from . import template_sheet_grammar as tsg
 from . import template_sheet_structure as tss
 from .hybrid_stack.template import norm_key
@@ -48,6 +54,13 @@ class LedgerResult:
     restated: List[dict] = field(default_factory=list)   # lint warnings: paragraph prose quoting a decided concept's
                                                          # FIXED line ({"line", "text", "reason", "detail"})
     pending: List[dict] = field(default_factory=list)    # habit lines with no entry: inactive, asked on a card
+    # with a registry only (stable line IDs spec): the ledger as resolved (entries re-keyed to their uid's line), the
+    # uid -> final raw line of every line this run rewrote (rebind keeps those uids), removal entries whose line is
+    # shown absent (satisfied, never a card; _shown_absent) and the re-keys made
+    ledger: List[dict] = field(default_factory=list)
+    carried: Dict[str, str] = field(default_factory=dict)
+    satisfied: List[dict] = field(default_factory=list)
+    rekeyed: List[dict] = field(default_factory=list)
 
     @property
     def changed(self) -> int:
@@ -108,7 +121,8 @@ def _free_prose_lines(lines: List[str]) -> List[str]:
     return out
 
 
-# ── operations: (lines, structure, arg) -> (lines, applied rows, unmatched entries, old texts) ─────────────────
+# ── operations: (lines, structure, arg) -> (lines, applied rows, unmatched entries, old texts[, rewrites]) ──
+# rewrites: (old raw line, new raw line) for each line the op rewrote in place (the carried map's source).
 
 def _values(lines, st, entries):
     every = [e["key"] for e in entries if e["choice"]["need"] == "every"]
@@ -133,6 +147,7 @@ def _values(lines, st, entries):
         out: List[Optional[str]] = list(lines)
         for i in idx[1:]:
             out[i] = None
+        rewrites: List[Tuple[str, str]] = []
         if not ordered:
             out[idx[0]] = None
             action = "removed"
@@ -141,7 +156,9 @@ def _values(lines, st, entries):
                 + _suffix(lines[idx[0]])
             action = "kept" if new == lines[idx[0]] and len(idx) == 1 else "rewritten"
             out[idx[0]] = new
-        return [x for x in out if x is not None], [{"kind": "value", "key": "*", "action": action}], [], []
+            if new != lines[idx[0]]:
+                rewrites.append((lines[idx[0]], new))
+        return [x for x in out if x is not None], [{"kind": "value", "key": "*", "action": action}], [], [], rewrites
     if not every:
         return lines, [{"kind": "value", "key": "*", "action": "kept"}], [], []
     findings = next((s.name for s in sorted(st.sections, key=lambda s: s.order) if s.role == "findings"), None)
@@ -223,6 +240,30 @@ def _orphan_extra(lines, st, rules, texts: Set[str], added: Optional[Set[str]]) 
     return None
 
 
+def _keyword(line: str) -> str:
+    body = line[len(_prefix(line)):]
+    return body.split(" ", 1)[0]
+
+
+_CONDITION = re.compile(r"\bWHEN\s*\[([^\]]*)\]")
+
+
+def _condition(line: str) -> str:
+    """A RULE line's condition ("<source>: <statement>", rep_key), "" when it has none."""
+    m = _CONDITION.search(line)
+    return tlm.rep_key(m.group(1)) if m else ""
+
+
+def _paired_rewrites(old: List[str], new: List[str]) -> List[Tuple[str, str]]:
+    """(old line, new line) for a block rewritten line for line: same count, the same keyword in each place and, for
+    a RULE, the same condition (a rule under another condition is another rule, end review M1: that pair alone is
+    dropped); anything else is a removal plus an insert (no uid carried)."""
+    if len(old) != len(new) or any(_keyword(o) != _keyword(n) for o, n in zip(old, new)):
+        return []
+    return [(o, n) for o, n in zip(old, new)
+            if o != n and (_keyword(o) != "RULE" or _condition(o) == _condition(n))]
+
+
 def _concept(lines, st, entry, added: Optional[Set[str]] = None):
     name, choice = entry["key"], entry["choice"]
     row = {"kind": "concept", "key": name, "action": "kept"}
@@ -266,12 +307,15 @@ def _concept(lines, st, entry, added: Optional[Set[str]] = None):
     if [ln.strip() for ln in old] == [ln.strip() for ln in new]:
         return lines, [row], [], []
     out = [ln for i, ln in enumerate(lines) if i not in drop]
+    placed: List[str] = []
     if new:
         prefix = _prefix(old[0]) if old else ""
-        out[at:at] = [prefix + ln for ln in new]
+        placed = [prefix + ln for ln in new]
+        out[at:at] = placed
     action = "removed" if not new else ("rewritten" if drop else "inserted")
     keep = {norm_key(choice.get("default", "")), norm_key(choice.get("when_met", ""))}
-    return out, [{**row, "action": action}], unmatched, [t for t in olds if norm_key(t) not in keep]
+    return (out, [{**row, "action": action}], unmatched, [t for t in olds if norm_key(t) not in keep],
+            _paired_rewrites(old, placed))
 
 
 def _uses(st: tss.SheetStructure, key: str) -> List[tss.Rule]:
@@ -350,14 +394,17 @@ def _normal(lines, st, entry):
     for i in idx[1:]:
         out2[i] = None
     rules = _targeting(st, old_keys)
+    rewrites: List[Tuple[str, str]] = []
     if text:
         first = lines[idx[0]]
         body = f'NEGATIVE "{text}"' if neg else f'NORMAL [{units[0].structure}] "{text}"'
         out2[idx[0]] = _prefix(first) + body + _suffix(first)
+        rewrites.append((first, out2[idx[0]]))
         for r in rules:   # a context rule on the old wording follows it
             i = _index(lines, r.source_lines[0])
             if i is not None:
                 out2[i] = _prefix(lines[i]) + tsg.render_rule(r.model_copy(update={"target": text})) + _suffix(lines[i])
+                rewrites.append((lines[i], out2[i]))
         action = "rewritten"
     else:
         out2[idx[0]] = None
@@ -367,7 +414,7 @@ def _normal(lines, st, entry):
                 out2[i] = None
         action = "removed"
     stale = [t for t in olds if norm_key(t) != norm_key(text)]
-    return [x for x in out2 if x is not None], [{**row, "action": action}], [], stale
+    return [x for x in out2 if x is not None], [{**row, "action": action}], [], stale, rewrites
 
 
 def _habit_paragraph(st: tss.SheetStructure, name: str) -> Optional[tss.Paragraph]:
@@ -429,7 +476,9 @@ def _habit(lines, st, entry):
     for i in idx[1:]:
         out2[i] = None
     out2[idx[0]] = None if new is None else _prefix(first) + new
-    return [x for x in out2 if x is not None], [{**row, "action": "removed" if new is None else "rewritten"}], [], []
+    rewrites = [] if new is None else [(first, out2[idx[0]])]
+    return ([x for x in out2 if x is not None], [{**row, "action": "removed" if new is None else "rewritten"}], [], [],
+            rewrites)
 
 
 def _habit_ids(st: tss.SheetStructure, ledger: List[dict], modes: Tuple[str, ...]) -> Set[Tuple[str, str]]:
@@ -474,10 +523,14 @@ def pending_habits(st: tss.SheetStructure, ledger: List[dict]) -> List[dict]:
 _OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal), ("habit", _habit)]
 
 
-def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResult:
+def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Optional[dict] = None) -> LedgerResult:
     """The sheet with every ledger entry applied (module doc). A non-grammar sheet or an empty ledger is unchanged.
-    `before`: the sheet this one replaces, when known; it tells a reworded concept default's added line apart."""
-    res = LedgerResult(sheet=sheet)
+    `before`: the sheet this one replaces, when known; it tells a reworded concept default's added line apart.
+    `registry` (template_config["line_registry"], persisted saves only; None: exactly today's key and text matching):
+    an entry whose uid names a live unit is re-keyed to that unit's current line before its edit (uid first, key
+    second); every line rewritten is returned in `carried` ({uid: final raw line}); a removal whose line is shown
+    absent (_shown_absent: positive evidence, never "its uid matched nothing" alone) is `satisfied`, never unmatched."""
+    res = LedgerResult(sheet=sheet, ledger=list(ledger or []))
     if not tsg.is_grammar_sheet(sheet or ""):
         return res
     ledger = list(ledger or [])
@@ -512,8 +565,20 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
     stale: List[str] = []
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
+        st = _parse(res.sheet)
+        uid_map: Dict[str, str] = {}
+        mapped = False
+        if registry is not None:
+            try:
+                uid_map, mapped = _uid_map(st, registry, res.carried), True
+            except Exception as e:  # never blocks the edit: the entry falls back to key matching
+                logger.error("[ledger] uid map failed: %s: %s", type(e).__name__, str(e)[:200])
         try:
-            lines, applied, unmatched, olds = op(res.sheet.split("\n"), _parse(res.sheet), arg)
+            if uid_map and isinstance(arg, dict) and arg.get("uid"):
+                arg = _by_uid(arg, st, uid_map, res)
+            out = op(res.sheet.split("\n"), st, arg)
+            lines, applied, unmatched, olds = out[:4]
+            rewrites = out[4] if len(out) > 4 else []
             new = "\n".join(lines)
             added = _err_keys(new) - before_errors
             if added:
@@ -526,6 +591,22 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
             res.unmatched += [x for x in entries if x.get("kind") == "habit"]
             continue
         res.sheet = new
+        if registry is not None:
+            _carry(rewrites, st, uid_map, res.carried)
+            # a removal is satisfied only on positive evidence that its line is absent (_shown_absent); "its uid
+            # matched nothing" alone is never that evidence. Otherwise it stays a card, as today (end review C1)
+            known = tlr.load(registry)["units"] if mapped else {}
+            # a removal with a uid whose edit found nothing ("kept": _fixed, _normal) is never kept on that alone: it
+            # goes through the same absence check (absent -> satisfied, otherwise a card). No registry: as today
+            if mapped and isinstance(arg, dict) and arg.get("uid") and is_removal(arg):
+                kept = [a for a in applied if a.get("action") == "kept" and a.get("key") == arg.get("key")]
+                if kept:
+                    applied = [a for a in applied if a not in kept]
+                    unmatched = unmatched + [arg]
+            done = [x for x in unmatched if is_removal(x) and _shown_absent(x.get("uid"), st, uid_map, known)]
+            unmatched = [x for x in unmatched if x not in done]
+            res.satisfied += done
+            applied = applied + [{"kind": x["kind"], "key": x["key"], "action": "kept"} for x in done]
         res.applied += applied
         res.unmatched += unmatched
         stale += olds
@@ -537,6 +618,190 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
     if res.pending:
         logger.info("[ledger] habits_pending=%d (inactive until a card confirms them)", len(res.pending))
     return res
+
+
+def is_removal(entry: dict) -> bool:
+    """A decision that removes its line: a fixed line kept "remove", a normal or negative with no wording."""
+    choice = (entry or {}).get("choice") or {}
+    return ((entry.get("kind") == "fixed" and choice.get("keep") == "remove")
+            or (entry.get("kind") == "normal" and choice.get("text") == ""))
+
+
+# ── stable line IDs (spec 2026-10-15-stable-line-ids-design) ─────────────────────────────────────────────────────
+
+def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str, str]) -> Dict[str, str]:
+    """{parse ref: uid} for the current parse: the units rebind would pair with a live registry unit (exact
+    identity, a paragraph rename included; tlr.match, spec gap 1), then every line this run already rewrote (carried) at its new text, in
+    the same section and paragraph only (spec gap 13)."""
+    out = tlr.match(st, registry)
+    if carried:
+        units = tlr.units(st)
+        known = tlr.load(registry)["units"]
+        for uid, raw in carried.items():
+            prev = (known.get(uid) or {}).get("identity") or {}
+            hits = [u.ref for u in units if u.raw == raw and uid.startswith(tlr.PREFIX[u.kind])
+                    and (out.get(u.section, ""), out.get(u.paragraph, "") if u.paragraph else "")
+                    == (prev.get("section", ""), prev.get("paragraph", ""))]
+            if len(hits) == 1:
+                out = {r: x for r, x in out.items() if x != uid}
+                out[hits[0]] = uid
+    return out
+
+
+def _shown_absent(uid, st: tss.SheetStructure, uid_map: Dict[str, str], known: Dict[str, dict]) -> bool:
+    """True only on positive evidence that the unit `uid` named is absent from this parse (end review C1), all of:
+    the registry knows the uid and no unit of this parse holds it; its stored parent (paragraph, else section) is
+    matched in this parse (a paragraph renamed beyond the rename rule leaves no evidence); no unit of its kind anywhere
+    in the parse carries its last text (rep_key; a line moved elsewhere is not absent); no line of its kind in that
+    parent's section (at section level or in any of its paragraphs) lacks a live uid (a new or reworded line near where
+    it was: a card, never silently kept); and, for a
+    normal, no NORMAL in that paragraph has its structure label and side."""
+    entry = known.get(uid) if isinstance(uid, str) else None
+    if not isinstance(entry, dict) or uid in uid_map.values():
+        return False
+    kind, ident = entry.get("kind"), entry.get("identity") or {}
+    parent = ident.get("paragraph") or ident.get("section")
+    refs = {v: r for r, v in uid_map.items()}
+    if not parent or parent not in refs:
+        return False
+    here = tlr.units(st)
+    text = tlm.rep_key(entry.get("text") or "")
+    if text and any(u.kind == kind and tlm.rep_key(u.text) == text for u in here):
+        return False
+    # a line of its kind with no live uid anywhere in its section (the section itself or any of its paragraphs, so a
+    # paragraph line re-added at section level and the reverse count too) may be it, reworded: never evidence of absence
+    sec = refs[parent] if refs[parent].startswith("S:") else next((u.section for u in here if u.ref == refs[parent]), "")
+    if any(u.kind == kind and u.ref not in uid_map and u.section == sec for u in here):
+        return False
+    if kind == "normal":
+        label, side = td._name(ident.get("structure") or ""), ident.get("side") or ""
+        if any(u.kind == "normal" and u.paragraph == refs[parent] and td._name(dict(u.fields)["structure"]) == label
+               and (dict(u.fields)["side"] or "") == side for u in here):
+            return False
+    return True
+
+
+def _carry(rewrites: List[Tuple[str, str]], st: tss.SheetStructure, uid_map: Dict[str, str],
+           carried: Dict[str, str]) -> None:
+    """Record each rewritten line's final text under its uid (a second edit of the same line overwrites the first)."""
+    units = tlr.units(st)
+    for old, new in rewrites:
+        hits = [u.ref for u in units if u.raw == old]
+        if len(hits) == 1 and hits[0] in uid_map:
+            carried[uid_map[hits[0]]] = new
+        elif len(hits) > 1:
+            logger.info("[ledger] rewrite of a line the sheet holds %d times: no uid carried", len(hits))
+
+
+def _key_for(entry: dict, st: tss.SheetStructure, ref: str) -> Optional[str]:
+    """The key `entry` has when it names the unit `ref` of this parse; None when that unit cannot be the entry's
+    (another kind, outside a paragraph, a case unit)."""
+    names = {p.id: p.name for p in st.paragraphs}
+    kind = entry.get("kind")
+    if kind == "normal":
+        _, label, neg = td.split_normal_key(entry["key"])
+        if not neg:
+            u = next((n for n in st.normals if n.id == ref), None)
+            return td.normal_key(names[u.paragraph], u.structure) if u and u.paragraph in names else None
+        u = next((n for n in st.negatives if n.id == ref), None)
+        if u is None or u.paragraph not in names or u.condition or u.origin != "template":
+            return None
+        mine = {norm_key(label), norm_key((entry.get("choice") or {}).get("text", ""))}
+        return td.negative_key(names[u.paragraph], label if norm_key(u.text) in mine else u.text)
+    if kind == "fixed":
+        u = next((f for f in st.fixed_blocks if f.id == ref), None)
+        return u.text if u else None
+    if kind == "habit":
+        u = next((r for r in st.rules if r.id == ref and r.effect == "ask"), None) or next(
+            (n for n in st.negatives if n.id == ref and n.condition and n.condition_source == "findings"), None)
+        return td.habit_key(names[u.paragraph], u.condition) if u and u.paragraph in names else None
+    return None
+
+
+def _by_uid(entry: dict, st: tss.SheetStructure, uid_map: Dict[str, str], res: LedgerResult) -> dict:
+    """Uid first (spec "Ledger changes" 1): when the entry's uid names a live unit whose key label differs from the
+    entry's, the entry is re-keyed to that unit (logged) so the existing edit path finds it. An unknown or gone uid,
+    or a new key another entry already holds, leaves the entry to today's key matching."""
+    ref = next((r for r, u in uid_map.items() if u == entry["uid"]), None)
+    try:
+        new_key = _key_for(entry, st, ref) if ref else None
+        if new_key is None or td.match_key(entry["kind"], new_key) == td.match_key(entry["kind"], entry["key"]):
+            return entry
+        if td.find([x for x in res.ledger if x is not entry], entry["kind"], new_key) is not None:
+            logger.info("[ledger] uid %s: key %r already decided, kept on key matching", entry["uid"], new_key)
+            return entry
+    except td.DecisionError:
+        return entry
+    moved = {**entry, "key": new_key}
+    res.ledger = [moved if x is entry else x for x in res.ledger]
+    res.rekeyed.append({"kind": entry["kind"], "uid": entry["uid"], "old": entry["key"], "new": new_key})
+    logger.info("[ledger] uid %s re-keyed %s %r -> %r", entry["uid"], entry["kind"], entry["key"], new_key)
+    return moved
+
+
+def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
+    """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
+    is none or more than one (never guessed)."""
+    kind = entry.get("kind")
+    try:
+        if kind == "normal":
+            para_name, label, neg = td.split_normal_key(entry["key"])
+            para = _paragraph(st, para_name)
+            if para is None:
+                return None
+            if neg:
+                text = (entry.get("choice") or {}).get("text") or ""
+                keys = {norm_key(label)} | ({norm_key(text)} if text else set())
+                hits = [n.id for n in st.negatives if n.paragraph == para.id and n.origin == "template"
+                        and not n.condition and norm_key(n.text) in keys]
+            else:
+                hits = [n.id for n in st.normals if n.paragraph == para.id
+                        and td._name(td.structure_label(n.structure)) == td._name(label)]
+        elif kind == "fixed":
+            hits = [f.id for f in st.fixed_blocks if norm_key(f.text) == norm_key(entry["key"])]
+        elif kind == "habit":
+            para_name, cond = td.split_habit_key(entry["key"])
+            para = _habit_paragraph(st, para_name)
+            if para is None:
+                return None
+            rules, negs = _habit_units(st, para.id, cond)
+            hits = [r.id for r in rules] + [n.id for n in negs]
+        else:
+            return None
+    except (td.DecisionError, KeyError, TypeError, AttributeError):
+        return None
+    return hits[0] if len(hits) == 1 else None
+
+
+def stamp_uids(ledger: List[dict], st: tss.SheetStructure, registry: dict) -> List[dict]:
+    """The ledger with each line-bound entry's uid set to the uid of the unit it names in the final parse (after the
+    rebind). A uid the registry does not know is dropped (a client-held ledger cannot forge one); an entry whose line
+    is not found keeps a known uid (visibly orphaned when that unit is gone). A kept orphan never re-satisfies a
+    removal on its own: apply_ledger asks _shown_absent for positive evidence on every save. Never mutates `ledger`."""
+    known = set((registry or {}).get("units") or {})
+    uids = tlr.uids_for(st, registry)
+    out: List[dict] = []
+    for e in ledger or []:
+        ref = locate(e, st)
+        uid = uids.get(ref) if ref else None
+        if uid:
+            e = {**e, "uid": uid}
+        elif e.get("uid") and e["uid"] not in known:
+            e = {k: v for k, v in e.items() if k != "uid"}
+        out.append(e)
+    return out
+
+
+def uid_share(ledger: List[dict], sheet: str, registry: Optional[dict]) -> dict:
+    """The rebuild metric (logged, never a gate): of the ledger's line-bound entries, how many the incoming sheet
+    resolves by uid (tlr.match) and how many by today's key and text matching (locate)."""
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return {"line_bound": 0, "by_uid": 0, "by_text": 0}
+    st = _parse(sheet)
+    live = set(tlr.match(st, registry).values()) if registry else set()
+    bound = [e for e in ledger or [] if e.get("kind") in td.LINE_BOUND]
+    return {"line_bound": len(bound), "by_uid": sum(1 for e in bound if e.get("uid") in live),
+            "by_text": sum(1 for e in bound if locate(e, st) is not None)}
 
 
 RESTATED = "prose quotes a decided standard line"
@@ -689,7 +954,8 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
     """Fold a chat rewrite into the ledger: an entry whose item the rewrite changed (before != after) takes the new
     state (source "chat"; the reply names a confirmed one); values the rewrite added to LIST_MISSING become entries
     when the ledger owns the value list. A rewrite that removed a whole item (_wholesale) leaves the entry as it was
-    and returns a one-tap card instead. Returns (ledger, changes, cards)."""
+    and returns a one-tap card instead. Returns (ledger, changes, cards). An entry it re-keys (td.rekey_decision)
+    comes back without its uid; persist_sheet's post-rebind stamp gives it the new line's."""
     from . import template_rules_cards as trc
     if not ledger or not tsg.is_grammar_sheet(before or "") or not tsg.is_grammar_sheet(after or ""):
         return list(ledger or []), [], []

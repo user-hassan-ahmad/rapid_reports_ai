@@ -475,11 +475,11 @@ async def test_a_failing_stamp_never_stops_the_report_saving(aclient, auth_heade
 def test_generation_stamp_is_total():
     from rapid_reports_ai.template_sheet_structure import STRUCTURE_VERSION, generation_stamp, sheet_hash
     assert generation_stamp("t", "not a dict", "fallback") == {
-        "template_id": "t", "sheet_hash": None, "grammar_version": STRUCTURE_VERSION, "analyser_version": "",
-        "path": "fallback"}
-    odd = generation_stamp("t", {"skill_sheet": 123, "analyser_version": 7}, "scratchpad")
-    assert odd["sheet_hash"] is None and odd["analyser_version"] == ""
+        "template_id": "t", "sheet_hash": None, "sheet_rev": None, "grammar_version": STRUCTURE_VERSION,
+        "analyser_version": "", "path": "fallback"}
+    odd = generation_stamp("t", {"skill_sheet": 123, "analyser_version": 7, "sheet_rev": "9"}, "scratchpad")
+    assert odd["sheet_hash"] is None and odd["analyser_version"] == "" and odd["sheet_rev"] is None
     assert generation_stamp("t", {"skill_sheet": "  \n"}, "scratchpad")["sheet_hash"] is None   # empty: no hash
-    assert generation_stamp("t", {"skill_sheet": "x", "analyser_version": "v" * 99}, "scratchpad") == {
-        "template_id": "t", "sheet_hash": sheet_hash("x"), "grammar_version": STRUCTURE_VERSION,
+    assert generation_stamp("t", {"skill_sheet": "x", "analyser_version": "v" * 99, "sheet_rev": 4}, "scratchpad") == {
+        "template_id": "t", "sheet_hash": sheet_hash("x"), "sheet_rev": 4, "grammar_version": STRUCTURE_VERSION,
         "analyser_version": "v" * 64, "path": "scratchpad"}
