@@ -728,11 +728,14 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             today = dictated_gate.shadow_log(gate_clauses, neg_items + brief_items + prov)   # what today tints
             gate_log = today
             if gm == "live":             # the gate's items are shown; today's stay in the log for comparison
-                rec_jev, rec_log = await dictated_gate.ask_recs(inp, al, gate_clauses)   # Jev decides each rec
+                # Jev decides each rec, and whether an impression sentence is an editing instruction
+                rec_jev, ins_jev, rec_log = await dictated_gate.ask_recs(inp, al, gate_clauses)
                 if rec_log.get("error"):
                     errors["rec_jev"] = rec_log["error"]
+                if rec_log.get("instruction_error"):
+                    errors["instruction_jev"] = rec_log["instruction_error"]
                 g_prov, g_neg, g_brief, live_log = dictated_gate.apply(
-                    inp, run_id, al, gate_clauses, neg_items, brief_items, rec_jev=rec_jev)
+                    inp, run_id, al, gate_clauses, neg_items, brief_items, rec_jev=rec_jev, ins_jev=ins_jev)
                 live_log["rec_jev"] = rec_log
                 g_neg, g_brief, live_log["amber_hygiene"] = negatives.amber_hygiene(g_neg, g_brief)
                 for it in g_prov:

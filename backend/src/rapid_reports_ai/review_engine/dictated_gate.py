@@ -15,6 +15,7 @@ RR_DICTATED_GATE = off (default) | shadow (ask and log, display unchanged) | liv
 provenance's; today's path is the fallback on any gate failure)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -277,41 +278,84 @@ def _rec_said(al: Alignment, c: ReportClause) -> bool:
                                and words <= toks(l.text) for l in al.lines)
 
 
+KIND_INSTRUCTION = "editing_instruction"
+INSTRUCTION_CHUNK = 6    # instruction questions per request (the lab's batch); sent alongside, never with, the recs
+INSTRUCTION_MIN = 0.95   # P(report_editor) >= this → flagged (synthetic lab 2026-10-17: instructions 0.98-1.00;
+#                          imperative recommendations, findings, technique / comparison / communication sentences
+#                          <= 0.81 bar one contrived "Delete nothing; ..." at 0.81-0.94)
+
+
+def q_instruction(sentence: str) -> dict:
+    """Synthetic lab 2026-10-17 (scratchpad lab_instr, choice arm), verbatim: is this impression sentence an
+    instruction to whoever edits the report (conclusion-box text the writer printed), or report content?"""
+    return {"type": "choice",
+            "instructions": f'Read only this one report statement: "{sentence}". Who is it addressed to?',
+            "criteria": {
+                "report_reader": "The report's reader: a finding, an opinion, or advice to the referring clinician or "
+                                 "care team, including what to do for the patient (tests, referral, tubes, lines, "
+                                 "treatment).",
+                "report_editor": "Whoever types or edits the report: an instruction about the report text itself "
+                                 "(delete, add, move, change, shorten, reword or format a sentence, section, heading "
+                                 "or template)."}}
+
+
 async def ask_recs(inp: ReviewInput, al: Alignment, gate: List[GateClause]
-                   ) -> Tuple[Dict[Tuple[int, int], Optional[float]], dict]:
-    """({anchor (start, end): P(dictated) or None}, log) for every "rec" clause: one batched Jev request with the lab
-    P4 Q3 question (`provenance.q_synthesis`, dictation as state) on each recommendation's anchored text, the same
-    anchor `apply` places. A failed request returns {} (the error is logged); an unreadable answer is None. Synthetic
-    lab 2026-10-15 (24 recommendations, 2 runs): 6/6 added, 6/6 blended with an added part, 4/4 changed interval /
-    study / side flagged, 7/8 rewordings cleared (the miss added "hepatobiliary" to a dictated "MDT discussion")."""
+                   ) -> Tuple[Dict[Tuple[int, int], Optional[float]], Dict[Tuple[int, int], Optional[float]], dict]:
+    """({anchor (start, end): P(dictated) or None}, {sentence (start, end): P(report_editor) or None}, log), from one
+    batched Jev request (dictation as state):
+    - every "rec" clause: the lab P4 Q3 question (`provenance.q_synthesis`) on the recommendation's anchored text, the
+      same anchor `apply` places. Synthetic lab 2026-10-15 (24 recommendations, 2 runs): 6/6 added, 6/6 blended with
+      an added part, 4/4 changed interval / study / side flagged, 7/8 rewordings cleared (the miss added
+      "hepatobiliary" to a dictated "MDT discussion").
+    - every IMPRESSION sentence, whatever its tier: `q_instruction`. Synthetic lab 2026-10-17 (20 editing
+      instructions, 20 imperative recommendations, 20 other statements; 2 runs, single and six-per-request): every
+      instruction >= 0.98, every other statement <= 0.81 bar one contrived case.
+    A failed request returns {} for both (the error is logged); an unreadable answer is None."""
     from .. import report_reconcile as rc
+    from .alignment import _role
     from .provenance import _rec_target, p_dictated, q_synthesis, synthesis_state
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
     targets: List[Tuple[int, int, str]] = []
+    sentences: List[Tuple[int, int]] = []
     seen: set = set()
     for g in gate:
         c = g.aclause
-        if g.tier != "rec" or c is None or c.sentence_start in seen:
+        if c is None:
+            continue
+        if g.section and _role(g.section) == "impression" and (c.sentence_start, c.sentence_end) not in sentences:
+            sentences.append((c.sentence_start, c.sentence_end))
+        if g.tier != "rec" or c.sentence_start in seen:
             continue
         seen.add(c.sentence_start)
         sentence = report[c.sentence_start:c.sentence_end]
         s, e, _ = _rec_target(report, c, sentence, names)
         targets.append((s, e, sentence))
-    log: dict = {"asked": len(targets), "error": None}
-    if not targets:
-        return {}, log
-    qs = {f"rec{k}": q_synthesis(sentence, report[s:e]) for k, (s, e, sentence) in enumerate(targets)}
-    try:
-        ans = await rc._jev(synthesis_state(inp), qs) or {}
-    except Exception as ex:  # noqa: BLE001 - no answer: the word rule decides, never a silent drop
-        log["error"] = f"{type(ex).__name__}: {str(ex)[:200]}"
-        return {}, log
-    return {(s, e): p_dictated(ans.get(f"rec{k}")) for k, (s, e, _) in enumerate(targets)}, log
+    log: dict = {"asked": len(targets), "asked_instructions": len(sentences), "error": None,
+                 "instruction_error": None}
+    st = synthesis_state(inp)
+
+    async def ask(qs: Dict[str, dict], err: str) -> dict:
+        if not qs:
+            return {}
+        try:
+            return await rc._jev(st, qs) or {}
+        except Exception as ex:  # noqa: BLE001 - no answer: the word rule decides recs; no instruction item
+            log[err] = f"{type(ex).__name__}: {str(ex)[:200]}"
+            return {}
+    rec_q = {f"rec{k}": q_synthesis(sentence, report[s:e]) for k, (s, e, sentence) in enumerate(targets)}
+    ins_q = [{f"ins{k}": q_instruction(report[s:e]) for k, (s, e) in enumerate(sentences[a:a + INSTRUCTION_CHUNK], a)}
+             for a in range(0, len(sentences), INSTRUCTION_CHUNK)]
+    rec_ans, *ins_ans = await asyncio.gather(ask(rec_q, "error"), *(ask(q, "instruction_error") for q in ins_q))
+    ins = {k: v for a in ins_ans for k, v in a.items()}
+    return ({(s, e): p_dictated(rec_ans.get(f"rec{k}")) for k, (s, e, _) in enumerate(targets) if rec_ans},
+            {se: _p_choice(ins.get(f"ins{k}"), "report_editor") for k, se in enumerate(sentences)
+             if f"ins{k}" in ins}, log)
 
 
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
-          rec_jev: Optional[Dict[Tuple[int, int], Optional[float]]] = None):
+          rec_jev: Optional[Dict[Tuple[int, int], Optional[float]]] = None,
+          ins_jev: Optional[Dict[Tuple[int, int], Optional[float]]] = None):
     """Live (spec §4.4): (provenance items, negatives items, brief items, log). Inputs are not mutated.
     - dictated clause: AI-layer items (assumed_normal / ai_generated, cls info) that touch no added clause are dropped;
       cards (check, removed, ...) stay;
@@ -324,7 +368,10 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
       ultrasound" → "Non-urgent thyroid ultrasound is recommended.") scores below GATE_MIN. So Jev decides: `rec_jev`
       (`ask_recs`, the Q3 question on the item's anchor) drops the item at P(dictated) >= SYNTH_DICTATED and keeps it
       below. Only when Jev has no answer for it (request failed, answer unreadable) does the word rule `_rec_said`
-      decide: near-verbatim rewordings clear, partial overlap keeps the item."""
+      decide: near-verbatim rewordings clear, partial overlap keeps the item;
+    - impression sentence `ins_jev` (`ask_recs`) puts at P(report_editor) >= INSTRUCTION_MIN, whatever its tier: one
+      `editing_instruction` item (cls action, no edit: the radiologist removes it or makes the change), and no other
+      gate item (quiet, synthesis, recommendation) on that sentence."""
     from .items import text_hash
     from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, SYNTH_DICTATED, _ai_item, _new_item, _rec_target,
                              template_spans, untemplated)
@@ -349,8 +396,22 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
     dropped = [it.key for it in list(neg_items) + list(brief_items) if not keep(it)]
     existing = [it for it in neg + brief if _ai_layer(it)]
     prov: list = []
+    instr = {se for se, p in (ins_jev or {}).items() if p is not None and p >= INSTRUCTION_MIN}
+    for g in placed:
+        c = g.aclause
+        se = (c.sentence_start, c.sentence_end) if c is not None else None
+        if se in instr:
+            instr.discard(se)
+            prov.append(_new_item(inp, run_id, "accuracy", KIND_INSTRUCTION, "action", DETECTOR, g.section or "",
+                                  se[0], se[1], "Instruction, not report text",
+                                  "This sentence reads as an instruction to the report writer. Make the change it "
+                                  "asks for if you want it, then delete the instruction from the report.",
+                                  {"source": DETECTOR, "p": (ins_jev or {}).get(se)}))
+    flagged = {(it.anchor.start, it.anchor.end) for it in prov}
     synth, rec_seen, unplaced, capped = 0, set(), sum(1 for g in gate if g.start is None), 0
     for g in placed:
+        if g.aclause is not None and (g.aclause.sentence_start, g.aclause.sentence_end) in flagged:
+            continue                     # the instruction card owns the sentence: no tint or rec item under it
         if g.tier == "quiet":
             qs, qe = g.quiet_span or (g.start, g.end)
             if not any(_overlaps(it, g.start, g.end) for it in existing):
@@ -394,7 +455,8 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
     log = {"mode": "live", "clauses": [_clause_log(g) for g in gate], "dropped": dropped,
            "quiet": sum(1 for it in prov if it.kind == "assumed_normal"), "synthesis": synth,
            "recommendation": len(rec_seen) - sum(rec_by.values()), "rec_dictated": sum(rec_by.values()),
-           "rec_by_jev": rec_by["jev"], "rec_by_backstop": rec_by["backstop"], "capped": capped,
+           "rec_by_jev": rec_by["jev"], "rec_by_backstop": rec_by["backstop"], "instructions": len(flagged),
+           "capped": capped,
            "unplaced": unplaced,
            "template_owned": template_owned}
     return prov, neg, brief, log
