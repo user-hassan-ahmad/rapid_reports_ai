@@ -134,3 +134,19 @@ def test_the_region_comes_from_the_part_holding_the_quote_before_a_part_inside_i
     out = filled_value_quotes([unit], gate)
     assert out["Spleen length"]["region"] == "Spleen"            # not "Other", whose text sits inside the quote
     assert out["Spleen length"]["sentence"] == "spleen 11 cm in length."
+
+
+def test_said_regions_run_parallel_to_said_parts():
+    # SYNTHETIC: a placed unit carries its region; unplaced and fixed-group units and taps without a region carry ""
+    units = [StackUnit.model_validate({"id": i, "text": t, "group": g, "structure": None, "attach_to": None,
+                                       "parts": None, "covers": [], "abnormal": False, "pinned": False,
+                                       "heading": False})
+             for i, (t, g) in enumerate([("Cyst 2 cm.", "Right kidney"), ("Breathing artefact.", "General"),
+                                         ("Loose sentence 3 mm.", None)], 1)]
+    gate = GateRecord.model_validate({"items": [
+        {"id": "a", "region": "Liver", "sentences": ["Segment 6 cyst 1 cm."], "answered_by": "tap"},
+        {"id": "b", "region": "", "sentences": ["No collection."], "answered_by": "tap"}]})
+    st = findings_block(units, ["Right kidney", "Liver", "General"], gate)
+    assert list(zip(st.said_regions, st.said_parts)) == [
+        ("Right kidney", "Cyst 2 cm."), ("", "Breathing artefact."), ("", "Loose sentence 3 mm."),
+        ("Liver", "Segment 6 cyst 1 cm."), ("", "No collection.")]

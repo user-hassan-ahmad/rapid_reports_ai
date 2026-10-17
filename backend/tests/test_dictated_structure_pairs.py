@@ -104,3 +104,9 @@ def test_pairs_come_in_report_order():
 
 def test_never_raises_on_empty_input():
     assert pairs(None, [None, ""]) == []
+
+
+def test_a_source_may_carry_its_region():
+    got = pairs("Left kidney: cyst 2 cm.", [("Right kidney", "Cyst 2 cm."), "Spleen 13 cm."])
+    assert [(p.dictated, p.region) for p in got] == [("Cyst 2 cm.", "Right kidney")]
+    assert Pair("a", "b", "c").region == ""

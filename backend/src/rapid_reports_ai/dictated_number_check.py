@@ -20,7 +20,7 @@ import os
 import re
 from dataclasses import dataclass
 from collections import Counter
-from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
+from typing import FrozenSet, Iterable, List, Optional, Set, Tuple, Union
 
 from .template_number_check import _masked, _sentence
 
@@ -305,6 +305,7 @@ class Pair:
     dictated: str   # the dictated sentence holding the chain, label prefix stripped
     report: str     # the FINDINGS sentence holding every value of the chain, as written (any line label kept)
     chain: str      # the dictated chain as written ("2.3 x 1.8 cm")
+    region: str = ""   # the scratchpad region the dictated sentence was said under ("" when none)
 
 
 def sentence_spans(text: str) -> List[Tuple[int, int]]:
@@ -382,9 +383,17 @@ def _value_only(sentence: str, dictated: str) -> bool:
     return len(w) <= 2 and w < _words(d)
 
 
-def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iterable[str] = ()) -> List[Pair]:
+Source = Union[None, str, Tuple[str, str]]   # a dictated statement, or (its region, the statement)
+
+
+def source_text(src: Source) -> str:
+    return (src[1] if isinstance(src, tuple) else src) or ""
+
+
+def pairs(report: Optional[str], sources: Iterable[Source], removed: Iterable[str] = ()) -> List[Pair]:
     """One Pair per dictated chain (with a unit) per FINDINGS sentence holding all its values, in report order.
-    `sources` as for `missing_dictated_numbers`; a dictated sentence equal to a removed one (normalised) is skipped.
+    `sources` as for `missing_dictated_numbers`, each optionally as (region, text): the pair carries the region.
+    A dictated sentence equal to a removed one (normalised) is skipped.
     A value-only report fragment is joined to the sentence before it on the same line. Identical pairs are one."""
     text = findings_only(report)
     spans = sentence_spans(text)
@@ -397,7 +406,8 @@ def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iter
     gone = {norm(r) for r in removed if r}
     out: List[Tuple[int, Pair]] = []
     seen: set = set()
-    for src in sources:
+    for item in sources:
+        region, src = (item[0] or "", item[1]) if isinstance(item, tuple) else ("", item)
         if not src:
             continue
         sspans = sentence_spans(src)
@@ -416,7 +426,7 @@ def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iter
                 if i > 0 and "\n" not in text[spans[i - 1][0]:a] and _value_only(raw, d):
                     a = spans[i - 1][0]   # a value-only fragment ("LVEF 45%.") reads with the sentence before it
                     raw = text[a:b].strip()
-                p = Pair(d, raw, chain)
+                p = Pair(d, raw, chain, region)
                 if p in seen:
                     continue
                 seen.add(p)
@@ -426,4 +436,5 @@ def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iter
 
 
 __all__ = ["KIND", "FLAG", "Num", "Pair", "enabled", "extract", "missing_dictated_numbers", "pairs", "findings_only",
-           "sentence_spans", "chains", "chain_keys", "strip_prefix", "norm"]
+           "sentence_spans", "chains", "chain_keys", "strip_prefix", "norm", "Source",
+           "source_text"]

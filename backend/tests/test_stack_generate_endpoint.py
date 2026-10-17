@@ -356,3 +356,35 @@ def test_quick_flags_a_dictated_value_moved_to_another_structure(authed, fakes, 
     assert [(f["text"], f["sentence"], f["dictated_quote"], f["severity"]) for f in flags] == [
         ("4.1 cm", "Aortic root 4.1 cm.", "Aortic sinus 4.1 cm.", "high")]
     assert flags[0]["edit"] == {"mode": "replace", "find": "Aortic root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}
+
+
+def test_the_dictated_region_and_assumed_normals_reach_the_structure_check(authed, fakes, monkeypatch):
+    from rapid_reports_ai import dictated_structure_check as dsc
+    asked, guard = [], []
+
+    async def quick(**kw):
+        return {"report_content": "FINDINGS\nLeft kidney: cyst 2 cm.", "description": "d", "scan_type": "CT",
+                "model_used": "m", "quality_check": {"enabled": True, "review": []}, "signature": ""}
+
+    async def ask(ps):
+        asked.extend((p.region, p.dictated, p.report) for p in ps)
+        return [0.1 for _ in ps]
+    real_edit_for = dsc.edit_for
+
+    def edit_for(p, report, sources, assumed=()):
+        guard.append(list(assumed))
+        return real_edit_for(p, report, sources, assumed)
+    monkeypatch.setattr(SR, "generate_quick_report", quick)
+    monkeypatch.setattr(dsc, "ask_same_site", ask)
+    monkeypatch.setattr(dsc, "edit_for", edit_for)
+    monkeypatch.setenv("RR_DICTATED_STRUCTURES", "1")
+    units_raw = [{**UNITS[0], "text": "Cyst 2 cm.", "group": "Right kidney", "abnormal": True}]   # SYNTHETIC
+    units = [StackUnit.model_validate(u) for u in units_raw]
+    gate = {"conclusion_text": "Renal cyst.", "removed": ["Spleen normal."], "units_hash": "k",
+            "findings_hash": findings_hash(units),
+            "assumed": {"Spleen": ["Spleen normal."], "Liver": ["Liver normal in size."]}}
+    events = _events(authed.post("/api/canvas/stack/generate", json=_body(units=units_raw, gate=gate)))
+    flags = [i for i in events[0][1]["quality_check"]["review"] if i.get("kind") == "dictated_structure_changed"]
+    assert asked == [("Right kidney", "Cyst 2 cm.", "Left kidney: cyst 2 cm.")]
+    assert [f["dictated_quote"] for f in flags] == ["Cyst 2 cm."]
+    assert guard == [["Liver normal in size."]]   # assumed normals minus removed, for the edit guard only

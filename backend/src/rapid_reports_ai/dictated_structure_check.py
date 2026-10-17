@@ -29,7 +29,8 @@ TIMEOUT_S = 3.0        # as jev_stack.TIMEOUT_S
 LABEL = "Different site from your dictation? Apply puts your sentence back."
 LABEL_NO_EDIT = "Different site from your dictation? Check this sentence."
 
-_JOINER = re.compile(r"(?i)\band\b|\bwith\b|;|,")
+_JOINER = re.compile(r"(?i)\b(?:and|with|without|but|whereas|which|while|although|except|otherwise)\b|[;,()\u2014]| - ")
+NEW_WORDS_MAX = 2   # more content words than this not in the dictated sentence: the edit is withheld
 _LETTERS = re.compile(r"[a-z][a-z']+")   # digits never count: a level ("L4/5", "C5-6") is never a content word
 _STOP = frozenset("""a an the of in at on to is are was were be been with and or there this that its it as by for from
 into measures measure measuring measured measurement seen present noted demonstrated identified shows has have no not
@@ -45,16 +46,21 @@ def enabled() -> bool:
     return os.environ.get(FLAG, "0").strip().lower() in ("1", "true", "on")
 
 
+# The lab wording W1, verbatim, plus the region sentence (end review 2026-10-17). `{key}` is the pair's state key.
+QUESTION = ("In {key}, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and "
+            "level as the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does "
+            "not. The DICTATED sentence was said under the region named in dictated_region; read it as about that "
+            "region when it names no structure itself.")
+
+
 def question(key: str) -> dict:
-    """The lab wording W1, verbatim."""
-    return {"type": "noul", "instructions":
-            f"In {key}, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and "
-            f"level as the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site "
-            f"does not."}
+    return {"type": "noul", "instructions": QUESTION.format(key=key)}
 
 
 def state(ps: List[dnc.Pair]) -> Dict[str, dict]:
-    return {f"pair_{i + 1}": {"dictated": p.dictated, "report": p.report} for i, p in enumerate(ps)}
+    """{"pair_N": {"dictated", "dictated_region" ("" when none), "report"}}, numbered from 1 in the given order."""
+    return {f"pair_{i + 1}": {"dictated": p.dictated, "dictated_region": p.region, "report": p.report}
+            for i, p in enumerate(ps)}
 
 
 async def ask_same_site(ps: List[dnc.Pair]) -> List[float]:
@@ -75,24 +81,29 @@ async def ask_same_site(ps: List[dnc.Pair]) -> List[float]:
 
 
 def code_pass(p: dnc.Pair) -> bool:
-    """The report sentence holds the dictated sentence word for word (case, whitespace, punctuation aside)."""
-    return dnc.norm(p.dictated) in dnc.norm(p.report)
+    """The report sentence holds the dictated sentence word for word (case, whitespace, punctuation aside) and, when
+    the dictated sentence was said under a region, every word of that region too; otherwise Jev decides."""
+    if dnc.norm(p.dictated) not in dnc.norm(p.report):
+        return False
+    return (_words(p.region) - _STOP) <= _words(p.report)
 
 
 def _words(text: str) -> Set[str]:
     return set(_LETTERS.findall(text.lower()))
 
 
-def _statements(sources: Iterable[Optional[str]]) -> List[str]:
-    return [dnc.strip_prefix(src[s:e]) for src in sources if src for s, e in dnc.sentence_spans(src)]
+def _statements(sources: Iterable[dnc.Source]) -> List[str]:
+    texts = [dnc.source_text(src) for src in sources]
+    return [dnc.strip_prefix(t[s:e]) for t in texts if t for s, e in dnc.sentence_spans(t)]
 
 
-def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Optional[dict]:
+def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: Iterable[str] = ()) -> Optional[dict]:
     """A replace edit putting the dictated sentence back, or None when replacing the whole sentence could lose or
     repeat content (spec §3.5): more than one sentence (a joined fragment), a line label naming something the
     dictated sentence does not, other values in it, an extra clause joiner, a word merged in from another dictated
-    statement (side words aside), or a find that does not occur exactly once. `find` is the report sentence without
-    its line label."""
+    statement or a confirmed assumed normal (side words aside), more than NEW_WORDS_MAX content words the dictated
+    sentence lacks, or a find that does not occur exactly once. `find` is the report sentence without its line
+    label; the replace is the dictated sentence as said (no region prefix)."""
     find = dnc.strip_prefix(p.report)
     if len(dnc.sentence_spans(find)) > 1:
         return None
@@ -109,7 +120,13 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Opti
     for s in _statements(sources):
         if s != p.dictated:
             other |= _words(s)
+    for s in assumed:
+        other |= _words(s or "")
     if any(w in other and w not in own for w in _words(find) - _STOP - _SIDE):
+        return None
+    # backstop: side words count unless the dictated sentence names a side itself (then the side is the correction)
+    new = _words(find) - _STOP - own - (_SIDE if own & _SIDE else frozenset())
+    if len(new) > NEW_WORDS_MAX:
         return None
     rep = p.dictated.strip()
     rep = rep[:1].upper() + rep[1:]
@@ -118,14 +135,16 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Opti
     return {"mode": "replace", "find": find, "replace": rep}
 
 
-async def changed_structures(report: Optional[str], sources: Iterable[Optional[str]], removed: Iterable[str] = (),
-                             ask: Optional[Ask] = None) -> List[dict]:
+async def changed_structures(report: Optional[str], sources: Iterable[dnc.Source], removed: Iterable[str] = (),
+                             ask: Optional[Ask] = None, assumed: Iterable[str] = ()) -> List[dict]:
     """[{"kind", "severity": "high", "text", "sentence", "dictated_quote", "message", "edit"}], one per dictated
     chain whose every FINDINGS sentence Jev reads as a different site. `sources`: the radiologist's own statements
-    (as for the number check); `removed`: the sentences the radiologist removed. Never raises."""
+    (as for the number check), each optionally (region, text); `removed`: the sentences the radiologist removed;
+    `assumed`: the confirmed assumed normals, read by the edit guard only (never paired). Never raises."""
     try:
         report = report or ""
-        sources = [s for s in sources if s]
+        sources = [s for s in sources if dnc.source_text(s)]
+        assumed = [a for a in assumed if a]
         ps = dnc.pairs(report, sources, removed)
         asked = [p for p in ps if not code_pass(p)]
         if len(asked) > MAX_PAIRS:
@@ -144,12 +163,12 @@ async def changed_structures(report: Optional[str], sources: Iterable[Optional[s
                 same[p] = pr >= SAME_SITE_MIN
         groups: Dict[tuple, List[dnc.Pair]] = {}
         for p in ps:   # report order: a chain's first pair is its first FINDINGS sentence
-            groups.setdefault((p.dictated, p.chain), []).append(p)
+            groups.setdefault((p.region, p.dictated, p.chain), []).append(p)
         out: List[dict] = []
-        for (dictated, chain), gp in groups.items():
+        for (_, dictated, chain), gp in groups.items():
             if any(same[p] is not False for p in gp):   # passes if any sentence is the same site; unasked: unknown
                 continue
-            edit = edit_for(gp[0], report, sources)
+            edit = edit_for(gp[0], report, sources, assumed)
             out.append({"kind": KIND, "severity": "high", "text": chain, "sentence": gp[0].report,
                         "dictated_quote": dictated, "message": LABEL if edit else LABEL_NO_EDIT, "edit": edit})
         return out
@@ -158,5 +177,6 @@ async def changed_structures(report: Optional[str], sources: Iterable[Optional[s
         return []
 
 
-__all__ = ["KIND", "FLAG", "SAME_SITE_MIN", "MAX_PAIRS", "TIMEOUT_S", "LABEL", "LABEL_NO_EDIT", "enabled", "question",
+__all__ = ["KIND", "FLAG", "SAME_SITE_MIN", "MAX_PAIRS", "TIMEOUT_S", "LABEL", "LABEL_NO_EDIT", "QUESTION", "NEW_WORDS_MAX",
+           "enabled", "question",
            "state", "ask_same_site", "code_pass", "edit_for", "changed_structures"]

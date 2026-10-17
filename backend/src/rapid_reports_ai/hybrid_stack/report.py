@@ -104,7 +104,11 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     if dnc.enabled():   # both paths: a dictated number the report does not hold (spec 2026-10-15), flags only
         review += dnc.missing_dictated_numbers(report, own)
     if dsc.enabled():   # both paths: a dictated value written against another structure (spec 2026-10-17), flags only
-        review += await dsc.changed_structures(report, own, removed)
+        # the same statements, each with the scratchpad region it was said under (typed values: none)
+        regioned = [*((r, p) for r, p in zip(st.said_regions, st.said_parts) if p not in gone),
+                    *(("", v + ".") for v in _value_statements(req.gate))]
+        assumed = [a for ss in req.gate.assumed.values() for a in ss if a and a not in gone]   # edit guard only
+        review += await dsc.changed_structures(report, regioned, removed, assumed=assumed)
     if removals:
         quality.setdefault("pre_edit_report", generated)
         quality["applied_edits"] = [*(quality.get("applied_edits") or []), *removals]

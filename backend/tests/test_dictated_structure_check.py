@@ -25,11 +25,12 @@ async def run(report, *sources, removed=(), p_of=None, default=0.95):
 
 
 def test_question_wording_is_w1_verbatim_and_state_numbers_the_pairs():
-    assert dsc.question("pair_1") == {"type": "noul", "instructions":
+    assert dsc.question("pair_1")["instructions"].startswith(
         "In pair_1, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and "
         "level as the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does "
-        "not."}
-    assert dsc.state([Pair("a 1 cm.", "b 1 cm.", "1 cm")]) == {"pair_1": {"dictated": "a 1 cm.", "report": "b 1 cm."}}
+        "not. ")
+    assert dsc.state([Pair("a 1 cm.", "b 1 cm.", "1 cm")]) == {
+        "pair_1": {"dictated": "a 1 cm.", "dictated_region": "", "report": "b 1 cm."}}
 
 
 def test_flag_defaults_off(monkeypatch):
@@ -142,7 +143,8 @@ async def test_ask_same_site_sends_one_request_and_refuses_a_partial_answer(monk
     assert await dsc.ask_same_site(ps) == [0.2, 0.9]
     body, timeout = sent[0]
     assert len(sent) == 1 and body["model"] == jev_client.JEV_MODEL and timeout == 3.0
-    assert body["state"]["pair_1"] == {"dictated": "Aortic sinus 4.1 cm.", "report": "Aortic root 4.1 cm."}
+    assert body["state"]["pair_1"] == {"dictated": "Aortic sinus 4.1 cm.", "dictated_region": "",
+                                       "report": "Aortic root 4.1 cm."}
     assert body["questions"]["pair_2"] == dsc.question("pair_2")
     monkeypatch.setattr(jev_client, "jev_post", post({"pair_1": {"noul": 0.2}}))
     with pytest.raises(ValueError):
@@ -238,3 +240,74 @@ async def test_a_label_the_dictated_sentence_also_names_keeps_the_edit_on_the_un
     items, _ = await run("FINDINGS\nAORTIC SINUS: Root 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
     assert items[0]["sentence"] == "AORTIC SINUS: Root 4.1 cm."
     assert items[0]["edit"] == {"mode": "replace", "find": "Root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}
+
+
+# --- end review fix 1: Apply never drops merged content ---
+
+@pytest.mark.parametrize("report, dictated", [
+    ("Aortic root 4.1 cm without aortic regurgitation.", "Aortic sinus 4.1 cm."),
+    ("The aortic root measures 4.1 cm but is otherwise normal.", "Aortic sinus 4.1 cm."),
+    ("Aortic root 4.1 cm (no regurgitation).", "Aortic sinus 4.1 cm."),
+    ("Aortic root 4.1 cm whereas the ascending aorta is normal.", "Aortic sinus 4.1 cm."),
+    ("Hepatic cyst 2 cm which is simple.", "Segment 6 cyst 2 cm."),
+    ("Aortic root 4.1 cm - stable.", "Aortic sinus 4.1 cm."),
+    ("Aortic root 4.1 cm—stable.", "Aortic sinus 4.1 cm."),
+    ("The left kidney contains a 2 cm cyst.", "Cyst 2 cm."),
+])
+async def test_merged_content_keeps_the_item_but_withholds_the_edit(report, dictated):
+    items, _ = await run(report, dictated, default=0.1)
+    assert [(i["text"] != "", i["edit"]) for i in items] == [(True, None)]
+    assert items[0]["message"] == dsc.LABEL_NO_EDIT
+
+
+async def test_a_plain_rename_still_gets_the_edit():
+    items, _ = await run("Aortic root 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert items[0]["edit"] == {"mode": "replace", "find": "Aortic root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}
+
+
+async def test_an_assumed_normal_merged_in_withholds_the_edit_but_is_never_paired():
+    ask, seen = _ask(default=0.1)
+    report = "Trileaflet aortic root 4.1 cm."
+    items = await dsc.changed_structures(report, ["Aortic sinus 4.1 cm."], ask=ask)
+    assert items[0]["edit"] is not None   # without the assumed normal: two new words, under the backstop
+    items = await dsc.changed_structures(report, ["Aortic sinus 4.1 cm."],
+                                         assumed=["Aortic valve trileaflet, annulus 4.1 cm."], ask=ask)
+    assert [i["edit"] for i in items] == [None]
+    assert seen["pairs"] == [("Aortic sinus 4.1 cm.", "Trileaflet aortic root 4.1 cm.")]   # never a pair source
+
+
+# --- end review fix 2: the dictated sentence's region ---
+
+def test_the_question_constant_is_w1_plus_the_region_sentence():
+    assert dsc.QUESTION == (
+        "In {key}, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and "
+        "level as the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does "
+        "not. The DICTATED sentence was said under the region named in dictated_region; read it as about that region "
+        "when it names no structure itself.")
+    assert dsc.question("pair_2") == {"type": "noul", "instructions": dsc.QUESTION.format(key="pair_2")}
+
+
+def test_state_carries_the_dictated_region():
+    assert dsc.state([Pair("Cyst 2 cm.", "Left kidney: cyst 2 cm.", "2 cm", "Right kidney"),
+                      Pair("a 1 cm.", "b 1 cm.", "1 cm")]) == {
+        "pair_1": {"dictated": "Cyst 2 cm.", "dictated_region": "Right kidney", "report": "Left kidney: cyst 2 cm."},
+        "pair_2": {"dictated": "a 1 cm.", "dictated_region": "", "report": "b 1 cm."}}
+
+
+async def test_a_regioned_sentence_whose_region_the_report_lacks_goes_to_jev():
+    got = []
+
+    async def ask(ps):
+        got.extend((p.dictated, p.region, p.report) for p in ps)
+        return [0.1 for _ in ps]
+    items = await dsc.changed_structures("FINDINGS\nLeft kidney: cyst 2 cm.", [("Right kidney", "Cyst 2 cm.")],
+                                         ask=ask)
+    assert got == [("Cyst 2 cm.", "Right kidney", "Left kidney: cyst 2 cm.")]
+    assert [(i["dictated_quote"], i["edit"]) for i in items] == [("Cyst 2 cm.", None)]
+
+
+async def test_a_regioned_sentence_passes_in_code_when_the_report_names_the_region():
+    ask, seen = _ask(default=0.0)
+    items = await dsc.changed_structures("FINDINGS\nRight kidney: cyst 2 cm.", [("Right kidney", "Cyst 2 cm.")],
+                                         ask=ask)
+    assert items == [] and seen["calls"] == 0
