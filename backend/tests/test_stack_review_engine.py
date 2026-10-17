@@ -98,3 +98,24 @@ def test_two_values_said_elsewhere_from_one_sentence_are_two_notes():
     items = live.check_flag_items(inp, "run1")
     assert [i.evidence["text"] for i in items] == ["LVEF", "LVEDV"]
     assert len({i.key for i in items}) == 2
+
+
+def test_a_moved_value_is_an_anchored_action_item_carrying_its_edit_and_quote():
+    edit = {"mode": "replace", "find": "12 mm cyst.", "replace": "Segment 6 cyst 12 mm."}
+    flag = {"kind": "dictated_structure_changed", "severity": "high", "text": "12 mm", "sentence": "12 mm cyst.",
+            "dictated_quote": "Segment 6 cyst 12 mm.",
+            "message": "Different site from your dictation? Apply puts your sentence back.", "edit": edit}
+    inp = _inp(review=[flag, {**flag, "text": "4 mm", "edit": {"mode": "bogus"}},
+                       {"kind": "dictated_number_missing", "severity": "high", "text": "9 mm", "sentence": "x",
+                        "edit": edit}])
+    items = live.check_flag_items(inp, "run1")
+    assert [i.kind for i in items] == ["dictated_structure_changed", "dictated_structure_changed",
+                                       "dictated_number_missing"]
+    item = items[0]
+    assert item.cls == "action" and item.status == "open"
+    assert item.edit is not None and item.edit.model_dump(exclude_none=True) == edit
+    assert item.evidence["dictated_quote"] == "Segment 6 cyst 12 mm."
+    assert item.label == "Different site from your dictation? Apply puts your sentence back."
+    assert inp.artifacts.report[item.anchor.start:item.anchor.end] == "12 mm cyst."
+    assert items[1].edit is None and items[1].key != item.key   # a malformed edit: no Apply; the chain keys it
+    assert items[2].edit is None   # other flag kinds never carry an edit

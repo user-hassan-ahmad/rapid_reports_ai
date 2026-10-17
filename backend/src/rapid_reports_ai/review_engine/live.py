@@ -204,17 +204,31 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
 
 
 _FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing", "dictated_number_missing",
+               "dictated_structure_changed",
                "value_said_elsewhere"}   # the last: a quiet note (cls info), never a flag to act on
 _FLAG_LABEL = {
     "undictated_number": "Number not in the dictation: {text}",
     "dictated_number_missing": "Dictated number not in the report: {text}",
     "value_missing": "Required value not in the report: {text}",
+    "dictated_structure_changed": "Different site from your dictation? Apply puts your sentence back.",
 }
+_EDIT_KINDS = {"dictated_structure_changed"}   # the only flag that carries an edit (spec 2026-10-17 §3.5)
+
+
+def _flag_edit(e: dict) -> Optional[Edit]:
+    """The flag's own replace edit, for a kind that may carry one; None otherwise or when it is malformed."""
+    if e.get("kind") not in _EDIT_KINDS or not isinstance(e.get("edit"), dict):
+        return None
+    try:
+        return Edit(**e["edit"])
+    except Exception:  # noqa: BLE001 - a malformed edit leaves the card without Apply
+        return None
 
 
 def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
     """The post-gen check's review flags (`quality_check.review`: removed sentences, undictated numbers, missing
-    values) as open rail items (integration spec §7.6). No edit: the radiologist decides."""
+    values, moved values) as open rail items (integration spec §7.6). Only a moved value (dictated_structure_changed)
+    may carry an edit, applied only when the radiologist presses Apply; the rest have none."""
     if not inp.stack:
         return []
     report = inp.artifacts.report
@@ -228,7 +242,7 @@ def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         text = str(e.get("sentence") or e.get("text") or e.get("item") or "")
         label = e.get("message") or _FLAG_LABEL.get(kind, "{text}").format(text=e.get("text") or e.get("item") or text)
         key_text = text or str(label)
-        if kind == "dictated_number_missing" and e.get("text"):   # one item per missing number, not per sentence
+        if kind in ("dictated_number_missing", "dictated_structure_changed") and e.get("text"):   # one item per value
             key_text = f"{key_text} | {e['text']}"
         elif kind == "value_said_elsewhere":   # a value note names its value: two values from one sentence, two notes
             key_text = f"{e.get('text') or ''}|{text}"
@@ -241,7 +255,7 @@ def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         out.append(ReviewItem(
             key=key, report_id=inp.report_id, run_id=run_id, lane="accuracy",
             detectors=["post_check_flag"], kind=kind, cls="action" if e.get("severity") == "high" else "info",
-            anchor=anchor, label=str(label)[:80], reason=str(label), edit=None,
+            anchor=anchor, label=str(label)[:80], reason=str(label), edit=_flag_edit(e),
             evidence={"source": "post_check", **e}, status="open",
             history=[{"at": _now(), "event": "created", "actor": "post_check", "text_hash": h,
                       "detail": {"kind": kind}}]))
