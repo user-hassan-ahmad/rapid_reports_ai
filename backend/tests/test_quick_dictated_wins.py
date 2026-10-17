@@ -126,11 +126,11 @@ def test_non_stack_quick_prompts_are_unchanged():
 
 # ---- re-review of 60d29afb + Q27 (2026-10-17): suppressed terms, principle 1, impression terminology ----
 SUPPRESSED_STYLE = ("A suppressed term never appears in words the report adds itself, the impression included; a "
-                    "FINDINGS statement keeps it as dictated.")
+                    "term from a FINDINGS statement or the confirmed conclusion keeps the radiologist's wording.")
 SUPPRESSED_CHECK = ("- No suppressed term appears in words the report adds itself (impression included); a dictated "
-                    "FINDINGS term stays")
-VOICE_P1 = ("Model the voice in the words the report adds itself (joining words, the impression); FINDINGS statements "
-            "keep the radiologist's wording.")
+                    "FINDINGS term or a term from the confirmed conclusion stays")
+VOICE_P1 = ("Model the voice in the words the report adds itself (joining words, the impression's own wording); "
+            "FINDINGS statements keep the radiologist's wording.")
 
 
 def _flat(t: str) -> str:
@@ -164,3 +164,26 @@ def test_non_stack_suppressed_and_voice_rules_unchanged():
     assert SUPPRESSED_CHECK not in QR_VERIFICATION_CHECKLIST_BRIEF
     for t in (QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF):
         assert "Model the voice. DRAW CONTENT STRICTLY FROM DICTATION." in t and VOICE_P1 not in t
+
+
+# ---- Q29 (2026-10-17): a concluded term stays in the impression, even a suppressed one; report style is form only ----
+def test_concluded_term_stays_in_the_impression():
+    imp = _flat(QR_STYLE_GUIDE_STACK.split("### Impression\n", 1)[1].split("###", 1)[0])
+    assert "keeps the conclusion's and FINDINGS' own terms (abbreviations may be expanded)" in imp
+    term = _flat(QR_STYLE_GUIDE_STACK.split("### Terminology Enforcement", 1)[1].split("###", 1)[0])
+    assert SUPPRESSED_STYLE in term and "keeps it as dictated" not in term
+    assert "a term from the confirmed conclusion stays" in QR_VERIFICATION_CHECKLIST_STACK
+
+
+def test_voice_names_the_impressions_own_wording():
+    voice = _flat(QR_STYLE_GUIDE_STACK.split("### Voice", 1)[1].split("###", 1)[0])
+    assert "Words the report adds itself (joining words, the impression's own wording) avoid passive filler" in voice
+    assert "(joining words, the impression)" not in voice
+    assert "(joining words, the impression)" not in QUICK_REPORT_HARDENING_PREAMBLE_STACK
+
+
+def test_q29_scope_guard():
+    for t in (QR_STYLE_GUIDE, QR_STYLE_GUIDE_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE,
+              QUICK_REPORT_HARDENING_PREAMBLE_BRIEF):
+        assert "confirmed conclusion keeps the radiologist's wording" not in _flat(t)
+        assert "abbreviations may be expanded" not in t and "the impression's own wording" not in t

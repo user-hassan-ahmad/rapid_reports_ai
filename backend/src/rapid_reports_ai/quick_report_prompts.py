@@ -428,24 +428,26 @@ British English. Impersonal third-person — never "I" or "we". FINDINGS stateme
 (light grammar fixes only; statements may be joined as the Report Flow allows; abbreviations stay as dictated): never
 reframed into other radiological language, synonyms or a different sentence pattern.
 The conclusion and any selected recommendation are written in report style. Words the report adds itself (joining
-words, the impression) avoid passive filler ("is noted", "is seen") and weak existential openers ("there is").
+words, the impression's own wording) avoid passive filler ("is noted", "is seen") and weak existential openers
+("there is").
 
 """),
-    # Q27 + review of 60d29afb (2026-10-17): the sheet's term pairs apply only to words the writer chooses itself; a
-    # dictated or concluded term stays, in FINDINGS and in the impression
+    # Q27, Q29 + review of 60d29afb (2026-10-17): the sheet's term pairs apply only to words the writer chooses itself;
+    # a dictated or concluded term stays, in FINDINGS and in the impression, even one the sheet suppresses
     ("""Apply preferred/suppressed term pairs from the skill sheet across ALL sections
 including the impression. If a term is suppressed, it must never appear anywhere.""",
      """Apply preferred/suppressed term pairs from the skill sheet only to words the report chooses itself (joining
 words, and the impression's own wording); a FINDINGS statement keeps the dictated terms, and a term taken from a
 FINDINGS statement or the confirmed conclusion keeps the radiologist's wording, in FINDINGS and in the impression.
-A suppressed term never appears in words the report adds itself, the impression included; a FINDINGS statement
-keeps it as dictated."""),
+A suppressed term never appears in words the report adds itself, the impression included; a term from a FINDINGS
+statement or the confirmed conclusion keeps the radiologist's wording."""),
     (_between(QR_STYLE_GUIDE_BRIEF, "### Impression as Synthesis", "### Incidental Findings"),
      """### Impression
 
 The impression phrases the radiologist's confirmed conclusion (the skill sheet's Impression Plan) in report style:
 its findings, negatives and any recommendation, in its order. It adds no finding, diagnosis, negative, synthesis or
-recommendation of its own, and keeps the conclusion's and FINDINGS' own terms.
+recommendation of its own, and keeps the conclusion's and FINDINGS' own terms (abbreviations may be expanded).
+Report style governs sentence form only.
 
 """),
     ("""Before including an incidental in the impression: does it require clinical action,
@@ -498,8 +500,9 @@ QR_VERIFICATION_CHECKLIST_STACK = _swaps(
 - No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it; a FINDINGS statement licenses only what it says itself, never a broader removed sentence
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
-    ("- No suppressed terms appear anywhere including the impression",   # Q27
-     "- No suppressed term appears in words the report adds itself (impression included); a dictated FINDINGS term stays"),
+    ("- No suppressed terms appear anywhere including the impression",   # Q27, Q29
+     "- No suppressed term appears in words the report adds itself (impression included); a dictated FINDINGS term or "
+     "a term from the confirmed conclusion stays"),
     ("- Recommendations are specific (specialty, urgency, pathway)",
      "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
 )
