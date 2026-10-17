@@ -44,13 +44,22 @@ survives (step 2), and the structure the number belongs to survives (this step).
    label or markdown ("AORTA:", "- ", "**Liver:**") is stripped from the dictated sentence, and from the report
    sentence only to form the edit's `find` (§3.5). A value-only fragment — no word besides the value, its unit and a
    measure name also in the dictated sentence ("LVEF 45%.") — is joined to the sentence before it. A dictated sentence equal to a removed sentence is dropped. Identical pairs
-   are merged.
+   are merged. Each dictated source may carry the scratchpad region it was said under (end review 2026-10-17):
+   `findings_block` builds `Statements.said_regions`, parallel to `said_parts` (a placed unit or part: its group;
+   a tapped row: its region; Technique, General, unplaced units and typed values: none), and the report route
+   passes `(region, text)` sources; the pair carries `region` ("" when none). `said_parts` itself is unchanged.
 2. **Pass in code first.** A pair whose report sentence, normalised (case, whitespace, punctuation), contains the
-   dictated sentence's normalised text passes without a Jev question.
+   dictated sentence's normalised text passes without a Jev question — and, when the dictated sentence has a
+   region, only if the report sentence also holds every word of that region (else it goes to Jev: "Cyst 2 cm."
+   under Right kidney vs "Left kidney: cyst 2 cm." is asked).
 3. **Judge (Jev).** One request per report. `state` is a dict of numbered pairs (`{"pair_1": {"dictated": ..,
-   "report": ..}, ...}`); one `noul` question per pair, wording W1 from the lab, verbatim:
+   "dictated_region": .. ("" when none), "report": ..}, ...}`); one `noul` question per pair, wording W1 from the
+   lab, verbatim, plus one region sentence (end review 2026-10-17); the text is
+   `dictated_structure_check.QUESTION` (`{key}` = the pair key), for the lab to import:
    "In pair_N, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and level as
-   the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does not."
+   the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does not. The
+   DICTATED sentence was said under the region named in dictated_region; read it as about that region when it names
+   no structure itself."
    A pair fails when P(yes) < 0.7 (`SAME_SITE_MIN`, lab §7). At most 12 pairs per report, in report order; any beyond are not asked and are
    logged as `structure_name_unchecked` (no item). A chain **passes if any** of its FINDINGS sentences is judged the
    same site.
@@ -72,14 +81,20 @@ survives (step 2), and the structure the number belongs to survives (this step).
    - the stripped line label holds no content word that the dictated sentence lacks ("RIGHT KIDNEY:" above a
      left-kidney value withholds the edit; side words are not exempt here);
    - the report sentence and the dictated sentence carry the same set of number chains (no merged value, no split);
-   - the report sentence has no more clause joiners ("and", "with", ";", ",") than the dictated sentence (no merged
-     number-free statement, e.g. "... 4.1 cm with no aortic regurgitation");
+   - the report sentence has no more clause joiners than the dictated sentence (no merged number-free statement,
+     e.g. "... 4.1 cm with no aortic regurgitation"). Joiners: and, with, without, but, whereas, which, while,
+     although, except, otherwise, ";", ",", "(", ")", " - ", "—";
+   - the report sentence has at most 2 content words (not a stopword; levels never count) that the dictated sentence
+     lacks (`NEW_WORDS_MAX`, a backstop: "The left kidney contains a 2 cm cyst." vs "Cyst 2 cm." withholds). Side
+     words count here unless the dictated sentence names a side itself, in which case the side is the correction;
    - the report sentence holds no content word (not a stopword) that appears in another dictated statement of the
      same report but not in this pair's dictated sentence (the writer merged that statement in, e.g. "simple" from
-     "The cyst is simple."); side words (left, right, bilateral, bilaterally) are exempt, since they are what the
-     check corrects; vertebral and disc levels ("L4/5") hold digits and are never content words;
+     "The cyst is simple.") or in a confirmed assumed normal (`gate.assumed` minus removed: read by this guard only,
+     never paired); side words (left, right, bilateral, bilaterally) are exempt, since they are what the check
+     corrects; vertebral and disc levels ("L4/5") hold digits and are never content words;
    - `find` occurs exactly once in the report (the rail and verifier require it: `edits.ts:214`, `verifier.py:235`).
-   Otherwise the card has no edit; the radiologist edits by hand.
+   Otherwise the card has no edit; the radiologist edits by hand. The replace is the dictated sentence as said, never
+   prefixed with its region; the backstop and the label rule withhold an edit that would lose the region.
 6. **Fails open, small budget.** A Jev error, a timeout (3 s, as `jev_stack.TIMEOUT_S`; lab median ~0.25 s) or a
    partial answer gives no item and logs `structure_name_check_unavailable`. It runs inline after the number check
    and adds at most the timeout to Generate. Never raises; never edits the report itself.
@@ -144,5 +159,9 @@ A `check_flag_items` test that the edit and `dictated_quote` reach the item.
 - Close-neighbour renames Jev reads as the same site (CBD → common hepatic duct, pancreatic head → pancreatic mass)
   slip through; revisit only if real reports show them (Q48).
 - Statements without a number or unit are not checked until D18 (quick) or a later template pairing.
+- The edit guards are word lists, not meaning: a merged clause with no joiner and at most 2 new words can still be
+  replaced (e.g. a one-word qualifier); the radiologist sees the dictated sentence on the card before Apply.
+- A region-less dictated sentence that the report holds word for word passes in code even if the report placed it
+  under another label; regioned sentences are checked against the region's words.
 - A sentence split by an abbreviation full stop may pair on a fragment; the edit is then withheld by the rules in §3.5
   when the fragment's chains or joiners differ, and the lab counts how often it happens.
