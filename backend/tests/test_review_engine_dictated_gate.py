@@ -459,8 +459,9 @@ async def test_ask_recs_sends_one_request_with_the_q3_question_per_recommendatio
     from rapid_reports_ai.review_engine.provenance import q_synthesis
     r, d, flagged = BLENDED
     _, _, ask_log, sent = await _live_rec_jev(monkeypatch, r, d, ADDED_ANS)
-    assert len(sent) == 1 and "DICTATED FINDINGS:" in sent[0][0]
-    assert [q for k, q in sent[0][1].items() if k.startswith("rec")] == [q_synthesis(flagged, flagged)]
+    rec = [qs for _, qs in sent if any(k.startswith("rec") for k in qs)]
+    assert len(rec) == 1 and all("DICTATED FINDINGS:" in st for st, _ in sent)
+    assert list(rec[0].values()) == [q_synthesis(flagged, flagged)]       # the instruction questions go separately
     assert ask_log["asked"] == 1 and ask_log["error"] is None
 
 
@@ -520,7 +521,8 @@ async def test_ask_recs_asks_nothing_without_a_recommendation(monkeypatch):
     monkeypatch.setattr(rc, "_jev", fake)
     i, al, texts = _unit_texts("FINDINGS:\nA pancreatic mass.\n", "- Pancreatic mass")
     g = dg.classify(i, "FINDINGS:\nA pancreatic mass.\n", al, _jp(texts, [0.9] * len(texts), ["abnormal"] * len(texts)))
-    assert await dg.ask_recs(i, al, g) == ({}, {}, {"asked": 0, "asked_instructions": 0, "error": None})
+    assert await dg.ask_recs(i, al, g) == ({}, {}, {"asked": 0, "asked_instructions": 0, "error": None,
+                                                    "instruction_error": None})
     assert called == []
 
 
@@ -606,7 +608,8 @@ async def test_ask_recs_asks_the_instruction_question_for_each_impression_senten
     imp = ["7 mm right upper lobe nodule.", instr]
     assert len(sent) == 1 and list(sent[0].values()) == [dg.q_instruction(s) for s in imp]
     k = r.index(instr)
-    assert ins_jev[(k, k + len(instr))] == 0.99 and log == {"asked": 0, "asked_instructions": 2, "error": None}
+    assert ins_jev[(k, k + len(instr))] == 0.99
+    assert log == {"asked": 0, "asked_instructions": 2, "error": None, "instruction_error": None}
 
 
 @pytest.mark.asyncio
@@ -629,7 +632,7 @@ async def test_no_instruction_item_below_the_threshold_or_without_an_answer(monk
     prov, _, _, alog = dg.apply(i, RUN, al, g, [], [], rec_jev=rec_jev, ins_jev=ins_jev)
     assert [it for it in prov if it.kind == dg.KIND_INSTRUCTION] == [] and alog["instructions"] == 0
     if isinstance(answer, Exception):
-        assert log["error"]
+        assert log["instruction_error"] and log["error"] is None   # no recommendation was asked
 
 
 @pytest.mark.asyncio
@@ -655,5 +658,71 @@ async def test_findings_sentences_are_never_asked(monkeypatch):
     monkeypatch.setattr(rc, "_jev", fake)
     r = "FINDINGS:\nA pancreatic mass. Delete the technique section.\n"
     i, al, g = _instr_gate(r, "- Pancreatic mass\n- Delete the technique section.")
-    assert await dg.ask_recs(i, al, g) == ({}, {}, {"asked": 0, "asked_instructions": 0, "error": None})
+    assert await dg.ask_recs(i, al, g) == ({}, {}, {"asked": 0, "asked_instructions": 0, "error": None,
+                                                    "instruction_error": None})
     assert called == []
+
+
+@pytest.mark.asyncio
+async def test_instruction_questions_go_in_their_own_requests_of_at_most_six(monkeypatch):
+    # a long Comment / Conclusion section must not put the recommendation answers at risk
+    imp = " ".join(f"Finding number {n} is stable." for n in range(7)) + " CT in 3 months and refer to MDT."
+    r = f"FINDINGS:\nThere is a 7 mm solid nodule in the right upper lobe.\n\nIMPRESSION:\n{imp}\n"
+    d = "7 mm solid nodule right upper lobe.\n7 mm nodule, suggest CT in 3 months."
+    i, al, g = _rec_gate(r, d, 0.2)
+    sent = []
+
+    async def fake(state, qs):
+        sent.append(sorted(qs))
+        if any(k.startswith("ins") for k in qs):
+            raise RuntimeError("jev down")
+        return {k: ADDED_ANS for k in qs}
+    monkeypatch.setattr(rc, "_jev", fake)
+    rec_jev, ins_jev, log = await dg.ask_recs(i, al, g)
+    assert sorted(len(q) for q in sent) == [1, 2, 6]
+    assert [q for q in sent if any(k.startswith("rec") for k in q)] == [["rec0"]]
+    assert list(rec_jev.values()) == [pytest.approx(0.05)] and ins_jev == {}
+    assert log["error"] is None and log["instruction_error"] and log["asked_instructions"] == 8
+
+
+@pytest.mark.asyncio
+async def test_a_failed_recommendation_request_keeps_the_instruction_answers(monkeypatch):
+    r, d, _ = BLENDED
+    instr = "Delete the technique section."
+    r = r.replace("refer to MDT.\n", f"refer to MDT. {instr}\n")
+    i, al, g = _rec_gate(r, d, 0.2)
+
+    async def fake(state, qs):
+        if any(k.startswith("rec") for k in qs):
+            raise RuntimeError("jev down")
+        return {k: EDITOR_ANS for k in qs}
+    monkeypatch.setattr(rc, "_jev", fake)
+    rec_jev, ins_jev, log = await dg.ask_recs(i, al, g)
+    k = r.index(instr)
+    assert ins_jev[(k, k + len(instr))] == 0.99 and log["instruction_error"] is None
+    assert rec_jev == {} and log["error"]                               # the word rule decides the recommendation
+
+
+@pytest.mark.asyncio
+async def test_a_conclusion_section_is_asked_too(monkeypatch):
+    r = "FINDINGS:\nA pancreatic mass.\nCONCLUSION:\nPancreatic mass. Delete the technique section.\n"
+    _, _, _, _, ins_jev, log, _ = await _ask(monkeypatch, r, "- Pancreatic mass\n- Delete the technique section.",
+                                             EDITOR_ANS)
+    assert log["asked_instructions"] == 2 and len(ins_jev) == 2
+
+
+def test_a_flagged_sentence_gets_one_item_and_no_violet_tint():
+    import dataclasses
+    r, _, _ = INSTR
+    instr = "Kindly drop the technique paragraph."                   # the writer reworded the instruction
+    r = r.replace("Delete the technique section.", instr)
+    i, al, texts = _unit_texts(r, INSTR[1])
+    g = dg.classify(i, r, al, _jp(texts, [0.9 if t != instr else 0.1 for t in texts], ["abnormal"] * len(texts)))
+    x = next(c for c in g if c.text == instr)
+    assert x.tier == "synth"                                   # a writer's rewording would be tinted violet
+    k = r.index(instr)
+    se = (x.aclause.sentence_start, x.aclause.sentence_end)
+    assert se == (k, k + len(instr))
+    prov, _, _, log = dg.apply(i, RUN, al, g + [dataclasses.replace(x)], [], [], ins_jev={se: 0.99})
+    on = [it.kind for it in prov if it.anchor.start < se[1] and se[0] < it.anchor.end]
+    assert on == [dg.KIND_INSTRUCTION] and log["instructions"] == 1

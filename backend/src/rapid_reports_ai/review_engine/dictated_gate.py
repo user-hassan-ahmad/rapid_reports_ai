@@ -15,6 +15,7 @@ RR_DICTATED_GATE = off (default) | shadow (ask and log, display unchanged) | liv
 provenance's; today's path is the fallback on any gate failure)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -278,6 +279,7 @@ def _rec_said(al: Alignment, c: ReportClause) -> bool:
 
 
 KIND_INSTRUCTION = "editing_instruction"
+INSTRUCTION_CHUNK = 6    # instruction questions per request (the lab's batch); sent alongside, never with, the recs
 INSTRUCTION_MIN = 0.95   # P(report_editor) >= this → flagged (synthetic lab 2026-10-17: instructions 0.98-1.00;
 #                          imperative recommendations, findings, technique / comparison / communication sentences
 #                          <= 0.81 bar one contrived "Delete nothing; ..." at 0.81-0.94)
@@ -329,18 +331,26 @@ async def ask_recs(inp: ReviewInput, al: Alignment, gate: List[GateClause]
         sentence = report[c.sentence_start:c.sentence_end]
         s, e, _ = _rec_target(report, c, sentence, names)
         targets.append((s, e, sentence))
-    log: dict = {"asked": len(targets), "asked_instructions": len(sentences), "error": None}
-    if not targets and not sentences:
-        return {}, {}, log
-    qs = {f"rec{k}": q_synthesis(sentence, report[s:e]) for k, (s, e, sentence) in enumerate(targets)}
-    qs.update({f"ins{k}": q_instruction(report[s:e]) for k, (s, e) in enumerate(sentences)})
-    try:
-        ans = await rc._jev(synthesis_state(inp), qs) or {}
-    except Exception as ex:  # noqa: BLE001 - no answer: the word rule decides, never a silent drop
-        log["error"] = f"{type(ex).__name__}: {str(ex)[:200]}"
-        return {}, {}, log
-    return ({(s, e): p_dictated(ans.get(f"rec{k}")) for k, (s, e, _) in enumerate(targets)},
-            {se: _p_choice(ans.get(f"ins{k}"), "report_editor") for k, se in enumerate(sentences)}, log)
+    log: dict = {"asked": len(targets), "asked_instructions": len(sentences), "error": None,
+                 "instruction_error": None}
+    st = synthesis_state(inp)
+
+    async def ask(qs: Dict[str, dict], err: str) -> dict:
+        if not qs:
+            return {}
+        try:
+            return await rc._jev(st, qs) or {}
+        except Exception as ex:  # noqa: BLE001 - no answer: the word rule decides recs; no instruction item
+            log[err] = f"{type(ex).__name__}: {str(ex)[:200]}"
+            return {}
+    rec_q = {f"rec{k}": q_synthesis(sentence, report[s:e]) for k, (s, e, sentence) in enumerate(targets)}
+    ins_q = [{f"ins{k}": q_instruction(report[s:e]) for k, (s, e) in enumerate(sentences[a:a + INSTRUCTION_CHUNK], a)}
+             for a in range(0, len(sentences), INSTRUCTION_CHUNK)]
+    rec_ans, *ins_ans = await asyncio.gather(ask(rec_q, "error"), *(ask(q, "instruction_error") for q in ins_q))
+    ins = {k: v for a in ins_ans for k, v in a.items()}
+    return ({(s, e): p_dictated(rec_ans.get(f"rec{k}")) for k, (s, e, _) in enumerate(targets) if rec_ans},
+            {se: _p_choice(ins.get(f"ins{k}"), "report_editor") for k, se in enumerate(sentences)
+             if f"ins{k}" in ins}, log)
 
 
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
@@ -360,8 +370,8 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
       below. Only when Jev has no answer for it (request failed, answer unreadable) does the word rule `_rec_said`
       decide: near-verbatim rewordings clear, partial overlap keeps the item;
     - impression sentence `ins_jev` (`ask_recs`) puts at P(report_editor) >= INSTRUCTION_MIN, whatever its tier: one
-      `editing_instruction` item (cls action, no edit: the radiologist removes it or makes the change), and no
-      recommendation item on that sentence."""
+      `editing_instruction` item (cls action, no edit: the radiologist removes it or makes the change), and no other
+      gate item (quiet, synthesis, recommendation) on that sentence."""
     from .items import text_hash
     from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, SYNTH_DICTATED, _ai_item, _new_item, _rec_target,
                              template_spans, untemplated)
@@ -393,12 +403,15 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
         if se in instr:
             instr.discard(se)
             prov.append(_new_item(inp, run_id, "accuracy", KIND_INSTRUCTION, "action", DETECTOR, g.section or "",
-                                  se[0], se[1], "Reads as an instruction, not report text",
-                                  "This sentence tells the report writer to change the report. Remove it, or make "
-                                  "the change and remove it.", {"source": DETECTOR, "p": (ins_jev or {}).get(se)}))
+                                  se[0], se[1], "Instruction, not report text",
+                                  "This sentence reads as an instruction to the report writer. Make the change it "
+                                  "asks for if you want it, then delete the instruction from the report.",
+                                  {"source": DETECTOR, "p": (ins_jev or {}).get(se)}))
     flagged = {(it.anchor.start, it.anchor.end) for it in prov}
     synth, rec_seen, unplaced, capped = 0, set(), sum(1 for g in gate if g.start is None), 0
     for g in placed:
+        if g.aclause is not None and (g.aclause.sentence_start, g.aclause.sentence_end) in flagged:
+            continue                     # the instruction card owns the sentence: no tint or rec item under it
         if g.tier == "quiet":
             qs, qe = g.quiet_span or (g.start, g.end)
             if not any(_overlaps(it, g.start, g.end) for it in existing):
@@ -422,7 +435,7 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
             synth += 1
         elif g.tier == "rec":
             c = g.aclause
-            if c is None or c.sentence_start in rec_seen or (c.sentence_start, c.sentence_end) in flagged:
+            if c is None or c.sentence_start in rec_seen:
                 unplaced += c is None
                 continue
             rec_seen.add(c.sentence_start)

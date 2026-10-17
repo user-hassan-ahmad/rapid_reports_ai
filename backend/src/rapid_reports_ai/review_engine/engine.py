@@ -732,6 +732,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                 rec_jev, ins_jev, rec_log = await dictated_gate.ask_recs(inp, al, gate_clauses)
                 if rec_log.get("error"):
                     errors["rec_jev"] = rec_log["error"]
+                if rec_log.get("instruction_error"):
+                    errors["instruction_jev"] = rec_log["instruction_error"]
                 g_prov, g_neg, g_brief, live_log = dictated_gate.apply(
                     inp, run_id, al, gate_clauses, neg_items, brief_items, rec_jev=rec_jev, ins_jev=ins_jev)
                 live_log["rec_jev"] = rec_log
