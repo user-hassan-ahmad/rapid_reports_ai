@@ -4,7 +4,7 @@
 
 **Goal:** Flag a dictated value the writer put on a different structure ("aortic sinus 4.1 cm" → "aortic root 4.1 cm") as an action card on the review rail, with an Apply that puts the dictated sentence back when that is safe.
 
-**Architecture:** `dictated_number_check.pairs()` pairs each dictated chain with the FINDINGS sentences that hold it (reusing the number check's extraction and an abbreviation-aware splitter in `template_number_check`). A new `dictated_structure_check.py` passes pairs in code when the report sentence contains the dictated sentence, asks Jev (one request, W1 wording, P(yes) < 0.7 = different site, at most 12 pairs) about the rest, and emits `dictated_structure_changed` review flags with an optional replace edit. `hybrid_stack/report.py` calls it after the number check behind `RR_DICTATED_STRUCTURES` (off by default); `review_engine/live.check_flag_items` passes the kind, label and edit through to the rail. No frontend source changes.
+**Architecture:** `dictated_number_check.pairs()` pairs each dictated chain with the FINDINGS sentences that hold it, reusing the number check's extraction with its own abbreviation-aware splitter (`sentence_spans`, used by this check only; the existing number checks and `template_number_check` are untouched). A new `dictated_structure_check.py` passes pairs in code when the report sentence contains the dictated sentence, asks Jev about the rest (one request, W1 wording, the full report sentence with any line label, P(yes) < 0.7 = different site, at most 12 pairs), and emits `dictated_structure_changed` review flags with an optional replace edit. `hybrid_stack/report.py` calls it after the number check behind `RR_DICTATED_STRUCTURES` (off by default: flag off is exactly zero change); `review_engine/live.check_flag_items` passes the kind, label and edit through to the rail. No frontend source changes.
 
 **Tech Stack:** Python 3 (FastAPI backend, pydantic, pytest with `asyncio_mode = "auto"`), Jev via `jev_client.jev_post`; Svelte 5 + vitest browser tests for the one rail test.
 
@@ -17,7 +17,6 @@
 - Worktree: `/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name` (branch `feat/structure-name-check`). All paths below are relative to it.
 - Backend test command (run from `backend/`):
   `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest <path> -q`
-  Below this is abbreviated as `$PYTEST <path>`; always type the full command.
 - Known unrelated failure in the full suite: `tests/test_provider_key_routing.py` (one parametrised case). Ignore it.
 - All test data is freshly written SYNTHETIC text. Never copy anything from the private lab repo (`rr-template-conversion-private/synthetic/structure_name/`) into this repo; only its logic is ported (already done in the code below).
 - Commit messages end with the two trailer lines:
@@ -31,128 +30,24 @@
 
 | File | Change | Responsibility |
 |---|---|---|
-| `backend/src/rapid_reports_ai/template_number_check.py` | modify | `sentence_spans()` (abbreviation-aware splitter); `_sentence()` uses it |
-| `backend/src/rapid_reports_ai/dictated_number_check.py` | modify | `Pair`, `pairs()`, and its helpers `findings_only`, `chains`, `chain_keys`, `strip_prefix`, `norm`; `missing_dictated_numbers` unchanged |
+| `backend/src/rapid_reports_ai/dictated_number_check.py` | modify (append) | `Pair`, `pairs()` and its helpers `sentence_spans`, `findings_only`, `chains`, `chain_keys`, `strip_prefix`, `norm`; `missing_dictated_numbers` and its `_sentence` import unchanged |
 | `backend/src/rapid_reports_ai/dictated_structure_check.py` | create | flag, Jev question/state/call, code pass, judge, items, edit guard |
 | `backend/src/rapid_reports_ai/hybrid_stack/report.py` | modify | one call after the number check (shared source list) |
 | `backend/src/rapid_reports_ai/review_engine/live.py` | modify | kind in `_FLAG_KINDS`/`_FLAG_LABEL`, key on chain + sentence, edit pass-through |
-| `backend/tests/test_template_number_check.py` | modify | splitter tests |
-| `backend/tests/test_dictated_structure_pairs.py` | create | pairing tests |
+| `backend/tests/test_dictated_structure_pairs.py` | create | splitter, impression cut, prefix and pairing tests |
 | `backend/tests/test_dictated_structure_check.py` | create | judge, items, edit, Jev call tests |
 | `backend/tests/test_stack_review_engine.py` | modify | `check_flag_items` carries edit + `dictated_quote` |
 | `backend/tests/test_stack_generate_endpoint.py` | modify | report route with the flag on/off |
 | `frontend/src/lib/review/rail/ReviewRail.svelte.test.ts` | modify | the card renders with Apply and "You dictated:" |
 
----
-
-### Task 1: Abbreviation-aware sentence splitter
-
-**Files:**
-- Modify: `backend/src/rapid_reports_ai/template_number_check.py:124-128` (`_sentence`)
-- Test: `backend/tests/test_template_number_check.py` (append)
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `backend/tests/test_template_number_check.py`:
-
-```python
-
-
-# --- sentence splitting (structure-name check, spec 2026-10-17 §3.1) ---
-
-def test_an_abbreviation_or_initial_does_not_end_a_sentence():
-    from rapid_reports_ai.template_number_check import sentence_spans
-    text = "Cyst approx. 4 cm in segment 6, e.g. simple. Seen by Dr J. Smith. Spleen 11 cm."
-    got = [text[s:e].strip() for s, e in sentence_spans(text)]
-    assert got == ["Cyst approx. 4 cm in segment 6, e.g. simple.", "Seen by Dr J. Smith.", "Spleen 11 cm."]
-
-
-def test_a_decimal_and_a_letter_after_a_digit_still_split_correctly():
-    from rapid_reports_ai.template_number_check import _sentence
-    assert _sentence("Duct 6.5 mm. Next.", 5) == "Duct 6.5 mm."
-    assert _sentence("Lesion in segment 4a. Spleen 11 cm.", 25) == "Spleen 11 cm."
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
-
-Run (from `backend/`): `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_template_number_check.py -q`
-Expected: `test_an_abbreviation_or_initial_does_not_end_a_sentence` FAILS with `ImportError: cannot import name 'sentence_spans'`; the other new test passes (it guards the decimal and "4a." behaviour that must not change).
-
-- [ ] **Step 3: Implement**
-
-In `backend/src/rapid_reports_ai/template_number_check.py`, replace:
-
-```python
-def _sentence(report: str, start: int) -> str:
-    """The sentence holding `start`: from the last end (., !, ? before a space, or a line break) to the next."""
-    a = max((m.end() for m in _END.finditer(report, 0, start)), default=0)
-    m = _END.search(report, start)
-    return report[a:m.end() if m else len(report)].strip()
-```
-
-with:
-
-```python
-_ABBR = {"approx", "e.g", "eg", "i.e", "ie", "vs", "cf", "etc"}
-_WORD_BEFORE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z.]*)\Z")
-
-
-def _is_end(text: str, m: "re.Match[str]") -> bool:
-    """A sentence end, unless a lone full stop closes an abbreviation (approx., e.g., i.e., vs., cf., etc.) or a
-    single-letter initial."""
-    if m.group(0) != ".":
-        return True
-    w = _WORD_BEFORE.search(text[max(0, m.start() - 24):m.start()])
-    if not w:
-        return True
-    tok = w.group(1).lower()
-    return not (tok in _ABBR or (len(tok) == 1 and tok.isalpha()))
-
-
-def sentence_spans(text: str) -> List[Tuple[int, int]]:
-    """[(start, end)] of the non-blank sentences of `text`: an end is ., !, ? before a space or the end, or a line
-    break; never inside a decimal, after an abbreviation or after a single-letter initial."""
-    out, a = [], 0
-    for m in _END.finditer(text):
-        if _is_end(text, m):
-            out.append((a, m.end()))
-            a = m.end()
-    if a < len(text):
-        out.append((a, len(text)))
-    return [(s, e) for s, e in out if text[s:e].strip()]
-
-
-def _sentence(report: str, start: int) -> str:
-    """The sentence holding `start` (`sentence_spans`)."""
-    for s, e in sentence_spans(report):
-        if s <= start < e:
-            return report[s:e].strip()
-    return ""
-```
-
-(`List` and `Tuple` are already imported: `from typing import Iterable, List, Optional, Set, Tuple`. The lookbehind in `_WORD_BEFORE` keeps "4a." a sentence end: a letter after a digit is not an initial.)
-
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_template_number_check.py tests/test_dictated_number_check.py -q`
-Expected: all pass (the existing number-check tests use `_sentence` and must not change).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add backend/src/rapid_reports_ai/template_number_check.py backend/tests/test_template_number_check.py
-git commit -m "feat(numbers): abbreviation-aware sentence splitter
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
-```
+`backend/src/rapid_reports_ai/template_number_check.py` is NOT modified (review decision: the shared `_sentence` and its callers stay exactly as they are).
 
 ---
 
-### Task 2: `pairs()` in the number check
+### Task 1: Pairing in the number check (`sentence_spans`, `findings_only`, `pairs`)
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/dictated_number_check.py` (imports at lines 23-25; append before `__all__` at the end)
+- Modify: `backend/src/rapid_reports_ai/dictated_number_check.py` (the `typing` import at line 23; append before `__all__` at the end)
 - Create: `backend/tests/test_dictated_structure_pairs.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -161,11 +56,34 @@ Create `backend/tests/test_dictated_structure_pairs.py`:
 
 ```python
 """Structure-name check pairing (spec 2026-10-17 §3.1): dictated chain -> FINDINGS sentences. SYNTHETIC."""
-from rapid_reports_ai.dictated_number_check import Pair, findings_only, pairs, strip_prefix
+import pytest
+
+from rapid_reports_ai.dictated_number_check import Pair, findings_only, pairs, sentence_spans, strip_prefix
 
 
 def P(report, *sources, removed=()):
     return [(p.dictated, p.report, p.chain) for p in pairs(report, list(sources), removed)]
+
+
+def S(text):
+    return [text[s:e].strip() for s, e in sentence_spans(text)]
+
+
+# --- sentences (this check's own splitter) ---
+
+def test_an_abbreviation_or_a_decimal_does_not_end_a_sentence():
+    assert S("Cyst approx. 4 cm in segment 6, e.g. simple. Duct 6.5 mm vs. 5 mm before. Spleen 11 cm.") == [
+        "Cyst approx. 4 cm in segment 6, e.g. simple.", "Duct 6.5 mm vs. 5 mm before.", "Spleen 11 cm."]
+
+
+@pytest.mark.parametrize("text, first", [
+    ("Stanford type A. Aortic root 4.1 cm.", "Stanford type A."),
+    ("Cyst in segment I. Spleen 11 cm.", "Cyst in segment I."),
+    ("Bosniak category I. Cyst 2 cm.", "Bosniak category I."),
+    ("History of hepatitis B. Liver 15 cm.", "History of hepatitis B."),
+])
+def test_a_single_letter_before_a_full_stop_ends_the_sentence(text, first):
+    assert S(text)[0] == first and len(S(text)) == 2
 
 
 def test_label_and_bullet_prefixes_are_stripped_unless_nothing_else_is_left():
@@ -175,17 +93,32 @@ def test_label_and_bullet_prefixes_are_stripped_unless_nothing_else_is_left():
     assert strip_prefix("LVEF: 45%.") == "LVEF: 45%."
 
 
+# --- the impression cut ---
+
 def test_the_impression_is_cut_from_its_heading_line():
     report = "FINDINGS\nAortic root 4.1 cm.\n\nConclusion: aortic sinus 4.1 cm.\n"
     assert findings_only(report) == "FINDINGS\nAortic root 4.1 cm.\n\n"
-    assert findings_only("FINDINGS\nA 2 cm.\nIMPRESSION\nB 2 cm.\nCOMPARISON\nC 2 cm.") == \
-        "FINDINGS\nA 2 cm.\nCOMPARISON\nC 2 cm."
+    assert findings_only("FINDINGS\nA 2 cm.\n**IMPRESSION**\nB 2 cm.") == "FINDINGS\nA 2 cm.\n"
     assert findings_only("FINDINGS\nA 2 cm.") == "FINDINGS\nA 2 cm."
 
 
-def test_a_single_pair():
+def test_the_impression_ends_at_the_next_heading_line():
+    assert findings_only("FINDINGS\nA 2 cm.\nIMPRESSION\nB 2 cm.\nCOMPARISON\nC 2 cm.") == \
+        "FINDINGS\nA 2 cm.\nCOMPARISON\nC 2 cm."
+    assert findings_only("FINDINGS\nA 2 cm.\nImpression: B 2 cm.\nComparison: C 2 cm.") == \
+        "FINDINGS\nA 2 cm.\nComparison: C 2 cm."
+
+
+def test_a_sentence_starting_with_the_word_impression_is_not_a_heading():
+    report = "FINDINGS\nImpression of mild thickening 4 mm.\nSpleen 11 cm."
+    assert findings_only(report) == report
+
+
+# --- pairs ---
+
+def test_a_single_pair_keeps_the_report_line_label():
     assert P("FINDINGS\nAORTA: Aortic root 4.1 cm.", "Aortic sinus 4.1 cm.") == [
-        ("Aortic sinus 4.1 cm.", "Aortic root 4.1 cm.", "4.1 cm")]
+        ("Aortic sinus 4.1 cm.", "AORTA: Aortic root 4.1 cm.", "4.1 cm")]
 
 
 def test_a_value_in_two_findings_sentences_gives_two_pairs_and_the_impression_none():
@@ -237,23 +170,19 @@ Expected: collection ERROR, `ImportError: cannot import name 'Pair' from 'rapid_
 
 - [ ] **Step 3: Implement**
 
-In `backend/src/rapid_reports_ai/dictated_number_check.py` replace the two import lines
+In `backend/src/rapid_reports_ai/dictated_number_check.py` replace the import line
 
 ```python
 from typing import Iterable, List, Optional
-
-from .template_number_check import _masked, _sentence
 ```
 
 with
 
 ```python
 from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
-
-from .template_number_check import _masked, _sentence, sentence_spans
 ```
 
-Then replace the last line
+(leave `from .template_number_check import _masked, _sentence` as it is). Then replace the last line
 
 ```python
 __all__ = ["KIND", "FLAG", "Num", "enabled", "extract", "missing_dictated_numbers"]
@@ -266,21 +195,44 @@ with:
 
 # a leading bullet or number, then a line label ("AORTA: ", "**Liver:** ")
 _PREFIX = re.compile(r"^\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:\*\*[^*\n]{1,60}?:?\*\*:?\s*|[A-Za-z][A-Za-z /&()'-]{0,40}:\s+)?")
-_IMPRESSION = re.compile(r"(?im)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?(?:impression|conclusion)s?\b")
-_HEADING = re.compile(r"(?m)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?[A-Z][A-Z /&()-]{2,40}:?(?:\*\*)?[ \t]*$")   # all-caps line
+# the impression heading: the word alone on its line or followed by a colon, any case ("Impression of ..." is no heading)
+_IMPRESSION = re.compile(r"(?im)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?(?:impression|conclusion)s?(?:\*\*)?[ \t]*(?::|$)")
+# the next heading after it: an all-caps line, or words and a colon at a line start ("Comparison: ...")
+_HEADING = re.compile(r"(?m)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?(?:[A-Z][A-Z /&()-]{2,40}:?(?:\*\*)?[ \t]*$"
+                      r"|[A-Za-z][A-Za-z /&()-]{1,40}:)")
 _LETTERS = re.compile(r"[a-z][a-z']+")
+_SENT_END = re.compile(r"[.!?]+(?=\s|$)|\n")
+_ABBR = {"approx", "e.g", "eg", "i.e", "ie", "vs", "cf", "etc"}
+_WORD_BEFORE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z.]*)\Z")
 
 
 @dataclass(frozen=True)
 class Pair:
     dictated: str   # the dictated sentence holding the chain, label prefix stripped
-    report: str     # the FINDINGS sentence holding every value of the chain, label prefix stripped
+    report: str     # the FINDINGS sentence holding every value of the chain, as written (any line label kept)
     chain: str      # the dictated chain as written ("2.3 x 1.8 cm")
 
 
+def sentence_spans(text: str) -> List[Tuple[int, int]]:
+    """[(start, end)] of the non-blank sentences of `text` (this check only; the number checks keep
+    `template_number_check._sentence`): an end is ., !, ? before a space or the end, or a line break; never inside a
+    decimal or after approx., e.g., i.e., vs., cf. or etc."""
+    out, a = [], 0
+    for m in _SENT_END.finditer(text):
+        if m.group(0) == ".":
+            w = _WORD_BEFORE.search(text[max(0, m.start() - 24):m.start()])
+            if w and w.group(1).lower() in _ABBR:
+                continue
+        out.append((a, m.end()))
+        a = m.end()
+    if a < len(text):
+        out.append((a, len(text)))
+    return [(s, e) for s, e in out if text[s:e].strip()]
+
+
 def findings_only(report: Optional[str]) -> str:
-    """`report` minus its impression: from a line starting IMPRESSION or CONCLUSION (any case, optional colon) to the
-    next all-caps heading line, or to the end."""
+    """`report` minus its impression: from its heading (IMPRESSION or CONCLUSION, any case, alone on the line or
+    followed by a colon) to the next heading line (all caps, or words and a colon), or to the end."""
     report = report or ""
     m = _IMPRESSION.search(report)
     if not m:
@@ -370,7 +322,7 @@ def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iter
                 if i > 0 and "\n" not in text[spans[i - 1][0]:a] and _value_only(raw, d):
                     a = spans[i - 1][0]   # a value-only fragment ("LVEF 45%.") reads with the sentence before it
                     raw = text[a:b].strip()
-                p = Pair(d, strip_prefix(raw), chain)
+                p = Pair(d, raw, chain)
                 if p in seen:
                     continue
                 seen.add(p)
@@ -380,13 +332,15 @@ def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iter
 
 
 __all__ = ["KIND", "FLAG", "Num", "Pair", "enabled", "extract", "missing_dictated_numbers", "pairs", "findings_only",
-           "chains", "chain_keys", "strip_prefix", "norm"]
+           "sentence_spans", "chains", "chain_keys", "strip_prefix", "norm"]
 ```
+
+Notes: the splitter drops the lab's single-letter-initial rule on purpose ("Stanford type A.", "segment I.", "Bosniak category I.", "Hepatitis B." end sentences). `Pair.report` is the report sentence as written, line label included: Jev sees it whole; the edit strips the label (Task 3).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_dictated_structure_pairs.py tests/test_dictated_number_check.py -q`
-Expected: all pass (`missing_dictated_numbers` unchanged).
+Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_dictated_structure_pairs.py tests/test_dictated_number_check.py tests/test_template_number_check.py -q`
+Expected: all pass (the number checks are unchanged).
 
 - [ ] **Step 5: Commit**
 
@@ -400,7 +354,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 3: The structure check — code pass, Jev judge, items (no edit yet)
+### Task 2: The structure check — code pass, Jev judge, items (no edit yet)
 
 **Files:**
 - Create: `backend/src/rapid_reports_ai/dictated_structure_check.py`
@@ -458,7 +412,7 @@ async def test_a_sentence_holding_the_dictated_words_passes_in_code_without_jev(
 
 
 async def test_a_moved_value_is_one_high_severity_item_on_its_findings_sentence():
-    report = "FINDINGS\nAORTA: Aortic root 4.1 cm.\nLiver normal."
+    report = "FINDINGS\nAortic root 4.1 cm.\nLiver normal."
     items, seen = await run(report, "Aortic sinus 4.1 cm.", p_of={"Aortic root 4.1 cm.": 0.2})
     assert seen["pairs"] == [("Aortic sinus 4.1 cm.", "Aortic root 4.1 cm.")]
     assert [(i["kind"], i["severity"], i["text"], i["sentence"], i["dictated_quote"]) for i in items] == [
@@ -560,6 +514,7 @@ async def test_ask_same_site_sends_one_request_and_refuses_a_partial_answer(monk
     monkeypatch.setattr(jev_client, "jev_post", post({"pair_1": {"noul": 0.2}}))
     with pytest.raises(ValueError):
         await dsc.ask_same_site(ps)
+
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -601,6 +556,7 @@ MAX_PAIRS = 12
 TIMEOUT_S = 3.0        # as jev_stack.TIMEOUT_S
 LABEL = "Different site from your dictation? Apply puts your sentence back."
 LABEL_NO_EDIT = "Different site from your dictation? Check this sentence."
+
 
 Ask = Callable[[List[dnc.Pair]], Awaitable[List[float]]]
 
@@ -704,7 +660,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 4: The "use your sentence" edit and its guard (spec §3.5)
+### Task 3: The "use your sentence" edit and its guard (spec §3.5)
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/dictated_structure_check.py`
@@ -720,7 +676,7 @@ Append to `backend/tests/test_dictated_structure_check.py`:
 # --- the edit (spec §3.5) ---
 
 async def test_a_moved_value_carries_the_edit_and_the_apply_label():
-    report = "FINDINGS\nAORTA: Aortic root 4.1 cm.\nLiver normal."
+    report = "FINDINGS\nAortic root 4.1 cm.\nLiver normal."
     items, _ = await run(report, "Aortic sinus 4.1 cm.", p_of={"Aortic root 4.1 cm.": 0.2})
     assert items == [{"kind": "dictated_structure_changed", "severity": "high", "text": "4.1 cm",
                       "sentence": "Aortic root 4.1 cm.", "dictated_quote": "Aortic sinus 4.1 cm.",
@@ -769,22 +725,48 @@ async def test_no_edit_with_an_extra_joiner():
     assert [i["edit"] for i in items] == [None]
 
 
-async def test_side_and_level_words_from_another_statement_do_not_withhold_the_edit():
+async def test_side_words_from_another_statement_do_not_withhold_the_edit():
     items, _ = await run("Left kidney 11 cm. Right kidney 10 cm.", "Right kidney 11 cm.", "Left kidney 10 cm.",
                          default=0.1)
     assert [i["edit"] for i in items] == [
         {"mode": "replace", "find": "Left kidney 11 cm.", "replace": "Right kidney 11 cm."},
         {"mode": "replace", "find": "Right kidney 10 cm.", "replace": "Left kidney 10 cm."}]
+    items, _ = await run("Bilateral renal cyst 2 cm.", "Left renal cyst 2 cm.", "Bilateral pleural effusions.",
+                         default=0.1)
+    assert [i["edit"] for i in items] == [
+        {"mode": "replace", "find": "Bilateral renal cyst 2 cm.", "replace": "Left renal cyst 2 cm."}]
+
+
+async def test_a_vertebral_level_is_never_a_merged_word():
+    # levels hold digits, so they are never content words: the other statement's L5/S1 cannot withhold the edit
     items, _ = await run("Disc protrusion at L5/S1 4 mm.", "Disc protrusion at L4/5 4 mm.", "L5/S1 disc normal.",
                          default=0.1)
     assert [i["edit"] for i in items] == [
         {"mode": "replace", "find": "Disc protrusion at L5/S1 4 mm.", "replace": "Disc protrusion at L4/5 4 mm."}]
+
+
+async def test_no_edit_for_a_joined_value_only_fragment():
+    items, seen = await run("Liver normal. Cyst 2 cm.", "Segment 6 cyst 2 cm.", default=0.1)
+    assert seen["pairs"] == [("Segment 6 cyst 2 cm.", "Liver normal. Cyst 2 cm.")]
+    assert [(i["sentence"], i["edit"]) for i in items] == [("Liver normal. Cyst 2 cm.", None)]
+
+
+async def test_jev_sees_the_line_label_and_a_label_naming_another_site_withholds_the_edit():
+    items, seen = await run("FINDINGS\nRIGHT KIDNEY: Cyst 2 cm.", "Left kidney cyst 2 cm.", default=0.1)
+    assert seen["pairs"] == [("Left kidney cyst 2 cm.", "RIGHT KIDNEY: Cyst 2 cm.")]
+    assert [(i["sentence"], i["edit"]) for i in items] == [("RIGHT KIDNEY: Cyst 2 cm.", None)]
+
+
+async def test_a_label_the_dictated_sentence_also_names_keeps_the_edit_on_the_unlabelled_text():
+    items, _ = await run("FINDINGS\nAORTIC SINUS: Root 4.1 cm.", "Aortic sinus 4.1 cm.", default=0.1)
+    assert items[0]["sentence"] == "AORTIC SINUS: Root 4.1 cm."
+    assert items[0]["edit"] == {"mode": "replace", "find": "Root 4.1 cm.", "replace": "Aortic sinus 4.1 cm."}
 ```
 
 - [ ] **Step 2: Run the tests to verify the new behaviour fails**
 
 Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_dictated_structure_check.py -q`
-Expected: `test_a_moved_value_carries_the_edit_and_the_apply_label`, `test_the_edit_capitalises_the_dictated_sentence_and_adds_a_full_stop` and `test_side_and_level_words_from_another_statement_do_not_withhold_the_edit` FAIL (`edit` is `None`); the "no edit" tests already pass and guard the next step.
+Expected: the tests that expect an edit dict FAIL (`edit` is `None`): `test_a_moved_value_carries_the_edit_and_the_apply_label`, `test_the_edit_capitalises_the_dictated_sentence_and_adds_a_full_stop`, `test_side_words_from_another_statement_do_not_withhold_the_edit`, `test_a_vertebral_level_is_never_a_merged_word`, `test_a_label_the_dictated_sentence_also_names_keeps_the_edit_on_the_unlabelled_text`. The "no edit" tests already pass and guard the next step.
 
 - [ ] **Step 3: Implement**
 
@@ -797,8 +779,6 @@ import asyncio
 import logging
 import os
 from typing import Awaitable, Callable, Dict, Iterable, List, Optional
-
-from . import dictated_number_check as dnc
 ```
 
 with
@@ -809,9 +789,6 @@ import logging
 import os
 import re
 from typing import Awaitable, Callable, Dict, Iterable, List, Optional, Set
-
-from . import dictated_number_check as dnc
-from .template_number_check import sentence_spans
 ```
 
 (b) Below the line `LABEL_NO_EDIT = "Different site from your dictation? Check this sentence."` add:
@@ -836,21 +813,27 @@ def _words(text: str) -> Set[str]:
 
 
 def _statements(sources: Iterable[Optional[str]]) -> List[str]:
-    return [dnc.strip_prefix(src[s:e]) for src in sources if src for s, e in sentence_spans(src)]
+    return [dnc.strip_prefix(src[s:e]) for src in sources if src for s, e in dnc.sentence_spans(src)]
 
 
 def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Optional[dict]:
     """A replace edit putting the dictated sentence back, or None when replacing the whole sentence could lose or
-    repeat content (spec §3.5): other values in it, an extra clause joiner, a word merged in from another dictated
-    statement (side words aside), or a find that does not occur exactly once."""
-    find = p.report
+    repeat content (spec §3.5): more than one sentence (a joined fragment), a line label naming something the
+    dictated sentence does not, other values in it, an extra clause joiner, a word merged in from another dictated
+    statement (side words aside), or a find that does not occur exactly once. `find` is the report sentence without
+    its line label."""
+    find = dnc.strip_prefix(p.report)
+    if len(dnc.sentence_spans(find)) > 1:
+        return None
+    own = _words(p.dictated)
+    if (_words(p.report[:len(p.report) - len(find)]) - _STOP) - own:   # "RIGHT KIDNEY:" kept above a left-kidney value
+        return None
     if dnc.chain_keys(find) != dnc.chain_keys(p.dictated):
         return None
     if len(_JOINER.findall(find)) > len(_JOINER.findall(p.dictated)):
         return None
     if report.count(find) != 1:
         return None
-    own = _words(p.dictated)
     other: Set[str] = set()
     for s in _statements(sources):
         if s != p.dictated:
@@ -863,6 +846,8 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[Optional[str]]) -> Opti
         rep += "."
     return {"mode": "replace", "find": find, "replace": rep}
 ```
+
+The label check deliberately does not exempt side words: a kept "LEFT KIDNEY:" label above a right-kidney sentence must never be written back under the old label.
 
 (d) In `changed_structures` replace
 
@@ -879,7 +864,7 @@ with
                         "dictated_quote": dictated, "message": LABEL if edit else LABEL_NO_EDIT, "edit": edit})
 ```
 
-(e) Add `"edit_for"` to `__all__`:
+(e) Replace `__all__` with:
 
 ```python
 __all__ = ["KIND", "FLAG", "SAME_SITE_MIN", "MAX_PAIRS", "TIMEOUT_S", "LABEL", "LABEL_NO_EDIT", "enabled", "question",
@@ -889,7 +874,7 @@ __all__ = ["KIND", "FLAG", "SAME_SITE_MIN", "MAX_PAIRS", "TIMEOUT_S", "LABEL", "
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_dictated_structure_check.py -q`
-Expected: all pass. Sanity check that the side/level test guards the exemption: temporarily set `_SIDE = frozenset()`, rerun, see `test_side_and_level_words_from_another_statement_do_not_withhold_the_edit` fail, then restore.
+Expected: all pass. Check that the side test guards the exemption: temporarily set `_SIDE = frozenset({"left", "right"})`, rerun, see `test_side_words_from_another_statement_do_not_withhold_the_edit` fail (its "bilateral" case), then restore.
 
 - [ ] **Step 5: Commit**
 
@@ -903,7 +888,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 5: Rail items carry the kind, label, quote and edit
+### Task 4: Rail items carry the kind, label, quote and edit
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/review_engine/live.py:206-247` (`_FLAG_KINDS`, `_FLAG_LABEL`, `check_flag_items`)
@@ -1039,7 +1024,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 6: One call in the stack Generate, behind `RR_DICTATED_STRUCTURES`
+### Task 5: One call in the stack Generate, behind `RR_DICTATED_STRUCTURES`
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/hybrid_stack/report.py:21` (import) and `:100-103` (after the number check)
@@ -1128,6 +1113,8 @@ with
         review += await dsc.changed_structures(report, own, removed)
 ```
 
+With the flag off the only new work is building `own` once (it was built inline before): the number check receives the same list as today.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests/test_stack_generate_endpoint.py -q`
@@ -1145,22 +1132,67 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 7: Rail test — the card renders with Apply and "You dictated:"
+### Task 6: Rail test — the card renders with Apply and "You dictated:"
 
 No frontend source change is expected: an action item with an edit is already a card with Apply (`ItemCard.svelte:105-111`) and shows `evidence.dictated_quote` (`ItemCard.svelte:48-50`). This test confirms it. Change `ReviewRail.svelte` or `ItemCard.svelte` only if this test fails, and then only the minimum the failure shows.
 
 **Files:**
 - Test: `frontend/src/lib/review/rail/ReviewRail.svelte.test.ts` (insert one `it` inside `describe('ReviewRail', ...)`)
 
-- [ ] **Step 1: Make vitest runnable in this worktree (no install)**
+- [ ] **Step 1: Make vitest runnable without writing under any `node_modules`**
 
-The worktree has no `frontend/node_modules`. Link it; never write under `node_modules` and never run `npm install`. `frontend/.gitignore` already ignores `node_modules`.
+The worktree has no `frontend/node_modules`. Link it (never `npm install`; `frontend/.gitignore` already ignores `node_modules`):
 
 ```bash
 ls -la /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend/node_modules 2>/dev/null || \
   ln -s /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/integrate/frontend/node_modules \
         /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend/node_modules
 ```
+
+The link points at another worktree's `node_modules`, so vitest must not write there: by default it puts its cache in `node_modules/.vite` and bundles the config into `node_modules/.vite-temp`. Create this throwaway config in the session scratchpad (not in the repo). It extends `frontend/vite.config.js`, moves the cache into the scratchpad for the root and both projects, and is run with `--configLoader runner` (no bundled-config temp file):
+
+File `/private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vitest.structure-name.config.mjs`:
+
+```js
+// Throwaway: run the structure-name worktree's vitest without writing under the shared node_modules.
+import base from '/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend/vite.config.js';
+
+const cacheDir = '/private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vite-cache';
+
+export default {
+	...base,
+	cacheDir,
+	test: { ...base.test, projects: base.test.projects.map((p) => ({ ...p, cacheDir })) }
+};
+```
+
+Write it with:
+
+```bash
+mkdir -p /private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad
+cat > /private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vitest.structure-name.config.mjs <<'EOF'
+// Throwaway: run the structure-name worktree's vitest without writing under the shared node_modules.
+import base from '/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend/vite.config.js';
+
+const cacheDir = '/private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vite-cache';
+
+export default {
+	...base,
+	cacheDir,
+	test: { ...base.test, projects: base.test.projects.map((p) => ({ ...p, cacheDir })) }
+};
+EOF
+```
+
+Every vitest run below uses (from `frontend/`):
+
+```bash
+npx vitest run --configLoader runner \
+  --config /private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vitest.structure-name.config.mjs \
+  --root /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend <test path>
+```
+
+To confirm nothing was written under the shared `node_modules`: `touch` a marker in the scratchpad before the run, then `find /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/frontend/node_modules -newer <marker>` must print nothing (the integrate link resolves there).
 
 - [ ] **Step 2: Write the test**
 
@@ -1195,7 +1227,15 @@ In `frontend/src/lib/review/rail/ReviewRail.svelte.test.ts`, insert directly abo
 
 - [ ] **Step 3: Run the test**
 
-Run (from `frontend/`): `npx vitest run src/lib/review/rail/ReviewRail.svelte.test.ts`
+Run (from `frontend/`):
+
+```bash
+npx vitest run --configLoader runner \
+  --config /private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vitest.structure-name.config.mjs \
+  --root /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend \
+  src/lib/review/rail/ReviewRail.svelte.test.ts
+```
+
 Expected: PASS, all tests in the file (the new one included). This is a confirmation test: it passes without a source change. If it fails, read the failure, make the minimal fix in `ItemCard.svelte`/`ReviewRail.svelte`, and rerun.
 
 - [ ] **Step 4: Commit**
@@ -1212,22 +1252,30 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 ---
 
-### Task 8: Full verification
+### Task 7: Full verification
 
 - [ ] **Step 1: Full backend suite**
 
 Run (from `backend/`): `PYTHONPATH=src /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend/.venv/bin/python -m pytest tests -q 2>&1 | tail -15`
-Expected: all pass except the known unrelated `tests/test_provider_key_routing.py` case. Any other failure: stop and diagnose (most likely a `_sentence` caller affected by Task 1; fix the splitter, not the caller's expectation, unless the new split is the spec's intent).
+Expected: all pass except the known unrelated `tests/test_provider_key_routing.py` case. Any other failure: stop and diagnose.
 
 - [ ] **Step 2: Rail frontend tests**
 
-Run (from `frontend/`): `npx vitest run src/lib/review/rail`
+Run (from `frontend/`):
+
+```bash
+npx vitest run --configLoader runner \
+  --config /private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/c2522213-a12c-4c59-af45-e06496ec804c/scratchpad/vitest.structure-name.config.mjs \
+  --root /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/structure-name/frontend \
+  src/lib/review/rail
+```
+
 Expected: all pass.
 
 - [ ] **Step 3: Confirm the footprint**
 
 Run: `git diff --stat bc241485..HEAD -- backend/src frontend/src` (`bc241485` is the last spec commit before this plan)
-Expected source files only: `template_number_check.py`, `dictated_number_check.py`, `dictated_structure_check.py`, `hybrid_stack/report.py`, `review_engine/live.py`, and the one frontend test file. Nothing in `findings.py`, `gate_model.py`, scratchpad, walkthrough, copilot or writer prompts (spec §5).
+Expected source files only: `dictated_number_check.py`, `dictated_structure_check.py`, `hybrid_stack/report.py`, `review_engine/live.py`, and the one frontend test file. `template_number_check.py` is unchanged; nothing in `findings.py`, `gate_model.py`, scratchpad, walkthrough, copilot or writer prompts (spec §5).
 
 No commit in this task. Do not push.
 
@@ -1237,22 +1285,22 @@ No commit in this task. Do not push.
 
 | Spec | Where |
 |---|---|
-| §2 sources = said_parts minus removed + typed values; unitless skipped | Task 6 (`own`, shared with the number check); Task 2 (`chains` keeps only chains with a unit; test `..._unitless_value_are_not_paired`) |
-| §2 FINDINGS only; IMPRESSION/CONCLUSION any case, optional colon | Task 2 `findings_only` + test; Task 3 `test_findings_wrong_and_impression_right_is_still_an_item` |
-| §3.1 one pair per chain per FINDINGS sentence; abbreviation-aware splitter; prefix strip; value-only fragment merge; removed dropped; identical merged | Tasks 1–2 |
-| §3.2 code pass first | Task 3 `code_pass` + test |
-| §3.3 one Jev request, W1 verbatim, noul per pair, P < 0.7, cap 12 in report order, `structure_name_unchecked`, pass-if-any | Task 3 |
-| §3.4 item shape, severity high → action, label, chain in the key | Tasks 3–5 |
-| §3.5 replace edit + all four guards + side/level exemption | Task 4 |
-| §3.6 fail open, 3 s, `structure_name_check_unavailable`, never raises | Task 3 |
-| §4 `RR_DICTATED_STRUCTURES` off by default, read per call | Task 3 `enabled` + test; Task 6 |
-| §5 footprint; frontend none | Tasks 1–7; Task 8 Step 3 |
-| §8 tests | pairing (single, two sentences, chain once, covers): Task 2; code pass, pass-if-any, impression, cap, threshold, fail-open, removed, abbreviation, two items, flag off: Task 3/6; edit offered/withheld (find twice, merged clause, reverse split, extra joiner, merged word, side/level): Task 4; prefixes: Task 2; route with flag on: Task 6; `check_flag_items` edit + quote: Task 5 |
+| §2 sources = said_parts minus removed + typed values; unitless skipped | Task 5 (`own`, shared with the number check); Task 1 (`chains` keeps only chains with a unit; test `..._unitless_value_are_not_paired`) |
+| §2 FINDINGS only; IMPRESSION/CONCLUSION heading, any case, optional colon | Task 1 `findings_only` + tests (heading forms, next heading, "Impression of ..." not cut); Task 2 `test_findings_wrong_and_impression_right_is_still_an_item` |
+| §3.1 one pair per chain per FINDINGS sentence; this check's abbreviation-aware splitter; label kept for Jev; value-only fragment join; removed dropped; identical merged | Task 1 |
+| §3.2 code pass first | Task 2 `code_pass` + test |
+| §3.3 one Jev request, W1 verbatim, full report sentence, noul per pair, P < 0.7, cap 12 in report order, `structure_name_unchecked`, pass-if-any | Task 2; label seen by Jev: Task 3 `test_jev_sees_the_line_label_...` |
+| §3.4 item shape, severity high → action, label, chain in the key | Tasks 2–4 |
+| §3.5 replace edit on the unlabelled sentence + guards: one sentence only, label words, chains, joiners, merged words with the side exemption, find once | Task 3 |
+| §3.6 fail open, 3 s, `structure_name_check_unavailable`, never raises | Task 2 |
+| §4 `RR_DICTATED_STRUCTURES` off by default, read per call; flag off = zero change | Task 2 `enabled` + test; Task 5; `template_number_check` untouched |
+| §5 footprint; frontend none | Tasks 1–6; Task 7 Step 3 |
+| §8 tests | pairing (single, two sentences, chain once, covers), prefixes, splitter cases: Task 1; code pass, pass-if-any, impression, cap, threshold, fail-open, removed, abbreviation, two items, flag off: Tasks 2/5; edit offered/withheld (find twice, merged clause, reverse split, extra joiner, merged word, joined fragment, label, side exemption): Task 3; route with flag on: Task 5; `check_flag_items` edit + quote: Task 4 |
 
-Decisions taken where the spec is silent (flag to the owner at review):
+Decisions taken where the spec was silent (flag to the owner at review):
 1. A card without an edit gets the label `Different site from your dictation? Check this sentence.` (the spec label promises Apply, which such a card does not have).
 2. The merged-word guard compares against every other dictated sentence (other sources and other sentences of the same source), not only other sources as in the lab: the spec says "another dictated statement".
 3. `strip_prefix` keeps a label when nothing but the values would remain ("LVEF: 45%."), so the edit never yields "LVEF: LVEF 45%.".
 4. A pair beyond the 12-pair cap leaves its chain unjudged: no item for that chain even if another of its pairs was asked and failed.
-5. The impression section ends at the next all-caps heading line (e.g. "COMPARISON"), else at the end of the report.
-6. `pairs()` takes an optional `removed` argument (the spec's "a dictated sentence equal to a removed sentence is dropped"); the report route also drops removed units before building the sources, as the number check does.
+5. `pairs()` takes an optional `removed` argument (the spec's "a dictated sentence equal to a removed sentence is dropped"); the report route also drops removed units before building the sources, as the number check does.
+6. A vertebral or disc level ("L4/5") holds digits, so it is never a content word for the merged-word guard; the side exemption covers left, right, bilateral, bilaterally.

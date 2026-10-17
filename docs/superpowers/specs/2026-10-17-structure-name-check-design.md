@@ -21,7 +21,9 @@ survives (step 2), and the structure the number belongs to survives (this step).
   check uses (`hybrid_stack/report.py:101-103`). A typed value entered without a unit ("4.1" against a "(cm)" label)
   is unitless and skipped.
 - **Report side: FINDINGS only.** Report sentences are taken from the report minus its impression section: a line
-  starting with IMPRESSION or CONCLUSION, any case, optional colon ("Conclusion:", "IMPRESSION"). The impression is not checked in v1.
+  that is a heading: IMPRESSION or CONCLUSION, any case, alone on its line or followed by a colon ("Conclusion: ...",
+  "IMPRESSION"); "Impression of mild thickening" is not a heading. The section ends at the next heading line (an
+  all-caps line, or words and a colon at a line start) or the end of the report. The impression is not checked in v1.
 - **Same site** = exactly the same structure, site, side and level. Passes: word order and side placement
   ("kidney (left)" → "left kidney"), true synonyms ("aortic sinus" → "sinus of Valsalva"), abbreviations
   ("CBD" → "common bile duct"). Flags: a different site (sinus → root), a broader site (segment 6 → right lobe),
@@ -34,9 +36,13 @@ survives (step 2), and the structure the number belongs to survives (this step).
 1. **Pair (code).** `dictated_number_check` gains `pairs(report_findings, sources)`, reusing its extraction, masking
    and unit normalisation (no new matching code). One pair per dictated **chain** ("2.3 x 1.8 cm" is one chain, as
    in `missing_dictated_numbers`), per FINDINGS sentence that holds it: `(dictated_sentence, report_sentence,
-   chain_text)`. Sentences come from `template_number_check._sentence`, made abbreviation-aware (no split after
-   approx., e.g., i.e., vs., cf., etc., a single-letter initial, or inside a decimal), with any leading line label or
-   markdown ("AORTA:", "- ", "**Liver:**") stripped. A value-only fragment — no word besides the value, its unit and a
+   chain_text)`. Sentences come from this check's own splitter (`dictated_number_check.sentence_spans`, used by this
+   check only: `template_number_check._sentence` and the number checks are unchanged, so the flag off is zero
+   change): no split after approx., e.g., i.e., vs., cf., etc., or inside a decimal; a single letter before a full
+   stop does end a sentence ("Stanford type A.", "segment I.", "Hepatitis B."). The report sentence is kept as
+   written, any line label included ("RIGHT KIDNEY: cyst 2 cm."): Jev and the code pass see it whole. A leading line
+   label or markdown ("AORTA:", "- ", "**Liver:**") is stripped from the dictated sentence, and from the report
+   sentence only to form the edit's `find` (§3.5). A value-only fragment — no word besides the value, its unit and a
    measure name also in the dictated sentence ("LVEF 45%.") — is joined to the sentence before it. A dictated sentence equal to a removed sentence is dropped. Identical pairs
    are merged.
 2. **Pass in code first.** A pair whose report sentence, normalised (case, whitespace, punctuation), contains the
@@ -58,17 +64,20 @@ survives (step 2), and the structure the number belongs to survives (this step).
      `Different site from your dictation? Apply puts your sentence back.` The rail's button reads **Apply**
      (`ItemCard.svelte:17`); no frontend change.
    - The dedupe key includes the chain, so two failing values in one sentence give two cards.
-5. **Use your sentence (the edit, Q42).** `Edit(mode="replace", find=<report sentence without its label prefix>,
+5. **Use your sentence (the edit, Q42).** `Edit(mode="replace", find=<report sentence without its line label>,
    replace=<dictated sentence, capitalised, full stop>)`, applied and undone by the rail's existing apply/undo
    (`edits.ts:214`, `commands.ts:178-187`). Offered only when replacing the whole sentence cannot lose or repeat
    content — all of:
+   - `find` is a single sentence (a value-only fragment joined to the sentence before it never gets an edit);
+   - the stripped line label holds no content word that the dictated sentence lacks ("RIGHT KIDNEY:" above a
+     left-kidney value withholds the edit; side words are not exempt here);
    - the report sentence and the dictated sentence carry the same set of number chains (no merged value, no split);
    - the report sentence has no more clause joiners ("and", "with", ";", ",") than the dictated sentence (no merged
      number-free statement, e.g. "... 4.1 cm with no aortic regurgitation");
    - the report sentence holds no content word (not a stopword) that appears in another dictated statement of the
      same report but not in this pair's dictated sentence (the writer merged that statement in, e.g. "simple" from
-     "The cyst is simple."); side and level words (left, right, bilateral, vertebral and disc levels) are exempt,
-     since they are what the check corrects;
+     "The cyst is simple."); side words (left, right, bilateral, bilaterally) are exempt, since they are what the
+     check corrects; vertebral and disc levels ("L4/5") hold digits and are never content words;
    - `find` occurs exactly once in the report (the rail and verifier require it: `edits.ts:214`, `verifier.py:235`).
    Otherwise the card has no edit; the radiologist edits by hand.
 6. **Fails open, small budget.** A Jev error, a timeout (3 s, as `jev_stack.TIMEOUT_S`; lab median ~0.25 s) or a
