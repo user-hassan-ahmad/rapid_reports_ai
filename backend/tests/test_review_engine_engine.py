@@ -695,7 +695,7 @@ async def test_live_gate_recommendation_obeys_its_jev_question(monkeypatch, rec_
     res = await engine.run_review(inp(RREC_REPORT, "- 2 cm right renal mass\n- for the kidney surgeons"),
                                   "00000000-0000-0000-0000-0000000000a1")
     g = res.run["dictated_gate"]
-    assert g["mode"] == "live" and g["rec_jev"] == {"asked": 1, "error": None} and g["rec_by_backstop"] == 0
+    assert g["mode"] == "live" and g["rec_jev"] == {"asked": 1, "asked_instructions": 2, "error": None} and g["rec_by_backstop"] == 0
     assert [i.anchor.text for i in res.items if i.kind == "recommendation"] == want
 
 
@@ -714,3 +714,24 @@ async def test_live_gate_recommendation_falls_back_to_the_word_rule_when_its_jev
     g = res.run["dictated_gate"]
     assert g["rec_jev"]["error"] and res.run["errors"]["rec_jev"] and g["rec_by_backstop"] == 0
     assert [i.anchor.text for i in res.items if i.kind == "recommendation"] == ["Urology referral is recommended."]
+
+
+async def test_live_gate_flags_an_editing_instruction_the_writer_printed_in_the_impression(monkeypatch):
+    # word for word in the conclusion box, so the gate calls it dictated: only the instruction question sees it
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    _gate_jev(monkeypatch, {})
+    gated = rc._jev
+
+    async def fake(state, qs):
+        out = await gated(state, qs)
+        out.update({k: {"probabilities": {"report_reader": 0.0, "report_editor": 1.0 if "Delete" in q["instructions"]
+                                          else 0.02}} for k, q in qs.items() if k.startswith("ins")})
+        return out
+    monkeypatch.setattr(rc, "_jev", fake)
+    report = ("FINDINGS:\nThere is a 2 cm crescentic mass in the right kidney.\n"
+              "IMPRESSION:\nRight renal mass. Delete the technique section.\n")
+    res = await engine.run_review(inp(report, "- 2 cm right renal mass\n- Delete the technique section."),
+                                  "00000000-0000-0000-0000-0000000000a1")
+    flagged = [i for i in res.items if i.kind == "editing_instruction"]
+    assert [(i.anchor.text, i.cls, i.edit) for i in flagged] == [("Delete the technique section.", "action", None)]
+    assert res.run["dictated_gate"]["instructions"] == 1
