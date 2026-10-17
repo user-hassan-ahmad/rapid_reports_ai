@@ -20,7 +20,7 @@ import os
 import re
 from dataclasses import dataclass
 from collections import Counter
-from typing import Iterable, List, Optional
+from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
 
 from .template_number_check import _masked, _sentence
 
@@ -285,4 +285,145 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
         return []
 
 
-__all__ = ["KIND", "FLAG", "Num", "enabled", "extract", "missing_dictated_numbers"]
+# --- pairing for the structure-name check (spec 2026-10-17 §3.1) ---
+
+# a leading bullet or number, then a line label ("AORTA: ", "**Liver:** ")
+_PREFIX = re.compile(r"^\s*(?:[-*•]\s+|\d+[.)]\s+)?(?:\*\*[^*\n]{1,60}?:?\*\*:?\s*|[A-Za-z][A-Za-z /&()'-]{0,40}:\s+)?")
+# the impression heading: the word alone on its line or followed by a colon, any case ("Impression of ..." is no heading)
+_IMPRESSION = re.compile(r"(?im)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?(?:impression|conclusion)s?(?:\*\*)?[ \t]*(?::|$)")
+# the next heading after it: an all-caps line, or words and a colon at a line start ("Comparison: ...")
+_HEADING = re.compile(r"(?m)^[ \t]*(?:#+[ \t]*)?(?:\*\*)?(?:[A-Z][A-Z /&()-]{2,40}:?(?:\*\*)?[ \t]*$"
+                      r"|[A-Za-z][A-Za-z /&()-]{1,40}:)")
+_LETTERS = re.compile(r"[a-z][a-z']+")
+_SENT_END = re.compile(r"[.!?]+(?=\s|$)|\n")
+_ABBR = {"approx", "e.g", "eg", "i.e", "ie", "vs", "cf", "etc"}
+_WORD_BEFORE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z.]*)\Z")
+
+
+@dataclass(frozen=True)
+class Pair:
+    dictated: str   # the dictated sentence holding the chain, label prefix stripped
+    report: str     # the FINDINGS sentence holding every value of the chain, as written (any line label kept)
+    chain: str      # the dictated chain as written ("2.3 x 1.8 cm")
+
+
+def sentence_spans(text: str) -> List[Tuple[int, int]]:
+    """[(start, end)] of the non-blank sentences of `text` (this check only; the number checks keep
+    `template_number_check._sentence`): an end is ., !, ? before a space or the end, or a line break; never inside a
+    decimal or after approx., e.g., i.e., vs., cf. or etc."""
+    out, a = [], 0
+    for m in _SENT_END.finditer(text):
+        if m.group(0) == ".":
+            w = _WORD_BEFORE.search(text[max(0, m.start() - 24):m.start()])
+            if w and w.group(1).lower() in _ABBR:
+                continue
+        out.append((a, m.end()))
+        a = m.end()
+    if a < len(text):
+        out.append((a, len(text)))
+    return [(s, e) for s, e in out if text[s:e].strip()]
+
+
+def findings_only(report: Optional[str]) -> str:
+    """`report` minus its impression: from its heading (IMPRESSION or CONCLUSION, any case, alone on the line or
+    followed by a colon) to the next heading line (all caps, or words and a colon), or to the end."""
+    report = report or ""
+    m = _IMPRESSION.search(report)
+    if not m:
+        return report
+    nxt = _HEADING.search(report, m.end())   # "^" never matches mid-line, so the impression line itself is skipped
+    return report[:m.start()] + (report[nxt.start():] if nxt else "")
+
+
+def _words(text: str) -> Set[str]:
+    return set(_LETTERS.findall(text.lower()))
+
+
+def chains(text: Optional[str]) -> List[Tuple[int, str, FrozenSet[tuple]]]:
+    """[(start, chain text, {(value, unit)})] for each chain in `text` that carries a unit, in text order."""
+    by: dict = {}
+    for n in extract(text):
+        if n.unit:
+            by.setdefault((n.start, n.text), set()).add((n.value, n.unit))
+    return [(s, t, frozenset(v)) for (s, t), v in sorted(by.items())]
+
+
+def chain_keys(text: Optional[str]) -> Set[FrozenSet[tuple]]:
+    return {k for _, _, k in chains(text)}
+
+
+def strip_prefix(sentence: str) -> str:
+    """`sentence` without a leading bullet, number or line label ("AORTA:", "- ", "**Liver:**"); unchanged when the
+    label is all there is besides the values ("LVEF: 45%.")."""
+    s = sentence.strip()
+    m = _PREFIX.match(s)
+    out = s[m.end():].strip() if m else s
+    rest = out
+    for _, t, _ in chains(out):
+        rest = rest.replace(t, " ")
+    return out if out and _words(rest) else s
+
+
+def norm(text: str) -> str:
+    """Lower case, full stops (not decimal points) and other punctuation to spaces, whitespace collapsed."""
+    s = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", text.lower())
+    s = re.sub(r"[^\w.%/]+", " ", s)
+    return " ".join(s.split())
+
+
+def _value_only(sentence: str, dictated: str) -> bool:
+    """No word besides the values and at most two names that the dictated sentence also holds ("LVEF 45%.")."""
+    s, d = sentence, dictated
+    for _, t, _ in chains(sentence):
+        s = s.replace(t, " ")
+    for _, t, _ in chains(dictated):
+        d = d.replace(t, " ")
+    w = _words(s)
+    return len(w) <= 2 and w < _words(d)
+
+
+def pairs(report: Optional[str], sources: Iterable[Optional[str]], removed: Iterable[str] = ()) -> List[Pair]:
+    """One Pair per dictated chain (with a unit) per FINDINGS sentence holding all its values, in report order.
+    `sources` as for `missing_dictated_numbers`; a dictated sentence equal to a removed one (normalised) is skipped.
+    A value-only report fragment is joined to the sentence before it on the same line. Identical pairs are one."""
+    text = findings_only(report)
+    spans = sentence_spans(text)
+    held: dict = {}   # sentence index -> {(value, unit)}
+    for n in extract(text):
+        if n.unit:
+            i = next((k for k, (s, e) in enumerate(spans) if s <= n.start < e), None)
+            if i is not None:
+                held.setdefault(i, set()).add((n.value, n.unit))
+    gone = {norm(r) for r in removed if r}
+    out: List[Tuple[int, Pair]] = []
+    seen: set = set()
+    for src in sources:
+        if not src:
+            continue
+        sspans = sentence_spans(src)
+        for start, chain, keys in chains(src):
+            j = next((k for k, (s, e) in enumerate(sspans) if s <= start < e), None)
+            if j is None:
+                continue
+            d = strip_prefix(src[sspans[j][0]:sspans[j][1]])
+            if norm(d) in gone:
+                continue
+            for i in sorted(held):
+                if not keys <= held[i]:
+                    continue
+                a, b = spans[i]
+                raw = text[a:b].strip()
+                if i > 0 and "\n" not in text[spans[i - 1][0]:a] and _value_only(raw, d):
+                    a = spans[i - 1][0]   # a value-only fragment ("LVEF 45%.") reads with the sentence before it
+                    raw = text[a:b].strip()
+                p = Pair(d, raw, chain)
+                if p in seen:
+                    continue
+                seen.add(p)
+                out.append((a, p))
+    out.sort(key=lambda x: x[0])
+    return [p for _, p in out]
+
+
+__all__ = ["KIND", "FLAG", "Num", "Pair", "enabled", "extract", "missing_dictated_numbers", "pairs", "findings_only",
+           "sentence_spans", "chains", "chain_keys", "strip_prefix", "norm"]
