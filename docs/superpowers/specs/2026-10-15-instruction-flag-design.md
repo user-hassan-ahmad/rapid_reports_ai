@@ -51,7 +51,7 @@ undo, an unclear delete, fillers, asides and the tidy-up commands keep today's p
 - **Rollout conditions before switch-on.** (1) Q13 goes live with the card (Q22). (2) Voice and the walkthrough stop
   for the card (Q23) come with feat/scratchpad-declutter, before the flag is switched on. (3) Hassan signs off the two
   thinking-aloud fillers that get a card in both lab runs ("Let me scroll back up.", "Where's the previous scan
-  gone.").
+  gone."): **met 2026-10-17**, Hassan signed off that these get a card.
 - **Q23 the card gets keys, voice and a walkthrough stop.** Done on this branch: K = Keep as text, X = Discard on the
   first open card (`aria-keyshortcuts` and key caps on its buttons), never while typing (input, textarea, select,
   contenteditable), never with a modifier, never during the walkthrough (it owns its keys), and never from a hidden
