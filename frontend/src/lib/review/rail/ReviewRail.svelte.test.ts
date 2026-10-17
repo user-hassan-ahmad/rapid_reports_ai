@@ -268,6 +268,29 @@ describe('ReviewRail', () => {
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 'k1');
 	});
 
+	it('a moved-value flag (cls action, replace edit) is a card with Apply and the dictated sentence', async () => {
+		const label = 'Different site from your dictation? Apply puts your sentence back.';
+		const moved = item({
+			id: 's1',
+			kind: 'dictated_structure_changed',
+			cls: 'action',
+			lane: 'accuracy',
+			section: 'Liver',
+			label,
+			reason: label,
+			anchor: at(80, 'Aortic root 4.1 cm.'),
+			evidence: { source: 'post_check', dictated_quote: 'Aortic sinus 4.1 cm.' },
+			edit: { mode: 'replace', find: 'Aortic root 4.1 cm.', replace: 'Aortic sinus 4.1 cm.' }
+		});
+		const { onCommand } = await mount(response({ items: [...ITEMS, moved] }));
+		await expect.element(page.getByText(label).first()).toBeInTheDocument();
+		const s1 = rail()!.querySelector<HTMLElement>('[data-rv-item="s1"]')!;
+		expect(s1.getAttribute('data-rv-variant')).toBe('card');
+		expect(s1.querySelector('[data-rv-quote]')?.textContent).toContain('You dictated: “Aortic sinus 4.1 cm.”');
+		await page.getByRole('button', { name: `Apply: ${label}` }).click();
+		expect(onCommand).toHaveBeenCalledWith('apply', 's1');
+	});
+
 	it('a conflict card with no edit offers Ask in chat and Dismiss, no Apply', async () => {
 		const conflict = item({
 			id: 'k2',
