@@ -102,12 +102,15 @@ def edit_for(p: dnc.Pair, report: str, sources: Iterable[dnc.Source], assumed: I
     repeat content (spec §3.5): more than one sentence (a joined fragment), a line label naming something the
     dictated sentence does not, other values in it, an extra clause joiner, a word merged in from another dictated
     statement or a confirmed assumed normal (side words aside), more than NEW_WORDS_MAX content words the dictated
-    sentence lacks, or a find that does not occur exactly once. `find` is the report sentence without its line
-    label; the replace is the dictated sentence as said (no region prefix)."""
+    sentence lacks, a region whose words the dictated sentence lacks, or a find that does not occur exactly once.
+    `find` is the report sentence without its line label; the replace is the dictated sentence as said (no region
+    prefix)."""
     find = dnc.strip_prefix(p.report)
     if len(dnc.sentence_spans(find)) > 1:
         return None
     own = _words(p.dictated)
+    if (_words(p.region) - _STOP) - own:   # "Cyst 2 cm." said under Left kidney: Apply would drop the structure
+        return None
     if (_words(p.report[:len(p.report) - len(find)]) - _STOP) - own:   # "RIGHT KIDNEY:" kept above a left-kidney value
         return None
     if dnc.chain_keys(find) != dnc.chain_keys(p.dictated):

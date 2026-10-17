@@ -92,6 +92,9 @@ survives (step 2), and the structure the number belongs to survives (this step).
      "The cyst is simple.") or in a confirmed assumed normal (`gate.assumed` minus removed: read by this guard only,
      never paired); side words (left, right, bilateral, bilaterally) are exempt, since they are what the check
      corrects; vertebral and disc levels ("L4/5") hold digits and are never content words;
+   - when the dictated sentence was said under a region, every content word of that region is in the dictated
+     sentence ("Cyst 2 cm." under Left kidney withholds: Apply would drop the structure; "Left kidney cyst 2 cm."
+     keeps it). No region: no change (lab v3, 2026-10-17);
    - `find` occurs exactly once in the report (the rail and verifier require it: `edits.ts:214`, `verifier.py:235`).
    Otherwise the card has no edit; the radiologist edits by hand. The replace is the dictated sentence as said, never
    prefixed with its region; the backstop and the label rule withhold an edit that would lose the region.

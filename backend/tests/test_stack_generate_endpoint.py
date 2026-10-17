@@ -325,7 +325,8 @@ def test_template_generate_hands_the_writer_each_filled_values_sentence_and_regi
                                                              "sentence": "Liver span 17 cm.", "region": "Liver"}}
 
 
-SITE_UNITS = [{**UNITS[0], "text": "Aortic sinus 4.1 cm.", "abnormal": True}]   # SYNTHETIC
+# SYNTHETIC; said under a region the sentence names, so the edit may be offered (a bare region withholds it)
+SITE_UNITS = [{**UNITS[0], "text": "Aortic sinus 4.1 cm.", "group": "Aortic sinus", "abnormal": True}]
 
 
 @pytest.mark.parametrize("on", [True, False])

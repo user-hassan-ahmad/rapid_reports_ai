@@ -311,3 +311,22 @@ async def test_a_regioned_sentence_passes_in_code_when_the_report_names_the_regi
     items = await dsc.changed_structures("FINDINGS\nRight kidney: cyst 2 cm.", [("Right kidney", "Cyst 2 cm.")],
                                          ask=ask)
     assert items == [] and seen["calls"] == 0
+
+
+# --- lab v3: a region the dictated sentence does not name withholds the edit ---
+
+@pytest.mark.parametrize("region, dictated, report", [
+    ("Left kidney", "Cyst 2 cm.", "A 2 cm cyst is seen in the left kidney."),
+    ("Spleen", "Measures 9 mm.", "The liver measures 9 mm."),
+])
+async def test_a_region_the_dictated_sentence_does_not_name_withholds_the_edit(region, dictated, report):
+    items = await dsc.changed_structures(report, [(region, dictated)], ask=_ask(default=0.1)[0])
+    assert [(i["dictated_quote"], i["edit"]) for i in items] == [(dictated, None)]
+
+
+async def test_a_dictated_sentence_naming_its_region_keeps_the_edit():
+    # (with a kept "Right kidney:" line label the label rule withholds it: Apply would leave "Right kidney: Left ...")
+    items = await dsc.changed_structures("FINDINGS\nRight kidney cyst 2 cm.", [("Left kidney", "Left kidney cyst 2 cm.")],
+                                         ask=_ask(default=0.1)[0])
+    assert [i["edit"] for i in items] == [
+        {"mode": "replace", "find": "Right kidney cyst 2 cm.", "replace": "Left kidney cyst 2 cm."}]
