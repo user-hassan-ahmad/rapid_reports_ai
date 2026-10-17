@@ -726,3 +726,18 @@ def test_a_flagged_sentence_gets_one_item_and_no_violet_tint():
     prov, _, _, log = dg.apply(i, RUN, al, g + [dataclasses.replace(x)], [], [], ins_jev={se: 0.99})
     on = [it.kind for it in prov if it.anchor.start < se[1] and se[0] < it.anchor.end]
     assert on == [dg.KIND_INSTRUCTION] and log["instructions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_each_instruction_answer_lands_on_its_own_sentence_across_requests(monkeypatch):
+    sents = [f"Finding number {n} is stable." for n in range(8)]
+    r = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\n" + " ".join(sents) + "\n"
+    i, al, g = _instr_gate(r, "- Pancreatic mass")
+
+    async def fake(state, qs):              # P(editor) = the sentence's number / 10
+        return {k: {"probabilities": {"report_editor": int(q["instructions"].split("number ")[1][0]) / 10}}
+                for k, q in qs.items()}
+    monkeypatch.setattr(rc, "_jev", fake)
+    _, ins_jev, _ = await dg.ask_recs(i, al, g)
+    got = {r[s:e]: p for (s, e), p in ins_jev.items()}
+    assert got == {t: n / 10 for n, t in enumerate(sents)}
