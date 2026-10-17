@@ -20,8 +20,8 @@ survives (step 2), and the structure the number belongs to survives (this step).
   after declutter) and typed values (`_value_statements`), minus removed sentences. The same source list the number
   check uses (`hybrid_stack/report.py:101-103`). A typed value entered without a unit ("4.1" against a "(cm)" label)
   is unitless and skipped.
-- **Report side: FINDINGS only.** Report sentences are taken from the report minus its impression section (heading
-  in `report_review.IMPRESSION_HEADINGS`: IMPRESSION, CONCLUSION). The impression is not checked in v1.
+- **Report side: FINDINGS only.** Report sentences are taken from the report minus its impression section: a line
+  starting with IMPRESSION or CONCLUSION, any case, optional colon ("Conclusion:", "IMPRESSION"). The impression is not checked in v1.
 - **Same site** = exactly the same structure, site, side and level. Passes: word order and side placement
   ("kidney (left)" → "left kidney"), true synonyms ("aortic sinus" → "sinus of Valsalva"), abbreviations
   ("CBD" → "common bile duct"). Flags: a different site (sinus → root), a broader site (segment 6 → right lobe),
@@ -34,15 +34,18 @@ survives (step 2), and the structure the number belongs to survives (this step).
 1. **Pair (code).** `dictated_number_check` gains `pairs(report_findings, sources)`, reusing its extraction, masking
    and unit normalisation (no new matching code). One pair per dictated **chain** ("2.3 x 1.8 cm" is one chain, as
    in `missing_dictated_numbers`), per FINDINGS sentence that holds it: `(dictated_sentence, report_sentence,
-   chain_text)`. Sentences come from `template_number_check._sentence` with any leading line label or markdown
-   ("AORTA:", "- ", "**Liver:**") stripped. A dictated sentence equal to a removed sentence is dropped. Identical pairs
+   chain_text)`. Sentences come from `template_number_check._sentence`, made abbreviation-aware (no split after
+   approx., e.g., i.e., vs., cf., etc., a single-letter initial, or inside a decimal), with any leading line label or
+   markdown ("AORTA:", "- ", "**Liver:**") stripped. A value-only fragment — no word besides the value, its unit and a
+   measure name also in the dictated sentence ("LVEF 45%.") — is joined to the sentence before it. A dictated sentence equal to a removed sentence is dropped. Identical pairs
    are merged.
 2. **Pass in code first.** A pair whose report sentence, normalised (case, whitespace, punctuation), contains the
    dictated sentence's normalised text passes without a Jev question.
 3. **Judge (Jev).** One request per report. `state` is a dict of numbered pairs (`{"pair_1": {"dictated": ..,
-   "report": ..}, ...}`); one `noul` question per pair asks whether the report sentence gives that value for exactly
-   the same structure, site, side and level as the dictated sentence (synonyms and rewording allowed). Wording and
-   threshold come from the lab (§7). At most 12 pairs per report, in report order; any beyond are not asked and are
+   "report": ..}, ...}`); one `noul` question per pair, wording W1 from the lab, verbatim:
+   "In pair_N, the REPORT sentence gives the value for exactly the same anatomical structure, site, side and level as
+   the DICTATED sentence; synonyms and rewording count as the same, a broader or narrower site does not."
+   A pair fails when P(yes) < 0.7 (`SAME_SITE_MIN`, lab §7). At most 12 pairs per report, in report order; any beyond are not asked and are
    logged as `structure_name_unchecked` (no item). A chain **passes if any** of its FINDINGS sentences is judged the
    same site.
 4. **Report.** A chain that fails becomes one item in `quality_check.review`, anchored on its first FINDINGS
@@ -62,6 +65,10 @@ survives (step 2), and the structure the number belongs to survives (this step).
    - the report sentence and the dictated sentence carry the same set of number chains (no merged value, no split);
    - the report sentence has no more clause joiners ("and", "with", ";", ",") than the dictated sentence (no merged
      number-free statement, e.g. "... 4.1 cm with no aortic regurgitation");
+   - the report sentence holds no content word (not a stopword) that appears in another dictated statement of the
+     same report but not in this pair's dictated sentence (the writer merged that statement in, e.g. "simple" from
+     "The cyst is simple."); side and level words (left, right, bilateral, vertebral and disc levels) are exempt,
+     since they are what the check corrects;
    - `find` occurs exactly once in the report (the rail and verifier require it: `edits.ts:214`, `verifier.py:235`).
    Otherwise the card has no edit; the radiologist edits by hand.
 6. **Fails open, small budget.** A Jev error, a timeout (3 s, as `jev_stack.TIMEOUT_S`; lab median ~0.25 s) or a
@@ -92,18 +99,26 @@ survives (step 2), and the structure the number belongs to survives (this step).
 - **Declutter** (backend-d6): voice answers stay in `said_parts`. No file overlap.
 - **Finding facts** (backend-30): no overlap; this check reads FINDINGS sources only.
 
-## 7. Lab (before the plan; private repo `synthetic/structure_name/`)
+## 7. Lab (done 2026-10-17; private repo `synthetic/structure_name/`, `results.md`, `results_v2.md`)
 
-- ~20 synthetic cases across template and quick, built from P3-style dictations, 2 runs each, plus a hand read.
-- Planted swaps: different site (sinus → root), broader (segment 6 → right lobe), narrower (liver → segment 6),
-  side (left → right), level (L4/5 → L5/S1). Clean controls: synonyms, abbreviations, side placement, joined
-  sentences, label prefixes. Real writer outputs from the dictated-wins / quick-dictated-wins labs are reused as
-  further clean cases.
-- Arms: **A** Jev pair question (2–3 wordings); **B** a small code word-match baseline (free, one script);
-  **C** Qwen judge only if A's false alarms are clearly above ~2% per pair.
-- A hand count, from the reused writer outputs only, of renames in statements without numbers (no separate arm).
-- Report: per-arm recall on planted swaps, false alarms on clean pairs, latency, how often the edit is offered and
-  whether any offered edit would lose or repeat content.
+155 pairs (26 synthetic reports across CT/MR/US plus real writer outputs from the dictated-wins labs): 30 planted
+swaps, 123 clean, hand-labelled before any run; 2 runs; Jev 1.13.
+
+| arm | swaps caught /30 | clean false alarms /123 |
+|---|---|---|
+| **W1, P(yes) < 0.7, with the splitter fixes** | **28** | **0** (both runs) |
+| W1, < 0.5 | 27 | 0 |
+| W1, < 0.8 | 28–29 | 2–3 |
+| other wordings W2/W3, < 0.5 | 19–22 | 0 |
+| code word match (B) | 20 | 11 (8.7%) |
+
+- Caught every time: side, level, broader, narrower; aortic sinus → root caught at 0.7.
+- Missed: CBD → common hepatic duct (P 0.84), pancreatic head → pancreatic mass (P 0.78). Qwen not run; a narrow
+  Qwen second look would cover the 12% of pairs with P 0.5–0.9 (Hassan Q48: not in v1).
+- Latency median 0.24 s, p90 0.29 s; run agreement 98.5–100%; the code pass clears 15% of pairs.
+- Edits offered on 25/30 swaps, none unsafe on hand check. The merged-content guard withheld 4 genuine side swaps
+  before the side/level exemption (§3.5); the plan's test covers the exemption.
+- Number-free renames in real writer outputs: 0 of 70 statements.
 
 ## 8. Tests
 
@@ -117,6 +132,8 @@ A `check_flag_items` test that the edit and `dictated_quote` reach the item.
 ## 9. Known limits (v1)
 
 - The impression is not checked.
+- Close-neighbour renames Jev reads as the same site (CBD → common hepatic duct, pancreatic head → pancreatic mass)
+  slip through; revisit only if real reports show them (Q48).
 - Statements without a number or unit are not checked until D18 (quick) or a later template pairing.
 - A sentence split by an abbreviation full stop may pair on a fragment; the edit is then withheld by the rules in §3.5
   when the fragment's chains or joiners differ, and the lab counts how often it happens.
