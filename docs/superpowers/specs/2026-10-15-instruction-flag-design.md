@@ -48,9 +48,16 @@ undo, an unclear delete, fillers, asides and the tidy-up commands keep today's p
 - **Q22 rollout condition: Q13 goes live with the card, not alone.** The conclusion rule (`CONCLUSION_IS_CONTENT`)
   stays in the code on this branch, but integrate must not take the branch until `RR_STACK_INSTRUCTION_FLAG` is
   switched on.
+- **Rollout conditions before switch-on.** (1) Q13 goes live with the card (Q22). (2) Voice and the walkthrough stop
+  for the card (Q23) come with feat/scratchpad-declutter, before the flag is switched on. (3) Hassan signs off the two
+  thinking-aloud fillers that get a card in both lab runs ("Let me scroll back up.", "Where's the previous scan
+  gone.").
 - **Q23 the card gets keys, voice and a walkthrough stop.** Done on this branch: K = Keep as text, X = Discard on the
   first open card (`aria-keyshortcuts` and key caps on its buttons), never while typing (input, textarea, select,
-  contenteditable), never with a modifier, never during the walkthrough (it owns its keys). **Not done (stopped, by
+  contenteditable), never with a modifier, never during the walkthrough (it owns its keys), and never from a hidden
+  view: the page keeps the inactive report tab mounted and hides it with CSS, so only a visible view answers
+  (`checkVisibility`, else `offsetParent`). The ⌥Space mic hotkey in the same view has the same exposure to a hidden
+  tab; it is not changed here. **Not done (stopped, by
   instruction):** voice ("keep" / "discard") and the walkthrough stop. This base has an inline walkthrough
   (`stops`, `walkKey` in `HybridStackView.svelte`: rows, guidelines, values, checks) but none of the shared
   infrastructure the declutter branch adds (`walkKeys.ts` answer table, `walkVoice.ts`, `readiness.ts` StopKind,

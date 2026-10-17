@@ -103,7 +103,7 @@ def test_settle_restores_the_pre_hold_decision_when_the_route_does_not_write():
         assert J.settle_instruction(held, route)["action"] == "instruction"
     assert J.settle_instruction(None, "polish") is None
     other = {**held, "action": "delete"}
-    assert J.settle_instruction(other, "skip") is other
+    assert J.settle_instruction(other, "skip") == {k: v for k, v in other.items() if k != "fallback"}
 
 
 def test_bundle_restores_a_region_less_delete_when_not_writing():
@@ -318,3 +318,18 @@ def test_q15_wrapped_tidy_up_commands_are_handled():
     assert not J.polish_handles("formatting_command", "Put the impression on a new line.")
     assert not J.polish_handles("formatting_command", "New paragraph the liver.")
 
+
+
+def test_internal_keys_never_reach_the_response_for_a_non_instruction(authed_client, lab, monkeypatch):  # noqa: F811
+    # review 2026-10-16: settle_instruction returned early for other actions and leaked p_instruction / fallback
+    lab(FakeBundle())
+
+    async def ask(scratchpad, utterance, regions, chips):
+        return _parsed("dictate", conf=0.9, ins=0.1)
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "latest_utterance": "There is a small effusion.",
+                                                       "stack_regions": ["Lungs"]}).json()
+    assert d["stack_command"]["action"] == "dictate"
+    assert "p_instruction" not in d["stack_command"] and "fallback" not in d["stack_command"]
+    assert J.settle_instruction({"action": "delete", "region": None, "p_instruction": 0.2}, "skip") == {
+        "action": "delete", "region": None}

@@ -93,9 +93,11 @@ def settle_instruction(stack: dict | None, bundle_route: str, polish_handled: bo
     """A held instruction is flagged only when the bundle would write the words (fast_append or polish) and the
     final is not something the polish already handles (`polish_handles`). Otherwise the route stands, unflagged,
     and the stack decision returns to what it was before the hold (`fallback`)."""
-    if not stack or stack.get("action") != INSTRUCTION:
+    if not stack:
         return stack
     out = {k: v for k, v in stack.items() if k not in ("fallback", "p_instruction")}   # never in the response
+    if stack.get("action") != INSTRUCTION:
+        return out
     if bundle_route not in WRITING_ROUTES or polish_handled:   # the pre-hold decision
         out["action"] = stack.get("fallback") or "dictate"
     return out

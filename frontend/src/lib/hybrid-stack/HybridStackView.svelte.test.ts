@@ -693,5 +693,40 @@ describe('HybridStackView v2', () => {
 		expect(props.onKeepHeld).toHaveBeenCalledWith(7);   // the first open card
 		await userEvent.keyboard('X');
 		expect(props.onRemoveHeld).toHaveBeenCalledWith(7);
+		// never with a modifier (browser and app shortcuts stay theirs)
+		props.onKeepHeld.mockClear();
+		props.onRemoveHeld.mockClear();
+		await userEvent.keyboard('{Control>}k{/Control}{Meta>}x{/Meta}');
+		expect(props.onKeepHeld).not.toHaveBeenCalled();
+		expect(props.onRemoveHeld).not.toHaveBeenCalled();
+	});
+
+	it('Q23: K/X never act during the walkthrough (it owns its keys)', async () => {
+		const props = { ...base(), onKeepHeld: vi.fn(), onRemoveHeld: vi.fn(), onSkip: vi.fn() };
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: '', question: 'Appendix normal?' });
+		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [ref] });
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		await expect.element(page.getByTestId('walkthrough')).toBeInTheDocument();
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [ref], held: [{ id: 3, text: 'Send it.' }] });
+		await expect.element(page.getByTestId('held-instruction')).toBeInTheDocument();
+		(document.activeElement as HTMLElement | null)?.blur();
+		await userEvent.keyboard('kx');
+		expect(props.onKeepHeld).not.toHaveBeenCalled();
+		expect(props.onRemoveHeld).not.toHaveBeenCalled();
+	});
+
+	it('Q23: K/X never act on the card of a hidden view (the inactive tab stays mounted)', async () => {
+		const hidden = document.body.appendChild(document.createElement('div'));
+		hidden.style.display = 'none';
+		const props = { ...base(), onKeepHeld: vi.fn(), onRemoveHeld: vi.fn(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			conclusion: { kind: 'draft', text: 'Simple hepatic cyst.', edited: true } as const, held: [{ id: 9, text: 'Send it.' }] };
+		render(HybridStackView, props, { baseElement: hidden });
+		await expect.poll(() => hidden.querySelector('[data-testid="held-instruction"]') !== null).toBe(true);
+		(document.activeElement as HTMLElement | null)?.blur();
+		await userEvent.keyboard('kx');
+		expect(props.onKeepHeld).not.toHaveBeenCalled();
+		expect(props.onRemoveHeld).not.toHaveBeenCalled();
+		hidden.remove();
 	});
 });

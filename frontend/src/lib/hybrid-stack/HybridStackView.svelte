@@ -485,8 +485,12 @@
 	}
 	// Q23 (Hassan 2026-10-16): K keeps the first open instruction card as text, X discards it (the keys of the conflict
 	// stops). Never while typing, never with a modifier, never during the walkthrough (it owns its keys).
+	// The page keeps the inactive report tab mounted and hides it with CSS: only a visible view answers the keys.
+	let root: HTMLDivElement | undefined = $state();
+	const visible = () => !!root && (root.checkVisibility?.() ?? root.offsetParent !== null);
 	function heldKey(e: KeyboardEvent) {
 		if (!held.length || walking || editing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+		if (!visible()) return;
 		const t = e.target as HTMLElement | null;
 		if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
 		if (e.key === 'k' || e.key === 'K') onKeepHeld(held[0].id);
@@ -996,7 +1000,7 @@
 
 <svelte:window onkeydown={(e) => { walkKey(e); heldKey(e); }} />
 
-<div class="space-y-3" data-testid="hybrid-stack">
+<div class="space-y-3" data-testid="hybrid-stack" bind:this={root}>
 	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onPick={onPickValue} onDraft={(d) => (valueDraft = d)} />
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
 	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
